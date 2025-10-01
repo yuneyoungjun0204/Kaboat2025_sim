@@ -24,6 +24,7 @@ try:
     from .mission_gate import GateMission
     from .mission_circle import CircleMission
     from .mission_avoid import AvoidMission
+    from .black_buoy_detector import BlackBuoyDetector
 
     __all__ = [
         'MiDaSHybridDepthEstimator',
@@ -50,7 +51,8 @@ try:
         'MissionStatus',
         'GateMission',
         'CircleMission',
-        'AvoidMission'
+        'AvoidMission',
+        'BlackBuoyDetector'
     ]
 except ImportError as e:
     print(f"모듈 import 오류: {e}")

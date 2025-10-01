@@ -13,14 +13,21 @@ class Track:
     
     def __init__(self, track_id, initial_detection, depth_value):
         self.track_id = track_id
-        self.color = initial_detection['color']
+        
+        # Detection 객체의 속성에 접근
+        if hasattr(initial_detection, 'color'):
+            self.color = initial_detection.color
+            self.center = initial_detection.center
+            self.bbox = getattr(initial_detection, 'bbox', None)
+            self.area = initial_detection.area
+        else:
+            self.color = initial_detection['color']
+            self.center = initial_detection['center']
+            self.bbox = initial_detection['bbox']
+            self.area = initial_detection['area']
+        
         self.detection_history = deque(maxlen=10)
         self.detection_history.append(initial_detection)
-        
-        # 상태 변수
-        self.center = initial_detection['center']
-        self.bbox = initial_detection['bbox']
-        self.area = initial_detection['area']
         self.depth = depth_value
         self.confidence = 0.8 if depth_value is not None else 0.5
         
@@ -47,9 +54,15 @@ class Track:
         prev_center = self.center
         
         # 새로운 탐지로 업데이트
-        self.center = detection['center']
-        self.bbox = detection['bbox']
-        self.area = detection['area']
+        # Detection 객체의 속성에 접근
+        if hasattr(detection, 'center'):
+            self.center = detection.center
+            self.bbox = getattr(detection, 'bbox', None)
+            self.area = detection.area
+        else:
+            self.center = detection['center']
+            self.bbox = detection['bbox']
+            self.area = detection['area']
         self.depth = depth_value
         self.detection_history.append(detection)
         
@@ -176,9 +189,15 @@ class MultiTargetTracker:
                     continue
                 
                 # 거리 기반 점수 계산
+                # Detection 객체의 center 속성에 접근
+                if hasattr(detection, 'center'):
+                    detection_center = detection.center
+                else:
+                    detection_center = detection['center']
+                
                 distance = math.sqrt(
-                    (detection['center'][0] - track.predicted_center[0])**2 +
-                    (detection['center'][1] - track.predicted_center[1])**2
+                    (detection_center[0] - track.predicted_center[0])**2 +
+                    (detection_center[1] - track.predicted_center[1])**2
                 )
                 
                 # 게이트 테스트
@@ -186,11 +205,12 @@ class MultiTargetTracker:
                     continue
                 
                 # 색상 일치 확인
-                if detection['color'] != track.color:
+                detection_color = detection.color if hasattr(detection, 'color') else detection['color']
+                if detection_color != track.color:
                     continue
                 
                 # 깊이 정보로 점수 보정
-                depth_value = self._get_depth_at_point(depth_map, detection['center'][0], detection['center'][1])
+                depth_value = self._get_depth_at_point(depth_map, detection_center[0], detection_center[1])
                 depth_score = 1.0 if depth_value is not None else 0.5
                 
                 # 최종 점수 계산
@@ -212,7 +232,12 @@ class MultiTargetTracker:
             if track.track_id in associations:
                 detection_idx = associations[track.track_id]
                 detection = detections[detection_idx]
-                depth_value = self._get_depth_at_point(depth_map, detection['center'][0], detection['center'][1])
+                # Detection 객체의 center 속성에 접근
+                if hasattr(detection, 'center'):
+                    detection_center = detection.center
+                else:
+                    detection_center = detection['center']
+                depth_value = self._get_depth_at_point(depth_map, detection_center[0], detection_center[1])
                 track.update(detection, depth_value)
     
     def _create_new_tracks(self, detections, depth_map, associations):
@@ -226,7 +251,12 @@ class MultiTargetTracker:
             if len(self.tracks) >= self.max_tracks:
                 break
             
-            depth_value = self._get_depth_at_point(depth_map, detection['center'][0], detection['center'][1])
+            # Detection 객체의 center 속성에 접근
+            if hasattr(detection, 'center'):
+                detection_center = detection.center
+            else:
+                detection_center = detection['center']
+            depth_value = self._get_depth_at_point(depth_map, detection_center[0], detection_center[1])
             new_track = Track(self.next_track_id, detection, depth_value)
             self.tracks.append(new_track)
             self.next_track_id += 1

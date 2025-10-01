@@ -10,7 +10,7 @@ import math
 class PIDController:
     """PID 제어기"""
     
-    def __init__(self, kp=0.5, ki=0.05, kd=0.4):
+    def __init__(self, kp=1.5, ki=0.05, kd=0.4):
         self.kp = kp
         self.ki = ki
         self.kd = kd
@@ -67,9 +67,9 @@ class NavigationController:
         self.approach_pid = PIDController(kp=0.8, ki=0.001, kd=0.4)
         
         # 제어 파라미터
-        self.max_speed = 1000.0
+        self.max_speed = 800.0
         self.min_speed = 300.0
-        self.max_turn_thrust = 100.0
+        self.max_turn_thrust = 500.0
         self.base_speed = 150.0
         
         # 네비게이션 모드
@@ -201,8 +201,8 @@ class NavigationController:
             forward_thrust = self.base_speed * 0.5  # 접근 시 천천히
             
             # 스러스터 명령 계산
-            left_command = forward_thrust - turn_thrust
-            right_command = forward_thrust + turn_thrust
+            left_command = forward_thrust + turn_thrust
+            right_command = forward_thrust - turn_thrust
             
             mode = "approach"
             target_x_output = self.image_width / 2
