@@ -130,12 +130,12 @@ class NavigationController:
         """회전 방향에 따른 목표 x 좌표 계산 (거리에 따라 동적 조정)"""
         if rotation_direction == 1:  # 시계방향
             # 시계방향: 1200 - 100x (멀수록 크게, 가까울수록 작게)
-            target_x = 1240 - 3000 * object_x
+            target_x = 1240 - 2500 * object_x
             # 범위 제한 (640~1200)
             return max(940, min(1200, target_x))
         else:  # 반시계방향
             # 반시계방향: 40 + 100x (멀수록 크게, 가까울수록 작게)
-            target_x = 3000 * object_x
+            target_x = 2500 * object_x
             # 범위 제한 (40~640)
             return max(340, min(640, target_x))
     

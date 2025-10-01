@@ -114,32 +114,13 @@ class AutoScenarioController(Node):
         cv2.namedWindow('Auto Scenario - Depth Map', cv2.WINDOW_NORMAL)
         cv2.resizeWindow('Auto Scenario - Depth Map', 640, 360)
         
-        # 시나리오 컨트롤 창 생성
-        cv2.namedWindow('Scenario Control', cv2.WINDOW_NORMAL)
-        cv2.resizeWindow('Scenario Control', 400, 200)
-        
-        # 시나리오 관련 트랙바 (먼저 생성)
-        cv2.createTrackbar('Switch Distance', 'Scenario Control', 
-                          int(self.scenario_switch_distance), 50, self.on_switch_distance_change)
-        cv2.createTrackbar('Rotation Dir', 'Scenario Control', 
-                          1 if self.rotation_direction > 0 else 0, 1, self.on_rotation_dir_change)
-        # 검정색 부표 전용이므로 Target Color 트랙바 제거
-        
-        # 기본 트랙바 (Control Parameters 창 생성)
+        # 트랙바 제거 - 기본값으로 진행
+        # 기본 트랙바만 유지 (Control Parameters 창 생성)
         self.trackbar_controller.setup_trackbars()
         
         self.get_logger().info('🎛️  창 및 트랙바 설정 완료!')
     
-    def on_switch_distance_change(self, value):
-        """전환 거리 변경"""
-        self.scenario_switch_distance = float(value)
-        self.get_logger().info(f'🔄 전환 거리 변경: {value}m')
-    
-    def on_rotation_dir_change(self, value):
-        """회전 방향 변경"""
-        self.rotation_direction = 1 if value > 0 else -1
-        direction_name = "시계방향" if self.rotation_direction > 0 else "반시계방향"
-        self.get_logger().info(f'🔄 회전 방향 변경: {direction_name}')
+    # 트랙바 콜백 함수들 제거 - 기본값 사용
     
     def detect_black_buoys(self, image, depth_map, min_depth, max_depth):
         """검정색 부표 탐지"""
@@ -235,7 +216,7 @@ class AutoScenarioController(Node):
             if self.current_scenario == 1:
                 self.get_logger().info('🎯 시나리오 1: Navigation (부표 사이 통과)')
             else:
-                self.get_logger().info(f'🔄 시나리오 2: Approach (검정 부표 선회)')
+                self.get_logger().info('🔄 시나리오 2: Approach - 원형 부표 탐지 (검정 부표 선회)')
     
     def image_callback(self, msg):
         """이미지 콜백 - 메인 파이프라인"""
@@ -356,12 +337,12 @@ class AutoScenarioController(Node):
             self.thruster_controller.publish_target_x(target_x)
             
             direction_name = "시계방향" if self.rotation_direction == 1 else "반시계방향"
-            status = f"🔄 Approach: 검정 부표 ID:{target_track.track_id}({target_track.center[0]:.1f}), " \
+            status = f"🔄 Approach - 원형 부표 탐지: 검정 부표 ID:{target_track.track_id}({target_track.center[0]:.1f}), " \
                     f"깊이: {target_track.depth:.3f}m, {direction_name}, 거리: {self.distance_to_target:.1f}m"
         else:
             # 검정 부표 미탐지 - 정지
             left_cmd = right_cmd = 0.0
-            status = f"❌ 검정 부표 미탐지 (0개): 정지, 거리: {self.distance_to_target:.1f}m"
+            status = f"❌ 원형 부표 미탐지 (0개): 정지, 거리: {self.distance_to_target:.1f}m"
         
         # 스러스터 명령 발행
         self.thruster_controller.publish_thrust_commands(left_cmd, right_cmd)
@@ -416,7 +397,7 @@ class AutoScenarioController(Node):
             scenario_text += "NAVIGATION (Gate Passing)"
             color = (0, 255, 0)  # 초록
         else:
-            scenario_text += f"APPROACH (검정 부표 선회)"
+            scenario_text += f"APPROACH - 원형 부표 탐지"
             color = (0, 255, 255)  # 노랑
         
         cv2.putText(main_image, scenario_text, (10, 30),

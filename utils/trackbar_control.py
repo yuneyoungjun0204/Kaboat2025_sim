@@ -28,8 +28,8 @@ class TrackbarController:
         cv2.createTrackbar("Rotation_Direction", self.window_name, 1, 1, self.nothing)  # 0: 시계방향, 1: 반시계방향
         
         # 탐지 파라미터
-        cv2.createTrackbar("Min_Depth_Threshold", self.window_name, 35, 100, self.nothing)
-        cv2.createTrackbar("Max_Depth_Threshold", self.window_name, 400, 500, self.nothing)
+        cv2.createTrackbar("Min_Depth_Threshold", self.window_name, 45, 200, self.nothing)
+        cv2.createTrackbar("Max_Depth_Threshold", self.window_name, 400, 800, self.nothing)
         
         # Blob Detector 파라미터
         cv2.createTrackbar("Min_Area", self.window_name, 100, 5000, self.nothing)
@@ -43,9 +43,9 @@ class TrackbarController:
         cv2.createTrackbar("Min_Association_Prob", self.window_name, 30, 100, self.nothing)
         
         # 제어 파라미터
-        cv2.createTrackbar("Max_Speed", self.window_name, 1000, 2000, self.nothing)
+        cv2.createTrackbar("Max_Speed", self.window_name, 700, 1500, self.nothing)
         cv2.createTrackbar("Min_Speed", self.window_name, 300, 1000, self.nothing)
-        cv2.createTrackbar("Base_Speed", self.window_name, 150, 500, self.nothing)
+        cv2.createTrackbar("Base_Speed", self.window_name, 200, 800, self.nothing)
         cv2.createTrackbar("Max_Turn_Thrust", self.window_name, 100, 250, self.nothing)
         
         # PID 파라미터
@@ -61,8 +61,8 @@ class TrackbarController:
         cv2.setTrackbarPos("Control_Mode", self.window_name, 0)  # navigation
         cv2.setTrackbarPos("Target_Color", self.window_name, 1)  # green
         cv2.setTrackbarPos("Rotation_Direction", self.window_name, 1)  # 시계방향
-        cv2.setTrackbarPos("Min_Depth_Threshold", self.window_name, 35)  # 0.035
-        cv2.setTrackbarPos("Max_Depth_Threshold", self.window_name, 400)  # 0.4
+        cv2.setTrackbarPos("Min_Depth_Threshold", self.window_name, 105)  # 0.035
+        cv2.setTrackbarPos("Max_Depth_Threshold", self.window_name, 600)  # 0.4
         cv2.setTrackbarPos("Min_Area", self.window_name, 100)
         cv2.setTrackbarPos("Max_Area", self.window_name, 10000)
         cv2.setTrackbarPos("Min_Circularity", self.window_name, 30)
@@ -70,10 +70,10 @@ class TrackbarController:
         cv2.setTrackbarPos("Max_Missed_Frames", self.window_name, 5)
         cv2.setTrackbarPos("Gate_Threshold", self.window_name, 50)
         cv2.setTrackbarPos("Min_Association_Prob", self.window_name, 30)
-        cv2.setTrackbarPos("Max_Speed", self.window_name, 1000)
+        cv2.setTrackbarPos("Max_Speed", self.window_name, 700)
         cv2.setTrackbarPos("Min_Speed", self.window_name, 300)
-        cv2.setTrackbarPos("Base_Speed", self.window_name, 150)
-        cv2.setTrackbarPos("Max_Turn_Thrust", self.window_name, 100)
+        cv2.setTrackbarPos("Base_Speed", self.window_name, 650)
+        cv2.setTrackbarPos("Max_Turn_Thrust", self.window_name, 300)
         cv2.setTrackbarPos("Steering_Kp", self.window_name, 10)  # 1.0
         cv2.setTrackbarPos("Approach_Kp", self.window_name, 8)   # 0.8
         cv2.setTrackbarPos("Show_Depth", self.window_name, 1)
