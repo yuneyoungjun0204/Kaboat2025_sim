@@ -22,7 +22,8 @@ class VRXONNXControllerV5(Node):
         # self.model_path = '/home/yuneyoungjun/vrx_ws/src/vrx/scripts/models/Ray-6953161.onnx'
         # self.model_path = '/home/yuneyoungjun/vrx_ws/src/vrx/scripts/models/Ray-3999831.onnx'
         # self.model_path = '/home/yuneyoungjun/vrx_ws/src/vrx/scripts/models/Ray-8933853.onnx'
-        self.model_path = '/home/yuneyoungjun/vrx_ws/src/vrx/scripts/models/correct_IMU/Ray-5999760.onnx'
+        # self.model_path = '/home/yuneyoungjun/vrx_ws/src/vrx/scripts/models/correct_IMU/Ray-5999760.onnx'
+        self.model_path = '/home/yuneyoungjun/vrx_ws/src/vrx/Scripts_git/models/correct_IMU/Ray-19946289.onnx'
         self.session = ort.InferenceSession(self.model_path)
         self.input_name = self.session.get_inputs()[0].name
         self.sensor_manager = SensorDataManager()
@@ -80,8 +81,8 @@ class VRXONNXControllerV5(Node):
         self.lidar_max_distance = self.max_lidar_distance  # LiDAR 최대 거리값
         
         # 직접제어 모드 관련 변수
-        self.boat_width = 1.5  # 배 폭 D (미터)
-        self.boat_height = 35.0  # 배 높이 L (미터)
+        self.boat_width = 2.2  # 배 폭 D (미터)
+        self.boat_height = 50.0  # 배 높이 L (미터)
         
         self.use_direct_control = False  # 직접제어 모드 플래그
         
@@ -92,7 +93,7 @@ class VRXONNXControllerV5(Node):
         self.los_lookahead_factor = 1.0  # look-ahead 거리 계산 계수 (조정 가능)
         
         # 1차 저주파 필터 변수
-        self.filter_alpha = 0.65  # 필터 계수 (0~1, 낮을수록 더 부드러움)
+        self.filter_alpha = 0.35  # 필터 계수 (0~1, 낮을수록 더 부드러움)
         self.filtered_linear_velocity = 0.0  # 필터링된 선형 속도
         self.filtered_angular_velocity = 0.0  # 필터링된 각속도
         self.filtered_left_thrust = 0.0  # 필터링된 좌측 스러스터
@@ -463,15 +464,15 @@ class VRXONNXControllerV5(Node):
         
         # 거리에 따른 선형 속도 조절 (가까울수록 느리게)
         if distance_to_los > 20.0:
-            linear_velocity = 0.4  # 원거리에서 빠른 속도
+            linear_velocity = 1.0  # 원거리에서 빠른 속도
         elif distance_to_los > 10.0:
-            linear_velocity = 0.3  # 중거리에서 중간 속도
+            linear_velocity = 0.6  # 중거리에서 중간 속도
         else:
-            linear_velocity = 0.2  # 근거리에서 느린 속도
+            linear_velocity = 0.4  # 근거리에서 느린 속도
         
         # 각속도에 따른 선형 속도 보정 (회전할 때는 속도 감소)
         linear_velocity = linear_velocity * (1.0 - abs(angular_velocity) * 0.3)
-        linear_velocity = np.clip(linear_velocity, 0.1, 0.4)  # 최소/최대 속도 제한
+        linear_velocity = np.clip(linear_velocity, 0.1, 1.0)  # 최소/최대 속도 제한
         
         return linear_velocity, angular_velocity
 
@@ -663,7 +664,7 @@ class VRXONNXControllerV5(Node):
         
         outputs = self.session.run(None, {self.input_name: stacked_input})
         if len(outputs) > 2 and outputs[2] is not None:
-            linear_velocity = max(min(outputs[4][0][1] * self.v_scale, 1), 0.12)
+            linear_velocity = max(min(outputs[2][0][1] * self.v_scale, 1), 0.12)
             angular_velocity = max(min(outputs[4][0][0] * self.w_scale, 1.0), -1.0)
         else:
             linear_velocity = 0.0
