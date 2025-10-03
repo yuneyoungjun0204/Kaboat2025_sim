@@ -14,83 +14,89 @@ import matplotlib.pyplot as plt
 import numpy as np
 import time
 from collections import deque
-from utils import SensorDataManager
+from utils import SensorDataManager, get_config
 
 class TrajectoryVizNode(Node):
     """VRX 로봇 궤적 시각화 노드"""
-    
+
     def __init__(self):
         super().__init__('trajectory_viz_node')
-        
-        # ROS2 서브스크라이버
+
+        # Config 로드
+        self.config = get_config()
+
+        # ROS2 서브스크라이버 (Config에서 토픽 가져오기)
+        qos = self.config.get_qos('sensor_data')
+
         self.gps_sub = self.create_subscription(
             NavSatFix,
-            '/wamv/sensors/gps/gps/fix',
+            self.config.get_sensor_topic('gps'),
             self.gps_callback,
-            10
+            qos
         )
-        
+
         self.imu_sub = self.create_subscription(
             Imu,
-            '/wamv/sensors/imu/imu/data',
+            self.config.get_sensor_topic('imu'),
             self.imu_callback,
-            10
+            qos
         )
-        
+
         self.lidar_sub = self.create_subscription(
             LaserScan,
-            '/wamv/sensors/lidars/lidar_wamv_sensor/scan',
+            self.config.get_sensor_topic('lidar'),
             self.lidar_callback,
-            10
+            qos
         )
         
-        # ONNX 모델 제어 출력값 서브스크라이버
+        # ONNX 모델 제어 출력값 서브스크라이버 (Config 사용)
+        viz_qos = self.config.get_qos('visualization')
         self.control_output_sub = self.create_subscription(
             Float64MultiArray,
-            '/vrx/control_output',
+            self.config.get_vrx_topic('control_output'),
             self.control_output_callback,
-            10
+            viz_qos
         )
-        
+
         # v5 모드 정보 서브스크라이버
         from std_msgs.msg import String
         self.mode_sub = self.create_subscription(
             String,
-            '/vrx/current_mode',
+            self.config.get_vrx_topic('current_mode'),
             self.mode_callback,
-            10
+            viz_qos
         )
-        
-        # goal_check 영역 정보 서브스크라이버 (main_onnx_v5.py에서 받음)
+
+        # goal_check 영역 정보 서브스크라이버
         self.goal_check_sub = self.create_subscription(
             Float64MultiArray,
-            '/vrx/goal_check_areas',
+            self.config.get_vrx_topic('goal_check_areas'),
             self.goal_check_callback,
-            10
+            viz_qos
         )
-        
-        # 제어 모드 정보 서브스크라이버 (main_onnx_v5_final.py에서 받음)
+
+        # 제어 모드 정보 서브스크라이버
         self.control_mode_sub = self.create_subscription(
             String,
-            '/vrx/control_mode',
+            self.config.get_vrx_topic('control_mode'),
             self.control_mode_callback,
-            10
+            viz_qos
         )
-        
-        # 장애물 체크 영역 정보 서브스크라이버 (main_onnx_v5_final.py에서 받음)
+
+        # 장애물 체크 영역 정보 서브스크라이버 (Config 사용)
         self.obstacle_check_area_sub = self.create_subscription(
             Float64MultiArray,
-            '/vrx/obstacle_check_area',
+            self.config.get_vrx_topic('obstacle_check_area'),
             self.obstacle_check_area_callback,
-            10
+            viz_qos
         )
-        
-        # LOS target 정보 서브스크라이버 (main_onnx_v5_final.py에서 받음)
+
+        # LOS target 정보 서브스크라이버 (Config 사용)
         self.los_target_sub = self.create_subscription(
             Float64MultiArray,
-            '/vrx/los_target',
+            self.config.get_vrx_topic('los_target'),
             self.los_target_callback,
-            10
+            viz_qos
         )
         
         # 센서 데이터 관리자 초기화
@@ -114,8 +120,12 @@ class TrajectoryVizNode(Node):
         # matplotlib 설정
         self.setup_matplotlib()
         
-        # 웨이포인트 퍼블리셔 (클릭한 점을 v3로 전송)
-        self.waypoint_pub = self.create_publisher(Point, '/vrx/waypoint', 10)
+        # 웨이포인트 퍼블리셔 (Config 사용)
+        self.waypoint_pub = self.create_publisher(
+            Point,
+            self.config.get_vrx_topic('waypoint'),
+            self.config.get_qos('control_command')
+        )
         
         # 웨이포인트 관련 변수
         self.waypoints = []  # 클릭한 웨이포인트들 저장

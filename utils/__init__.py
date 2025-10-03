@@ -5,6 +5,10 @@ VRX 로봇 제어 시스템 유틸리티 모듈
 - 미션 베이스 및 개별 미션 모듈
 """
 
+# Config는 항상 import (의존성 없음)
+from .config_manager import ConfigManager, get_config, reload_config
+
+# 나머지는 try-except로 감싸기
 try:
     from .depth_estimation import MiDaSHybridDepthEstimator
     from .color_filtering import ColorFilter
@@ -17,7 +21,7 @@ try:
     from .matplotlib_visualizer import MatplotlibVisualizer
     from .sensor_preprocessing import GPSTransformer, LiDARProcessor, IMUProcessor, SensorDataManager
     from .avoid_control import (
-        LOSGuidance, ObstacleDetector, DirectController, 
+        LOSGuidance, ObstacleDetector, DirectController,
         LowPassFilter, AvoidanceController
     )
     from .base_mission import BaseMission, MissionStatus
@@ -25,7 +29,6 @@ try:
     from .mission_circle import CircleMission
     from .mission_avoid import AvoidMission
     from .black_buoy_detector import BlackBuoyDetector
-    from .config_manager import ConfigManager, get_config, reload_config
 
     __all__ = [
         'MiDaSHybridDepthEstimator',

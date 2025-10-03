@@ -205,28 +205,33 @@ class VRXMissionController(Node):
         if waypoint_count >= 6:
             self.get_logger().info('🎯 미션 구성 중...')
             
+            # Config에서 미션 파라미터 가져오기
+            gate_params = self.config.get_mission_params('gate')
+            circle_params = self.config.get_mission_params('circle')
+            avoid_params = self.config.get_mission_params('avoid')
+
             # 1. Gate Mission (처음 2개 웨이포인트)
             gate_waypoints = self.collected_waypoints[0:2]
             gate_mission = GateMission(
                 waypoints=gate_waypoints,
                 thrust_scale=self.thrust_scale,
-                completion_threshold=15.0
+                completion_threshold=gate_params.get('completion_threshold', 15.0)
             )
             self.missions.append(gate_mission)
             self.get_logger().info(f'✅ Gate Mission 구성: {len(gate_waypoints)}개 웨이포인트')
-            
+
             # 2. Circle Mission (다음 2개 웨이포인트)
             circle_waypoints = self.collected_waypoints[2:4]
             circle_mission = CircleMission(
                 waypoints=circle_waypoints,
-                circle_radius=10.0,
-                circle_direction='clockwise',
+                circle_radius=circle_params.get('radius', 10.0),
+                circle_direction=circle_params.get('direction', 'clockwise'),
                 thrust_scale=self.thrust_scale,
-                completion_threshold=15.0
+                completion_threshold=circle_params.get('completion_threshold', 15.0)
             )
             self.missions.append(circle_mission)
             self.get_logger().info(f'✅ Circle Mission 구성: {len(circle_waypoints)}개 웨이포인트')
-            
+
             # 3. Avoid Mission (나머지 웨이포인트)
             avoid_waypoints = self.collected_waypoints[4:]
             avoid_mission = AvoidMission(
@@ -234,7 +239,7 @@ class VRXMissionController(Node):
                 onnx_control_func=self.get_onnx_control,
                 get_lidar_distance_func=self.get_lidar_distance_at_angle_degrees,
                 thrust_scale=self.thrust_scale,
-                completion_threshold=15.0
+                completion_threshold=avoid_params.get('completion_threshold', 15.0)
             )
             self.missions.append(avoid_mission)
             self.get_logger().info(f'✅ Avoid Mission 구성: {len(avoid_waypoints)}개 웨이포인트')
