@@ -1,0 +1,55 @@
+# ROS2 토픽 설정 파일
+# 토픽명 변경 시 이 파일만 수정하면 됨
+
+# 센서 토픽
+sensors:
+  lidar: '/wamv/sensors/lidars/lidar_wamv_sensor/scan'
+  gps: '/wamv/sensors/gps/gps/fix'
+  imu: '/wamv/sensors/imu/imu/data'
+  camera:
+    front_left: '/wamv/sensors/cameras/front_left_camera_sensor/image_raw'
+    front_right: '/wamv/sensors/cameras/front_right_camera_sensor/image_raw'
+
+# 액추에이터 토픽
+actuators:
+  thrusters:
+    left: '/wamv/thrusters/left/thrust'
+    right: '/wamv/thrusters/right/thrust'
+
+# VRX 제어 토픽
+vrx:
+  # 입력 토픽
+  waypoint: '/vrx/waypoint'
+
+  # 출력 토픽 (센서 데이터)
+  lidar_data: '/vrx/lidar_data'
+  agent_heading: '/vrx/agent_heading'
+  angular_velocity: '/vrx/angular_velocity'
+  agent_position: '/vrx/agent_position'
+
+  # 출력 토픽 (제어 관련)
+  control_output: '/vrx/control_output'
+  control_mode: '/vrx/control_mode'
+  current_mode: '/vrx/current_mode'
+
+  # 출력 토픽 (모델 입력)
+  model_input: '/vrx/model_input'
+  current_waypoint: '/vrx/current_waypoint'
+  previous_waypoint: '/vrx/previous_waypoint'
+  next_waypoint: '/vrx/next_waypoint'
+  previous_moment: '/vrx/previous_moment'
+  previous_force: '/vrx/previous_force'
+
+  # 출력 토픽 (시각화)
+  obstacle_check_area: '/vrx/obstacle_check_area'
+  los_target: '/vrx/los_target'
+  goal_check_areas: '/vrx/goal_check_areas'
+
+  # 출력 토픽 (미션 관련)
+  mission_status: '/vrx/mission_status'
+
+# QoS 설정
+qos:
+  sensor_data: 10
+  control_command: 10
+  visualization: 10

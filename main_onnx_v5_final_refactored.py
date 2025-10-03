@@ -8,65 +8,87 @@ from sensor_msgs.msg import LaserScan, NavSatFix, Imu
 from std_msgs.msg import Float64, Float64MultiArray, String
 from geometry_msgs.msg import Point
 import time
-from utils import SensorDataManager
+from utils import SensorDataManager, get_config
 from utils.avoid_control import AvoidanceController
 
 
 class VRXONNXControllerV5Refactored(Node):
-    
+
     def __init__(self):
         super().__init__('vrx_onnx_controller_v5_refactored')
-        
+
+        # Config 로드
+        self.config = get_config()
+
         # ONNX 모델 로드
-        self.model_path = '/home/yuneyoungjun/vrx_ws/src/vrx/Scripts_git/models/correct_IMU/Ray-19946289.onnx'
+        self.model_path = self.config.get_model_path()
         self.session = ort.InferenceSession(self.model_path)
         self.input_name = self.session.get_inputs()[0].name
-        
+
         # 센서 관리자
         self.sensor_manager = SensorDataManager()
-        
-        # ROS2 서브스크라이버
-        self.create_subscription(LaserScan, '/wamv/sensors/lidars/lidar_wamv_sensor/scan', 
-                                self.lidar_callback, 10)
-        self.create_subscription(NavSatFix, '/wamv/sensors/gps/gps/fix', 
-                                self.gps_callback, 10)
-        self.create_subscription(Imu, '/wamv/sensors/imu/imu/data', 
-                                self.imu_callback, 10)
-        self.waypoint_sub = self.create_subscription(Point, '/vrx/waypoint', 
-                                                     self.waypoint_callback, 10)
+
+        # ROS2 서브스크라이버 (Config에서 토픽 가져오기)
+        self.create_subscription(
+            LaserScan,
+            self.config.get_sensor_topic('lidar'),
+            self.lidar_callback,
+            self.config.get_qos('sensor_data')
+        )
+        self.create_subscription(
+            NavSatFix,
+            self.config.get_sensor_topic('gps'),
+            self.gps_callback,
+            self.config.get_qos('sensor_data')
+        )
+        self.create_subscription(
+            Imu,
+            self.config.get_sensor_topic('imu'),
+            self.imu_callback,
+            self.config.get_qos('sensor_data')
+        )
+        self.waypoint_sub = self.create_subscription(
+            Point,
+            self.config.get_vrx_topic('waypoint'),
+            self.waypoint_callback,
+            self.config.get_qos('sensor_data')
+        )
         
         # ROS2 퍼블리셔
         self.setup_publishers()
         
-        # 센서 데이터
-        self.lidar_distances = np.zeros(201, dtype=np.float32)
-        self.max_lidar_distance = 100.0
+        # 센서 데이터 (Config에서 파라미터 가져오기)
+        lidar_params = self.config.get_sensor_params('lidar')
+        self.lidar_distances = np.zeros(lidar_params.get('array_size', 201), dtype=np.float32)
+        self.max_lidar_distance = lidar_params.get('max_distance', 100.0)
         self.agent_heading = 0.0
         self.angular_velocity_y = 0.0
         self.agent_position = np.zeros(2, dtype=np.float32)
-        
+
         # 웨이포인트 관리
         self.waypoints = []
         self.current_target_index = 0
         self.target_position = None
         self.waypoint_reached = False
-        
-        # 제어 파라미터
-        self.v_scale = 1.0
-        self.w_scale = -1.0
-        self.thrust_scale = 800
-        self.angular_velocity_y_scale = 1
-        self.lidar_scale_factor = 1.0
-        
-        # 장애물 회피 컨트롤러
+
+        # 제어 파라미터 (Config에서 가져오기)
+        control_params = self.config.get_control_params()
+        self.v_scale = control_params.get('v_scale', 1.0)
+        self.w_scale = control_params.get('w_scale', -1.0)
+        self.thrust_scale = control_params.get('thrust_scale', 800)
+        self.angular_velocity_y_scale = control_params.get('angular_velocity_y_scale', 1)
+        self.lidar_scale_factor = control_params.get('lidar_scale_factor', 1.0)
+
+        # 장애물 회피 컨트롤러 (Config에서 파라미터 가져오기)
+        avoid_params = self.config.get_mission_params('avoid')
         self.avoidance_controller = AvoidanceController(
-            boat_width=2.2,
-            boat_height=50.0,
-            max_lidar_distance=100.0,
-            los_delta=10.0,
-            los_lookahead_min=30.0,
-            los_lookahead_max=80.0,
-            filter_alpha=0.35
+            boat_width=avoid_params.get('boat_width', 2.2),
+            boat_height=avoid_params.get('boat_height', 50.0),
+            max_lidar_distance=self.max_lidar_distance,
+            los_delta=avoid_params.get('los_delta', 10.0),
+            los_lookahead_min=avoid_params.get('los_lookahead_min', 30.0),
+            los_lookahead_max=avoid_params.get('los_lookahead_max', 80.0),
+            filter_alpha=avoid_params.get('filter_alpha', 0.35)
         )
         
         # 제어 상태
@@ -81,27 +103,52 @@ class VRXONNXControllerV5Refactored(Node):
         self.last_angular_velocity_update_time = 0.0
         self.reference_point_set = False
         
-        # 타이머
-        self.timer = self.create_timer(0.01, self.timer_callback)
-    
+        # 타이머 (Config에서 주기 가져오기)
+        timer_period = self.config.get_timer_period('control_update')
+        self.timer = self.create_timer(timer_period, self.timer_callback)
+
+        self.get_logger().info('=' * 50)
+        self.get_logger().info(f'🤖 Model: {self.model_path}')
+        self.get_logger().info(f'⚙️  Thrust Scale: {self.thrust_scale}')
+        self.get_logger().info(f'⏱️  Timer Period: {timer_period}s ({1.0/timer_period:.0f}Hz)')
+        self.get_logger().info('=' * 50)
+
     def setup_publishers(self):
-        """ROS2 퍼블리셔 설정"""
-        self.left_thrust_pub = self.create_publisher(Float64, '/wamv/thrusters/left/thrust', 10)
-        self.right_thrust_pub = self.create_publisher(Float64, '/wamv/thrusters/right/thrust', 10)
-        self.model_input_pub = self.create_publisher(Float64MultiArray, '/vrx/model_input', 10)
-        self.lidar_pub = self.create_publisher(Float64MultiArray, '/vrx/lidar_data', 10)
-        self.heading_pub = self.create_publisher(Float64, '/vrx/agent_heading', 10)
-        self.angular_vel_pub = self.create_publisher(Float64, '/vrx/angular_velocity', 10)
-        self.position_pub = self.create_publisher(Float64MultiArray, '/vrx/agent_position', 10)
-        self.current_waypoint_pub = self.create_publisher(Float64MultiArray, '/vrx/current_waypoint', 10)
-        self.previous_waypoint_pub = self.create_publisher(Float64MultiArray, '/vrx/previous_waypoint', 10)
-        self.next_waypoint_pub = self.create_publisher(Float64MultiArray, '/vrx/next_waypoint', 10)
-        self.previous_moment_pub = self.create_publisher(Float64, '/vrx/previous_moment', 10)
-        self.previous_force_pub = self.create_publisher(Float64, '/vrx/previous_force', 10)
-        self.control_output_pub = self.create_publisher(Float64MultiArray, '/vrx/control_output', 10)
-        self.control_mode_pub = self.create_publisher(String, '/vrx/control_mode', 10)
-        self.obstacle_check_area_pub = self.create_publisher(Float64MultiArray, '/vrx/obstacle_check_area', 10)
-        self.los_target_pub = self.create_publisher(Float64MultiArray, '/vrx/los_target', 10)
+        """ROS2 퍼블리셔 설정 (Config에서 토픽 가져오기)"""
+        qos = self.config.get_qos('control_command')
+
+        self.left_thrust_pub = self.create_publisher(
+            Float64, self.config.get_actuator_topic('thrusters', 'left'), qos)
+        self.right_thrust_pub = self.create_publisher(
+            Float64, self.config.get_actuator_topic('thrusters', 'right'), qos)
+        self.model_input_pub = self.create_publisher(
+            Float64MultiArray, self.config.get_vrx_topic('model_input'), qos)
+        self.lidar_pub = self.create_publisher(
+            Float64MultiArray, self.config.get_vrx_topic('lidar_data'), qos)
+        self.heading_pub = self.create_publisher(
+            Float64, self.config.get_vrx_topic('agent_heading'), qos)
+        self.angular_vel_pub = self.create_publisher(
+            Float64, self.config.get_vrx_topic('angular_velocity'), qos)
+        self.position_pub = self.create_publisher(
+            Float64MultiArray, self.config.get_vrx_topic('agent_position'), qos)
+        self.current_waypoint_pub = self.create_publisher(
+            Float64MultiArray, self.config.get_vrx_topic('current_waypoint'), qos)
+        self.previous_waypoint_pub = self.create_publisher(
+            Float64MultiArray, self.config.get_vrx_topic('previous_waypoint'), qos)
+        self.next_waypoint_pub = self.create_publisher(
+            Float64MultiArray, self.config.get_vrx_topic('next_waypoint'), qos)
+        self.previous_moment_pub = self.create_publisher(
+            Float64, self.config.get_vrx_topic('previous_moment'), qos)
+        self.previous_force_pub = self.create_publisher(
+            Float64, self.config.get_vrx_topic('previous_force'), qos)
+        self.control_output_pub = self.create_publisher(
+            Float64MultiArray, self.config.get_vrx_topic('control_output'), qos)
+        self.control_mode_pub = self.create_publisher(
+            String, self.config.get_vrx_topic('control_mode'), qos)
+        self.obstacle_check_area_pub = self.create_publisher(
+            Float64MultiArray, self.config.get_vrx_topic('obstacle_check_area'), qos)
+        self.los_target_pub = self.create_publisher(
+            Float64MultiArray, self.config.get_vrx_topic('los_target'), qos)
     
     def waypoint_callback(self, msg):
         """웨이포인트 콜백"""
@@ -194,8 +241,9 @@ class VRXONNXControllerV5Refactored(Node):
         distance = np.sqrt((current_pos[0] - self.target_position[0])**2 + 
                           (current_pos[1] - self.target_position[1])**2)
         
-        # 웨이포인트 도달 확인
-        if distance < 15.0:
+        # 웨이포인트 도달 확인 (Config에서 threshold 가져오기)
+        completion_threshold = self.config.get_mission_params('avoid').get('completion_threshold', 15.0)
+        if distance < completion_threshold:
             if not self.waypoint_reached:
                 self.waypoint_reached = True
                 self.current_target_index += 1

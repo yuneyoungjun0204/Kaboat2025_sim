@@ -1,0 +1,65 @@
+# Python 가상환경
+venv/
+env/
+ENV/
+.venv/
+
+# Python 캐시
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# 배포 관련
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# 환경 변수
+.env
+.env.local
+
+# 로그 파일
+*.log
+
+# ONNX 모델 (대용량)
+models/*.onnx
+*.onnx
+
+# ROS2
+install/
+build/
+log/
+
+# 테스트 결과
+*.json
+test_results/
+
+# 임시 파일
+*.tmp
+*.bak
+*.backup

@@ -25,6 +25,7 @@ try:
     from .mission_circle import CircleMission
     from .mission_avoid import AvoidMission
     from .black_buoy_detector import BlackBuoyDetector
+    from .config_manager import ConfigManager, get_config, reload_config
 
     __all__ = [
         'MiDaSHybridDepthEstimator',
@@ -52,7 +53,10 @@ try:
         'GateMission',
         'CircleMission',
         'AvoidMission',
-        'BlackBuoyDetector'
+        'BlackBuoyDetector',
+        'ConfigManager',
+        'get_config',
+        'reload_config'
     ]
 except ImportError as e:
     print(f"모듈 import 오류: {e}")

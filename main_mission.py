@@ -22,7 +22,8 @@ from utils import (
     BlobDetector,
     MultiTargetTracker,
     Visualizer,
-    TrackbarController
+    TrackbarController,
+    get_config
 )
 from utils.mission_gate import GateMission
 from utils.mission_circle import CircleMission
@@ -32,15 +33,18 @@ from utils.base_mission import MissionStatus
 
 class VRXMissionController(Node):
     """VRX 미션 통합 제어 노드"""
-    
+
     def __init__(self):
         super().__init__('vrx_mission_controller')
-        
-        # ONNX 모델 로드
-        self.model_path = '/home/yuneyoungjun/vrx_ws/src/vrx/Scripts_git/models/correct_IMU/Ray-19946289.onnx'
+
+        # Config 로드
+        self.config = get_config()
+
+        # ONNX 모델 로드 (Config에서 경로 가져오기)
+        self.model_path = self.config.get_model_path()
         self.session = ort.InferenceSession(self.model_path)
         self.input_name = self.session.get_inputs()[0].name
-        
+
         # 센서 관리자
         self.sensor_manager = SensorDataManager()
         
@@ -62,17 +66,38 @@ class VRXMissionController(Node):
         self.best_red_track = None
         self.best_green_track = None
         
-        # ROS2 서브스크라이버
-        self.create_subscription(LaserScan, '/wamv/sensors/lidars/lidar_wamv_sensor/scan', 
-                                self.lidar_callback, 10)
-        self.create_subscription(NavSatFix, '/wamv/sensors/gps/gps/fix', 
-                                self.gps_callback, 10)
-        self.create_subscription(Imu, '/wamv/sensors/imu/imu/data', 
-                                self.imu_callback, 10)
-        self.create_subscription(Image, '/wamv/sensors/cameras/front_left_camera_sensor/image_raw',
-                                self.image_callback, 10)
-        self.waypoint_sub = self.create_subscription(Point, '/vrx/waypoint', 
-                                                     self.waypoint_callback, 10)
+        # ROS2 서브스크라이버 (Config에서 토픽 가져오기)
+        qos = self.config.get_qos('sensor_data')
+        self.create_subscription(
+            LaserScan,
+            self.config.get_sensor_topic('lidar'),
+            self.lidar_callback,
+            qos
+        )
+        self.create_subscription(
+            NavSatFix,
+            self.config.get_sensor_topic('gps'),
+            self.gps_callback,
+            qos
+        )
+        self.create_subscription(
+            Imu,
+            self.config.get_sensor_topic('imu'),
+            self.imu_callback,
+            qos
+        )
+        self.create_subscription(
+            Image,
+            self.config.get_topic('sensors', 'camera', 'front_left'),
+            self.image_callback,
+            qos
+        )
+        self.waypoint_sub = self.create_subscription(
+            Point,
+            self.config.get_vrx_topic('waypoint'),
+            self.waypoint_callback,
+            qos
+        )
         
         # ROS2 퍼블리셔
         self.setup_publishers()
