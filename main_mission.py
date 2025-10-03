@@ -143,15 +143,27 @@ class VRXMissionController(Node):
         self.visualization_windows_open = False
         self.current_mission_type = None
         
-        # 타이머
-        self.timer = self.create_timer(0.01, self.timer_callback)
-        self.viz_timer = self.create_timer(0.033, self.visualization_callback)  # 30Hz 시각화
-        
+        # 타이머 (Config에서 주기 가져오기)
+        control_period = self.config.get_timer_period('control_update')
+        viz_period = self.config.get_timer_period('visualization')
+        self.timer = self.create_timer(control_period, self.timer_callback)
+        self.viz_timer = self.create_timer(viz_period, self.visualization_callback)
+
+        waypoint_config = self.config.get_param('waypoint', default={})
+        min_waypoints = waypoint_config.get('min_waypoints', 6)
+
+        self.get_logger().info('=' * 60)
         self.get_logger().info('🚀 VRX 미션 통합 시스템 시작!')
-        self.get_logger().info('📍 웨이포인트를 클릭하여 미션을 설정하세요.')
+        self.get_logger().info(f'🤖 Model: {self.model_path}')
+        self.get_logger().info(f'⚙️  Thrust Scale: {self.thrust_scale}')
+        self.get_logger().info(f'⏱️  Control: {control_period}s ({1.0/control_period:.0f}Hz)')
+        self.get_logger().info(f'📺 Visualization: {viz_period}s ({1.0/viz_period:.0f}Hz)')
+        self.get_logger().info('=' * 60)
+        self.get_logger().info(f'📍 최소 {min_waypoints}개 웨이포인트를 클릭하여 미션 설정:')
         self.get_logger().info('   - 처음 2개: Gate Mission')
         self.get_logger().info('   - 다음 2개: Circle Mission')
         self.get_logger().info('   - 그 다음: Avoid Mission')
+        self.get_logger().info('=' * 60)
     
     def setup_publishers(self):
         """ROS2 퍼블리셔 설정"""
