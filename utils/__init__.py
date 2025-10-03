@@ -8,7 +8,18 @@ VRX 로봇 제어 시스템 유틸리티 모듈
 # Config는 항상 import (의존성 없음)
 from .config_manager import ConfigManager, get_config, reload_config
 
-# 나머지는 try-except로 감싸기
+# 핵심 모듈 (항상 import)
+from .sensor_preprocessing import GPSTransformer, LiDARProcessor, IMUProcessor, SensorDataManager
+from .base_mission import BaseMission, MissionStatus
+from .mission_gate import GateMission
+from .mission_circle import CircleMission
+from .mission_avoid import AvoidMission
+from .avoid_control import (
+    LOSGuidance, ObstacleDetector, DirectController,
+    LowPassFilter, AvoidanceController
+)
+
+# 선택적 모듈 (실패해도 무시)
 try:
     from .depth_estimation import MiDaSHybridDepthEstimator
     from .color_filtering import ColorFilter
@@ -18,49 +29,25 @@ try:
     from .thruster_control import ThrusterController
     from .visualization import Visualizer
     from .trackbar_control import TrackbarController
-    from .matplotlib_visualizer import MatplotlibVisualizer
-    from .sensor_preprocessing import GPSTransformer, LiDARProcessor, IMUProcessor, SensorDataManager
-    from .avoid_control import (
-        LOSGuidance, ObstacleDetector, DirectController,
-        LowPassFilter, AvoidanceController
-    )
-    from .base_mission import BaseMission, MissionStatus
-    from .mission_gate import GateMission
-    from .mission_circle import CircleMission
-    from .mission_avoid import AvoidMission
-    from .black_buoy_detector import BlackBuoyDetector
 
     __all__ = [
-        'MiDaSHybridDepthEstimator',
-        'ColorFilter',
-        'BlobDetector',
-        'Track',
-        'MultiTargetTracker',
-        'PIDController',
-        'NavigationController',
-        'ThrusterController',
-        'Visualizer',
-        'TrackbarController',
-        'MatplotlibVisualizer',
-        'GPSTransformer',
-        'LiDARProcessor',
-        'IMUProcessor',
-        'SensorDataManager',
-        'LOSGuidance',
-        'ObstacleDetector',
-        'DirectController',
-        'LowPassFilter',
-        'AvoidanceController',
-        'BaseMission',
-        'MissionStatus',
-        'GateMission',
-        'CircleMission',
-        'AvoidMission',
-        'BlackBuoyDetector',
-        'ConfigManager',
-        'get_config',
-        'reload_config'
+        # 핵심 모듈
+        'ConfigManager', 'get_config', 'reload_config',
+        'GPSTransformer', 'LiDARProcessor', 'IMUProcessor', 'SensorDataManager',
+        'BaseMission', 'MissionStatus',
+        'GateMission', 'CircleMission', 'AvoidMission',
+        'LOSGuidance', 'ObstacleDetector', 'DirectController', 'LowPassFilter', 'AvoidanceController',
+        # 선택적 모듈
+        'MiDaSHybridDepthEstimator', 'ColorFilter', 'BlobDetector',
+        'Track', 'MultiTargetTracker',
+        'PIDController', 'NavigationController',
+        'ThrusterController', 'Visualizer', 'TrackbarController'
     ]
 except ImportError as e:
-    print(f"모듈 import 오류: {e}")
-    __all__ = []
+    print(f"선택적 모듈 import 오류: {e}")
+    __all__ = [
+        'ConfigManager', 'get_config', 'reload_config',
+        'SensorDataManager', 'BaseMission', 'MissionStatus',
+        'GateMission', 'CircleMission', 'AvoidMission',
+        'AvoidanceController'
+    ]
