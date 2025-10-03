@@ -102,19 +102,21 @@ class VRXMissionController(Node):
         # ROS2 퍼블리셔
         self.setup_publishers()
         
-        # 센서 데이터
-        self.lidar_distances = np.zeros(201, dtype=np.float32)
-        self.max_lidar_distance = 100.0
+        # 센서 데이터 (Config에서 파라미터 가져오기)
+        lidar_params = self.config.get_sensor_params('lidar')
+        self.lidar_distances = np.zeros(lidar_params.get('array_size', 201), dtype=np.float32)
+        self.max_lidar_distance = lidar_params.get('max_distance', 100.0)
         self.agent_heading = 0.0
         self.angular_velocity_y = 0.0
         self.agent_position = np.zeros(2, dtype=np.float32)
-        
-        # 제어 파라미터
-        self.v_scale = 1.0
-        self.w_scale = -1.0
-        self.thrust_scale = 800
-        self.angular_velocity_y_scale = 1
-        self.lidar_scale_factor = 1.0
+
+        # 제어 파라미터 (Config에서 가져오기)
+        control_params = self.config.get_control_params()
+        self.v_scale = control_params.get('v_scale', 1.0)
+        self.w_scale = control_params.get('w_scale', -1.0)
+        self.thrust_scale = control_params.get('thrust_scale', 800)
+        self.angular_velocity_y_scale = control_params.get('angular_velocity_y_scale', 1)
+        self.lidar_scale_factor = control_params.get('lidar_scale_factor', 1.0)
         
         # 웨이포인트 수집 (trajectory_viz.py에서 클릭으로 추가)
         self.collected_waypoints = []
