@@ -25,3 +25,9 @@ torch>=2.0.0
 pillow>=9.0.0
 accelerate>=0.20.0
 sentencepiece>=0.1.99
+
+# 양자화 (4-bit quantization for faster inference)
+bitsandbytes>=0.41.0
+
+# Claude API (선택사항)
+anthropic>=0.18.0
