@@ -72,11 +72,12 @@ class SmolVLM500MAnalyzer:
             reserved = torch.cuda.memory_reserved() / 1024**3
             print(f"GPU 메모리 사용량: {allocated:.2f}GB (예약: {reserved:.2f}GB)")
 
-    def analyze_image(self, image_path, prompt="Describe objects"):
+    def analyze_image(self, image_path, prompt="Is there a dock?"):
         """이미지 분석 (최대 속도 최적화)"""
         # 이미지 로드 및 리사이즈 (작은 이미지 = 빠른 처리)
         image = Image.open(image_path).convert("RGB")
-        # 해상도 축소로 속도 향상 (선택사항)
+        # 해상도 축소로 속도 향상 (픽셀 위치 정확도와 트레이드오프)
+        # 주의: 해상도를 너무 낮추면 픽셀 좌표가 부정확해질 수 있음
         max_size = 640
         if max(image.size) > max_size:
             image.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
@@ -100,11 +101,11 @@ class SmolVLM500MAnalyzer:
             return_tensors="pt"
         ).to(self.device)
 
-        # 생성 (최대 속도 최적화)
+        # 생성 (최대 속도 최적화 - 간결한 답변)
         with torch.no_grad():
             output = self.model.generate(
                 **inputs,
-                max_new_tokens=64,       # 256 -> 64 (4배 빠름)
+                max_new_tokens=100,      # 픽셀 좌표 포함 위해 64->100으로 조정
                 do_sample=False,         # 샘플링 비활성화
                 num_beams=1,             # beam search 비활성화
                 use_cache=True,          # KV cache 사용
@@ -145,8 +146,8 @@ class SmolVLM500MAnalyzer:
                 # 커스텀 프롬프트가 있으면 사용
                 prompt = custom_prompts.get(image_file) if custom_prompts else None
                 if not prompt:
-                    # 초단순 프롬프트로 최대 속도 확보
-                    prompt = "Describe objects and colors"
+                    # 선박 주차장 및 도형 탐지 전용 프롬프트
+                    prompt = "Is there a dock? If yes, list each shape (circle/cross/triangle) on it with color and pixel position (x,y). Be brief."
 
                 # 이미지 분석
                 analysis = self.analyze_image(image_path, prompt)

@@ -131,8 +131,8 @@ class SmolVLMAnalyzer:
                 # 커스텀 프롬프트가 있으면 사용
                 prompt = custom_prompts.get(image_file) if custom_prompts else None
                 if not prompt:
-                    # 짧은 프롬프트로 속도 최적화
-                    prompt = "Describe objects, colors, and positions in this marine image."
+                    # 선박 주차장 및 도형 탐지 전용 프롬프트
+                    prompt = "Is there a dock? If yes, list each shape (circle/cross/triangle) on it with color and pixel position (x,y). Be brief."
 
                 # 이미지 분석
                 analysis = self.analyze_image(image_path, prompt)
