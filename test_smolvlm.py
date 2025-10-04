@@ -1,39 +1,47 @@
 """
-Llama-3.2-11B-Vision 모델을 사용한 이미지 분석 테스트 스크립트
+SmolVLM-2.2B 모델을 사용한 이미지 분석 테스트 스크립트
 test_img 폴더의 이미지들을 분석하고 결과를 test_vla 폴더에 저장
+
+SmolVLM 특징:
+- 메모리: 4.9GB (5.78GB GPU에 최적)
+- 속도: Qwen2-VL 대비 3.3-4.5배 빠름
+- 2025년 최신 경량 Vision-Language 모델
 """
 
 import os
 import torch
 from PIL import Image
-from transformers import AutoModelForVision2Seq, AutoProcessor, BitsAndBytesConfig
+from transformers import AutoModelForVision2Seq, AutoProcessor
 import json
 from datetime import datetime
 
-class LlamaVisionAnalyzer:
-    def __init__(self, model_id="meta-llama/Llama-3.2-11B-Vision-Instruct"):
-        """Llama Vision 모델 초기화"""
+
+class SmolVLMAnalyzer:
+    def __init__(self, model_id="HuggingFaceTB/SmolVLM-Instruct"):
+        """SmolVLM 모델 초기화"""
         print(f"모델 로딩 중: {model_id}")
         self.model_id = model_id
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         print(f"사용 디바이스: {self.device}")
 
-        # CPU 모드로 실행 (메모리 문제 완전 해결)
-        # GPU 메모리 부족 시 CPU가 더 안정적
-        if torch.cuda.is_available():
-            print("경고: GPU 메모리 부족으로 CPU 모드로 실행합니다.")
-            self.device = "cpu"
-
-        # 모델과 프로세서 로드 (CPU 모드, 양자화 없음)
+        # 모델과 프로세서 로드
+        self.processor = AutoProcessor.from_pretrained(model_id)
         self.model = AutoModelForVision2Seq.from_pretrained(
             model_id,
-            torch_dtype=torch.float32,  # CPU에서는 float32 사용
-            low_cpu_mem_usage=True,
+            torch_dtype=torch.bfloat16 if torch.cuda.is_available() else torch.float32,
+            device_map="auto" if torch.cuda.is_available() else None,
         )
-        self.processor = AutoProcessor.from_pretrained(model_id)
-        self.model = self.model.to(self.device)
+
+        if not torch.cuda.is_available():
+            self.model = self.model.to(self.device)
 
         print("모델 로딩 완료!")
+
+        # GPU 메모리 사용량 확인
+        if torch.cuda.is_available():
+            allocated = torch.cuda.memory_allocated() / 1024**3
+            reserved = torch.cuda.memory_reserved() / 1024**3
+            print(f"GPU 메모리 사용량: {allocated:.2f}GB (예약: {reserved:.2f}GB)")
 
     def analyze_image(self, image_path, prompt="이 이미지를 상세히 분석해주세요. 주요 객체, 색상, 위치 등을 설명해주세요."):
         """이미지 분석"""
@@ -63,8 +71,8 @@ class LlamaVisionAnalyzer:
         with torch.no_grad():
             output = self.model.generate(
                 **inputs,
-                max_new_tokens=512,
-                do_sample=True,
+                max_new_tokens=256,
+                do_sample=False,
                 temperature=0.7,
                 top_p=0.9
             )
@@ -132,7 +140,7 @@ class LlamaVisionAnalyzer:
                 })
 
         # 결과 저장
-        output_file = os.path.join(output_dir, f"analysis_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json")
+        output_file = os.path.join(output_dir, f"smolvlm_analysis_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json")
         with open(output_file, 'w', encoding='utf-8') as f:
             json.dump(results, f, ensure_ascii=False, indent=2)
 
@@ -143,9 +151,6 @@ class LlamaVisionAnalyzer:
 
 def main():
     """메인 실행 함수"""
-    # CUDA 메모리 최적화 설정
-    os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True'
-
     # 경로 설정
     test_img_dir = "/home/yune/Kaboat2025_sim/test_img"
     test_vla_dir = "/home/yune/Kaboat2025_sim/test_vla"
@@ -156,11 +161,11 @@ def main():
         return
 
     print("=" * 80)
-    print("Llama-3.2-11B-Vision 이미지 분석 테스트")
+    print("SmolVLM-2.2B 이미지 분석 테스트")
     print("=" * 80)
 
     # 분석기 초기화
-    analyzer = LlamaVisionAnalyzer()
+    analyzer = SmolVLMAnalyzer()
 
     # 배치 분석 실행
     # 필요시 특정 이미지에 대한 커스텀 프롬프트 지정 가능
