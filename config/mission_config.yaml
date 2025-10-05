@@ -1,0 +1,56 @@
+# 미션 설정 파일
+
+# ONNX 모델 경로
+model:
+  path: '/home/yuneyoungjun/vrx_ws/src/vrx/Scripts_git/models/correct_IMU/Ray-19946289.onnx'
+  # 환경변수 사용 예: '${HOME}/vrx_ws/src/vrx/Scripts_git/models/correct_IMU/Ray-19946289.onnx'
+
+# 제어 파라미터
+control:
+  v_scale: 1.0
+  w_scale: -1.0
+  thrust_scale: 800
+  angular_velocity_y_scale: 1
+  lidar_scale_factor: 1.0
+
+# 센서 파라미터
+sensors:
+  lidar:
+    max_distance: 100.0
+    angle_range: [-100, 100]  # degrees
+    array_size: 201
+
+  gps:
+    reference_lat: -33.8568
+    reference_lon: 151.2153
+
+# 미션 파라미터
+missions:
+  gate:
+    completion_threshold: 15.0
+    kp_heading: 2.0
+    kp_distance: 0.5
+
+  circle:
+    radius: 10.0
+    direction: 'clockwise'  # 'clockwise' or 'counterclockwise'
+    completion_threshold: 15.0
+
+  avoid:
+    boat_width: 2.2
+    boat_height: 50.0
+    los_delta: 10.0
+    los_lookahead_min: 30.0
+    los_lookahead_max: 80.0
+    filter_alpha: 0.35
+    completion_threshold: 15.0
+
+# 웨이포인트 설정
+waypoint:
+  collection_mode: true
+  min_waypoints: 6  # Gate(2) + Circle(2) + Avoid(2+)
+
+# 타이머 설정 (Hz)
+timers:
+  control_update: 100  # 0.01s
+  visualization: 30    # 0.033s

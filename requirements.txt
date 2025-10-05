@@ -1,0 +1,41 @@
+# VRX Project Dependencies
+
+# YAML 처리
+PyYAML>=6.0
+
+# ROS2 (일반적으로 시스템에 이미 설치됨)
+# rclpy
+
+# 컴퓨터 비전
+opencv-python>=4.5.0
+numpy>=1.20.0
+
+# ONNX 런타임
+onnxruntime>=1.10.0
+
+# 시각화
+matplotlib>=3.3.0
+
+# 센서 데이터 처리
+scipy>=1.7.0
+
+# Vision Language Model (VLA)
+transformers>=4.45.0
+torch>=2.0.0
+torchvision>=0.15.0
+pillow>=9.0.0
+accelerate>=0.20.0
+sentencepiece>=0.1.99
+
+# 양자화 (4-bit quantization for faster inference)
+bitsandbytes>=0.41.0
+
+# Qwen VL 전용
+qwen-vl-utils>=0.0.8
+
+# Fine-tuning (선택사항)
+peft>=0.7.0
+datasets>=2.14.0
+
+# Claude API (선택사항)
+anthropic>=0.18.0
