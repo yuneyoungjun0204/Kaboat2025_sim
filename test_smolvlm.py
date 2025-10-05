@@ -131,8 +131,8 @@ class SmolVLMAnalyzer:
                 # 커스텀 프롬프트가 있으면 사용
                 prompt = custom_prompts.get(image_file) if custom_prompts else None
                 if not prompt:
-                    # 선박 주차장 및 도형 탐지 전용 프롬프트
-                    prompt = "Is there a dock? If yes, list each shape (circle/cross/triangle) on it with color and pixel position (x,y). Be brief."
+                    # 선박 자동 주차 내비게이션 프롬프트
+                    prompt = "Find red shape on dock. If red shape is not at image center, tell boat direction to move: 'Move LEFT/RIGHT/UP/DOWN/FORWARD/BACK'. If centered, say 'STOP - RED SHAPE CENTERED'. Be brief."
 
                 # 이미지 분석
                 analysis = self.analyze_image(image_path, prompt)
