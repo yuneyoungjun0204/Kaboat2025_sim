@@ -18,6 +18,7 @@ import math
 from utils import (
     MiDaSHybridDepthEstimator,
     BlobDetector,
+    AdvancedBlobDetector,
     MultiTargetTracker,
     NavigationController,
     ThrusterController,
@@ -63,6 +64,7 @@ class VRXRobotController(Node):
         # 모듈화된 컴포넌트들 초기화
         self.depth_estimator = MiDaSHybridDepthEstimator()
         self.blob_detector = BlobDetector()
+        self.advanced_blob_detector = AdvancedBlobDetector()  # 고급 blob detector
         self.tracker = MultiTargetTracker()
         self.navigation_controller = NavigationController()
         self.thruster_controller = ThrusterController(self)
@@ -177,24 +179,55 @@ class VRXRobotController(Node):
             params['detection']['max_depth_threshold']
         )
         
-        # 검정색 부표 감지 (approach 모드에서만)
-        black_detections = []
+        # 파란색 부표 감지 (approach 모드에서만) - 고급 blob detector 사용
+        blue_detections = []
         if self.force_approach_mode:
             approach_params = self.get_approach_parameters()
+            min_depth = approach_params['min_depth']
             max_depth = approach_params['max_depth']
-            black_detections = self.detect_black_buoys(cv_image, depth_map, max_depth)
+            
+            # 고급 blob detector 파라미터 업데이트
+            self.advanced_blob_detector.update_depth_filter(min_depth, max_depth)
+            self.advanced_blob_detector.update_blob_parameters(
+                min_area=approach_params['min_area'],
+                max_area=approach_params['max_area'],
+                min_circularity=approach_params['min_circularity']
+            )
+            
+            # 파란색 부표 감지 (색상 신뢰도 임계값 적용)
+            blue_detections_raw = self.advanced_blob_detector.detect_blue_buoys(
+                cv_image, depth_map, mode='hsv'
+            )
+            
+            # 색상 신뢰도 필터링
+            color_threshold = approach_params['color_confidence']
+            blue_detections_raw = [det for det in blue_detections_raw 
+                                 if det['confidence'] >= color_threshold]
+            
+            # Detection 객체로 변환
+            blue_detections = []
+            for detection in blue_detections_raw:
+                detection_obj = type('Detection', (), {
+                    'center': detection['center'],
+                    'color': detection['color'],
+                    'bbox': detection['bbox'],
+                    'area': detection['size'] * detection['size'],
+                    'depth': detection['depth'],
+                    'confidence': detection['confidence']
+                })()
+                blue_detections.append(detection_obj)
         
         # 모든 감지 결과 합치기
-        all_detections = detections + black_detections
+        all_detections = detections + blue_detections
         
         tracks = self.tracker.update(all_detections, depth_map)
         best_red, best_green = self.tracker.get_best_tracks()
         
-        # 검정색 부표 추적 결과 가져오기
-        best_black = self.get_best_black_track(tracks)
+        # 파란색 부표 추적 결과 가져오기
+        best_blue = self.get_best_blue_track(tracks)
         
         # 제어 처리 - 항상 실행 (모드 전환은 트랙바가 자동 처리)
-        self.process_control(best_red, best_green, best_black, params)
+        self.process_control(best_red, best_green, best_blue, params)
         
         # 추적 데이터 퍼블리시
         self.publish_tracking_data(best_red, best_green)
@@ -221,7 +254,7 @@ class VRXRobotController(Node):
         })
         self.navigation_controller.update_control_parameters(**nav_params)
     
-    def process_control(self, best_red, best_green, best_black, params):
+    def process_control(self, best_red, best_green, best_blue, params):
         """제어 처리 - 모듈화된 로직"""
         control_mode = params['control']['control_mode']
         target_color = params['control']['target_color']
@@ -236,7 +269,7 @@ class VRXRobotController(Node):
                 )
                 status = f"🧭 네비게이션: 중점({(best_red.center[0] + best_green.center[0])/2:.1f}), 오차: {error:.1f}"
             else:
-                left_cmd = right_cmd = 150.0
+                left_cmd = right_cmd = 550.0
                 status = "⚠️ 부표 미탐지: 천천히 직진"
         
         elif control_mode == "approach":
@@ -250,8 +283,10 @@ class VRXRobotController(Node):
                 target_track = best_green
             elif target_color == "red":
                 target_track = best_red
-            else:  # target_color == "black"
-                target_track = best_black
+            elif target_color == "black":
+                target_track = best_blue  # 검정색도 파란색으로 처리
+            else:  # target_color == "blue"
+                target_track = best_blue
             
             if target_track and target_track.confidence > 0.3:
                 # NavigationController의 파라미터를 Approach 전용 값으로 업데이트
@@ -300,28 +335,40 @@ class VRXRobotController(Node):
         cv2.resizeWindow("Object Approach Control", 400, 300)
         
         # 트랙바 생성
-        cv2.createTrackbar("Target_Color", "Object Approach Control", 3, 3, self.nothing)  # 1: 초록, 2: 빨강, 3: 검정
+        cv2.createTrackbar("Target_Color", "Object Approach Control", 4, 4, self.nothing)  # 1: 초록, 2: 빨강, 3: 검정, 4: 파랑
         cv2.createTrackbar("Rotation_Direction", "Object Approach Control", 1, 2, self.nothing)  # 1: 시계방향, 2: 반시계방향
         cv2.createTrackbar("Base_Speed", "Object Approach Control", 150, 300, self.nothing)
         cv2.createTrackbar("Min_Speed", "Object Approach Control", 50, 200, self.nothing)
-        cv2.createTrackbar("Max_Turn_Thrust", "Object Approach Control", 150, 250, self.nothing)
+        cv2.createTrackbar("Max_Turn_Thrust", "Object Approach Control", 150, 1000, self.nothing)
         cv2.createTrackbar("Approach_Distance", "Object Approach Control", 5, 15, self.nothing)  # 0.01-0.15m
         cv2.createTrackbar("Slow_Distance", "Object Approach Control", 3, 15, self.nothing)  # 0.01-0.15m
         cv2.createTrackbar("Stop_Distance", "Object Approach Control", 2, 15, self.nothing)  # 0.01-0.15m
         cv2.createTrackbar("PID_Kp", "Object Approach Control", 8, 50, self.nothing)  # 0.8-5.0
-        cv2.createTrackbar("Max_Depth", "Object Approach Control", 100, 1500, self.nothing)  # 최대 깊이 (cm)
+        cv2.createTrackbar("Min_Depth", "Object Approach Control", 50, 500, self.nothing)  # 최소 깊이 (cm)
+        cv2.createTrackbar("Max_Depth", "Object Approach Control", 200, 1500, self.nothing)  # 최대 깊이 (cm)
+        
+        # Blob 감지 파라미터 트랙바
+        cv2.createTrackbar("Min_Area", "Object Approach Control", 100, 2000, self.nothing)  # 최소 면적
+        cv2.createTrackbar("Max_Area", "Object Approach Control", 50000, 100000, self.nothing)  # 최대 면적
+        cv2.createTrackbar("Min_Circularity", "Object Approach Control", 30, 100, self.nothing)  # 최소 원형도 (0.3-1.0)
+        cv2.createTrackbar("Color_Confidence", "Object Approach Control", 30, 100, self.nothing)  # 색상 신뢰도 (0.3-1.0)
         
         # 초기값 설정 (잘 되었던 값들)
-        cv2.setTrackbarPos("Target_Color", "Object Approach Control", 3)  # 1: 초록색, 2: 빨간색, 3: 검정색
+        cv2.setTrackbarPos("Target_Color", "Object Approach Control", 4)  # 1: 초록색, 2: 빨간색, 3: 검정색, 4: 파란색
         cv2.setTrackbarPos("Rotation_Direction", "Object Approach Control", 1)  # 1: 시계방향, 2: 반시계방향
         cv2.setTrackbarPos("Base_Speed", "Object Approach Control", 150)  # 기본 속도 150
         cv2.setTrackbarPos("Min_Speed", "Object Approach Control", 50)  # 최소 속도 50
-        cv2.setTrackbarPos("Max_Turn_Thrust", "Object Approach Control", 150)
+        cv2.setTrackbarPos("Max_Turn_Thrust", "Object Approach Control", 300)
         cv2.setTrackbarPos("Approach_Distance", "Object Approach Control", 3)  # 0.05m
         cv2.setTrackbarPos("Slow_Distance", "Object Approach Control", 4)  # 0.03m
         cv2.setTrackbarPos("Stop_Distance", "Object Approach Control", 7)  # 0.02m
         cv2.setTrackbarPos("PID_Kp", "Object Approach Control", 8)  # Kp = 0.8
-        cv2.setTrackbarPos("Max_Depth", "Object Approach Control", 100)  # 최대 깊이 100cm
+        cv2.setTrackbarPos("Min_Depth", "Object Approach Control", 50)  # 최소 깊이 50cm
+        cv2.setTrackbarPos("Max_Depth", "Object Approach Control", 200)  # 최대 깊이 200cm
+        cv2.setTrackbarPos("Min_Area", "Object Approach Control", 100)  # 최소 면적 100
+        cv2.setTrackbarPos("Max_Area", "Object Approach Control", 50000)  # 최대 면적 50000
+        cv2.setTrackbarPos("Min_Circularity", "Object Approach Control", 30)  # 최소 원형도 0.3
+        cv2.setTrackbarPos("Color_Confidence", "Object Approach Control", 30)  # 색상 신뢰도 0.3
         
         self.get_logger().info('✅ Approach 모드 전용 트랙바 설정 완료')
     
@@ -342,15 +389,22 @@ class VRXRobotController(Node):
             slow_dist = cv2.getTrackbarPos("Slow_Distance", "Object Approach Control") / 100.0  # 0.01-0.15m
             stop_dist = cv2.getTrackbarPos("Stop_Distance", "Object Approach Control") / 100.0  # 0.01-0.15m
             pid_kp = cv2.getTrackbarPos("PID_Kp", "Object Approach Control") / 10.0  # 0.8-5.0
-            max_depth = cv2.getTrackbarPos("Max_Depth", "Object Approach Control") / 100.0  # 0.5-2.5m
+            min_depth = cv2.getTrackbarPos("Min_Depth", "Object Approach Control") / 100.0  # 0.5-5.0m
+            max_depth = cv2.getTrackbarPos("Max_Depth", "Object Approach Control") / 100.0  # 0.5-15.0m
+            min_area = cv2.getTrackbarPos("Min_Area", "Object Approach Control")  # 100-2000
+            max_area = cv2.getTrackbarPos("Max_Area", "Object Approach Control")  # 50000-100000
+            min_circularity = cv2.getTrackbarPos("Min_Circularity", "Object Approach Control") / 100.0  # 0.3-1.0
+            color_confidence = cv2.getTrackbarPos("Color_Confidence", "Object Approach Control") / 100.0  # 0.3-1.0
             
             # 색상 변환
             if target_color_idx == 1:
                 target_color = "green"
             elif target_color_idx == 2:
                 target_color = "red"
-            else:  # target_color_idx == 3
+            elif target_color_idx == 3:
                 target_color = "black"
+            else:  # target_color_idx == 4
+                target_color = "blue"
             
             # 회전 방향 변환
             rotation_direction = 1 if rotation_dir == 1 else -1
@@ -365,12 +419,17 @@ class VRXRobotController(Node):
                 'slow_distance': slow_dist,
                 'stop_distance': stop_dist,
                 'pid_kp': pid_kp,
-                'max_depth': max_depth
+                'min_depth': min_depth,
+                'max_depth': max_depth,
+                'min_area': min_area,
+                'max_area': max_area,
+                'min_circularity': min_circularity,
+                'color_confidence': color_confidence
             }
         except:
             # 트랙바가 없으면 기본값 반환
             return {
-                'target_color': 'black',
+                'target_color': 'blue',
                 'rotation_direction': 1,
                 'base_speed': 150,
                 'min_speed': 50,
@@ -379,57 +438,46 @@ class VRXRobotController(Node):
                 'slow_distance': 0.04,
                 'stop_distance': 0.07,
                 'pid_kp': 0.8,
-                'max_depth': 1.0
+                'min_depth': 0.5,
+                'max_depth': 2.0,
+                'min_area': 100,
+                'max_area': 50000,
+                'min_circularity': 0.3,
+                'color_confidence': 0.3
             }
     
-    def detect_black_buoys(self, image, depth_map, max_depth=1.0):
-        """검정색 부표 감지 (깊이 필터링 포함)"""
-        detections = []
+    def visualize_blue_detections(self, image, blue_detections):
+        """파란색 부표 감지 결과 시각화"""
+        result_image = image.copy()
         
-        # HSV 색상 공간으로 변환
-        hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+        for detection in blue_detections:
+            x, y = detection.center
+            depth = detection.depth
+            confidence = detection.confidence
+            
+            # 바운딩 박스 그리기
+            cv2.circle(result_image, (x, y), 20, (255, 0, 0), 2)  # 파란색 원
+            
+            # 라벨 표시
+            label = f"BLUE ({confidence:.2f})"
+            cv2.putText(result_image, label, (x - 50, y - 30),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
+            
+            # 좌표 표시
+            coord_text = f"({x}, {y})"
+            cv2.putText(result_image, coord_text, (x - 30, y + 35),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 0, 0), 1)
+            
+            # 깊이 정보 표시
+            if depth is not None:
+                depth_text = f"Depth: {depth:.2f}m"
+                cv2.putText(result_image, depth_text, (x - 40, y + 55),
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 0, 0), 1)
+            else:
+                cv2.putText(result_image, "Depth: N/A", (x - 30, y + 55),
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 0, 0), 1)
         
-        # 검정색 범위 정의 (HSV)
-        lower_black = np.array([0, 0, 0])
-        upper_black = np.array([180, 255, 50])  # V값이 낮은 것이 검정색
-        
-        # 검정색 마스크 생성
-        mask = cv2.inRange(hsv, lower_black, upper_black)
-        
-        # 노이즈 제거
-        kernel = np.ones((5,5), np.uint8)
-        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
-        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
-        
-        # 컨투어 찾기
-        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        
-        for contour in contours:
-            area = cv2.contourArea(contour)
-            if area > 100:  # 최소 면적 필터링
-                # 바운딩 박스 계산
-                x, y, w, h = cv2.boundingRect(contour)
-                center_x = x + w // 2
-                center_y = y + h // 2
-                
-                # 깊이 정보 가져오기
-                depth_value = self._get_depth_at_point(depth_map, center_x, center_y)
-                
-                # 깊이 필터링: 최대 깊이 이하만 허용
-                if depth_value > 0 and depth_value <= max_depth:
-                    # Detection 객체 생성
-                    detection = type('Detection', (), {
-                        'center': (center_x, center_y),
-                        'color': 'black',
-                        'bbox': (x, y, w, h),
-                        'area': area,
-                        'depth': depth_value,
-                        'confidence': min(area / 1000.0, 1.0)  # 면적 기반 신뢰도
-                    })()
-                    
-                    detections.append(detection)
-        
-        return detections
+        return result_image
     
     def _get_depth_at_point(self, depth_map, x, y):
         """특정 점에서의 깊이 값 가져오기"""
@@ -437,15 +485,15 @@ class VRXRobotController(Node):
             return depth_map[y, x]
         return 0.0
     
-    def get_best_black_track(self, tracks):
-        """검정색 부표 중 가장 좋은 추적 결과 반환"""
-        black_tracks = [track for track in tracks if hasattr(track, 'color') and track.color == 'black']
+    def get_best_blue_track(self, tracks):
+        """파란색 부표 중 가장 좋은 추적 결과 반환"""
+        blue_tracks = [track for track in tracks if hasattr(track, 'color') and track.color == 'blue']
         
-        if not black_tracks:
+        if not blue_tracks:
             return None
         
         # 신뢰도가 가장 높은 추적 결과 반환
-        best_track = max(black_tracks, key=lambda t: t.confidence)
+        best_track = max(blue_tracks, key=lambda t: t.confidence)
         return best_track if best_track.confidence > 0.3 else None
     
     def publish_tracking_data(self, best_red, best_green):
