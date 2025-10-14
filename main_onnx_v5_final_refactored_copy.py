@@ -18,8 +18,8 @@ class VRXONNXControllerV5Refactored(Node):
         super().__init__('vrx_onnx_controller_v5_refactored')
         
         # ONNX 모델 로드
-        self.model_path = '/home/yuneyoungjun/vrx_ws/src/vrx/Scripts_git/models/correct_IMU/Ray-19946289.onnx'
-        # self.model_path = '/home/yuneyoungjun/vrx_ws/src/vrx/Scripts_git/models/correct_IMU/Ray-7499897.onnx'
+        # self.model_path = '/home/yuneyoungjun/vrx_ws/src/vrx/Scripts_git/models/correct_IMU/Ray-19946289.onnx'
+        self.model_path = '/home/yuneyoungjun/vrx_ws/src/vrx/Scripts_git/models/correct_IMU/Ray-7499897.onnx'
         self.session = ort.InferenceSession(self.model_path)
         self.input_name = self.session.get_inputs()[0].name
         
@@ -76,14 +76,20 @@ class VRXONNXControllerV5Refactored(Node):
         self.use_direct_control = False
         self.previous_moment_input = 0.0
         self.previous_force_input = 0.0
-        
+
+        # Unity 스타일 스무딩 변수
+        self.throttle_smooth_speed = 5.0
+        self.current_throttle1 = 0.0
+        self.current_throttle2 = 0.0
+        self.dt = 0.01
+
         # IMU 관련
         self.previous_angular_velocity = np.zeros(3)
         self.last_angular_velocity_update_time = 0.0
         self.reference_point_set = False
-        
+
         # 타이머
-        self.timer = self.create_timer(0.01, self.timer_callback)
+        self.timer = self.create_timer(self.dt, self.timer_callback)
     
     def setup_publishers(self):
         """ROS2 퍼블리셔 설정"""
@@ -286,8 +292,8 @@ class VRXONNXControllerV5Refactored(Node):
         outputs = self.session.run(None, {self.input_name: stacked_input})
         
         if len(outputs) > 2 and outputs[2] is not None:
-            linear_velocity = max(min(outputs[4][0][1] * self.v_scale, 1), 0.12)
-            angular_velocity = max(min(outputs[4][0][0] * self.w_scale, 1.0), -1.0)
+            linear_velocity = max(min(outputs[2][0][1] * self.v_scale, 1), 0.12)
+            angular_velocity = max(min(outputs[2][0][0] * self.w_scale, 1.0), -1.0)
         else:
             linear_velocity = 0.0
             angular_velocity = 0.0
@@ -317,15 +323,71 @@ class VRXONNXControllerV5Refactored(Node):
         
         return current_target, previous_target, next_target
     
-    def calculate_thruster_commands(self, linear_velocity, angular_velocity):
-        """스러스터 명령 계산"""
-        forward_thrust = linear_velocity * self.thrust_scale
-        turn_thrust = angular_velocity * self.thrust_scale
-        left_thrust = forward_thrust + turn_thrust
-        right_thrust = forward_thrust - turn_thrust
+    def calculate_thruster_commands(self, force_input, moment_input):
+        """
+        Unity 학습 환경 스타일 스러스터 명령 계산
+        추진기 값이 1을 넘지 않도록 모멘트와 힘을 조정
+
+        Args:
+            force_input: 힘 입력 (선형 속도)
+            moment_input: 모멘트 입력 (각속도)
+
+        Returns:
+            left_thrust, right_thrust: 좌우 스러스터 값
+        """
+        # 입력 범위 제한
+        moment_input = np.clip(moment_input, -1.0, 1.0)
+        force_input = np.clip(force_input, -0.1, 1.0)
+
+        # moment_input을 제한하여 targetThrottle 값들이 -1~1 범위를 넘지 않도록 수정
+        limited_moment_input = moment_input
+
+        # targetThrottle1 = moment_input + force_input이 -1~1 범위를 넘는 경우 moment_input 조정
+        if moment_input + force_input > 1.0:
+            limited_moment_input = 1.0 - force_input
+        elif moment_input + force_input < -1.0:
+            limited_moment_input = -1.0 - force_input
+
+        # targetThrottle2 = -moment_input + force_input이 -1~1 범위를 넘는 경우 moment_input 조정
+        elif -moment_input + force_input > 1.0:
+            limited_moment_input = force_input - 1.0
+        elif -moment_input + force_input < -1.0:
+            limited_moment_input = force_input + 1.0
+
+        # 최종 moment_input을 -1~1 범위로 클램핑
+        limited_moment_input = np.clip(limited_moment_input, -1.0, 1.0)
+
+        # 목표 스로틀 값 계산
+        target_throttle1 = limited_moment_input + force_input
+        target_throttle2 = -limited_moment_input + force_input
+
+        # Unity의 MoveTowards와 유사하게 부드럽게 변화 (스무딩)
+        self.current_throttle1 = self.move_towards(
+            self.current_throttle1,
+            target_throttle1,
+            self.throttle_smooth_speed * self.dt
+        )
+        self.current_throttle2 = self.move_towards(
+            self.current_throttle2,
+            target_throttle2,
+            self.throttle_smooth_speed * self.dt
+        )
+
+        # 스로틀 값을 실제 추력으로 변환
+        left_thrust = self.current_throttle1 * self.thrust_scale
+        right_thrust = self.current_throttle2 * self.thrust_scale
+
+        # 추력 범위 제한
         left_thrust = np.clip(left_thrust, -self.thrust_scale, self.thrust_scale)
         right_thrust = np.clip(right_thrust, -self.thrust_scale, self.thrust_scale)
+
         return left_thrust, right_thrust
+
+    def move_towards(self, current, target, max_delta):
+        """Unity의 Mathf.MoveTowards와 동일한 함수"""
+        if abs(target - current) <= max_delta:
+            return target
+        return current + np.sign(target - current) * max_delta
     
     def publish_visualization_data(self, check_area_points, los_target, linear_vel, angular_vel):
         """시각화 데이터 발행"""
