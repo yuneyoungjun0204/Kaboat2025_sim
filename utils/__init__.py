@@ -1,44 +1,47 @@
 """
 VRX 로봇 제어 시스템 유틸리티 모듈
-- 깊이 추정, 색상 필터링, 객체 검출, 추적, 네비게이션 제어 기능
-- 장애물 회피 제어 기능
-- 미션 베이스 및 개별 미션 모듈
+- 깊이 추정, 센서 데이터 전처리, 장애물 회피 제어
+- 객체 탐지 시스템 (NanoOWL + MiDaS)
+- 미션 전략 및 관리
+- 시각화 시스템
+- 웨이포인트 관리
+- ROS2 통신 관리
 """
 
 try:
+    # 센서 및 제어 모듈
     from .depth_estimation import MiDaSHybridDepthEstimator
-    from .color_filtering import ColorFilter
-    from .object_detection import BlobDetector
-    from .object_tracking import Track, MultiTargetTracker
-    from .navigation_control import PIDController, NavigationController
-    from .thruster_control import ThrusterController
-    from .visualization import Visualizer
-    from .trackbar_control import TrackbarController
-    from .matplotlib_visualizer import MatplotlibVisualizer
     from .sensor_preprocessing import GPSTransformer, LiDARProcessor, IMUProcessor, SensorDataManager
     from .avoid_control import (
-        LOSGuidance, ObstacleDetector, DirectController, 
+        LOSGuidance, ObstacleDetector, DirectController,
         LowPassFilter, AvoidanceController
     )
-    from .base_mission import BaseMission, MissionStatus
-    from .mission_gate import GateMission
-    from .mission_circle import CircleMission
-    from .mission_avoid import AvoidMission
-    from .black_buoy_detector import BlackBuoyDetector
-    from .blob_detector_advanced import AdvancedBlobDetector
+
+    # 탐지 시스템
+    from .detection_system import DetectionSystem, MissionType
+
+    # 미션 전략
+    from .mission_strategies import (
+        BaseMissionStrategy,
+        PassBetweenBuoysMission,
+        CircleBuoyMission,
+        WaypointFollowMission,
+        ObstacleAvoidMission,
+        MissionManager
+    )
+
+    # 시각화 시스템
+    from .visualization_system import VisualizationSystem
+
+    # 웨이포인트 관리
+    from .waypoint_manager import WaypointManager
+
+    # ROS2 통신
+    from .ros_communication import ROSCommunicationManager
 
     __all__ = [
+        # 센서 및 제어
         'MiDaSHybridDepthEstimator',
-        'ColorFilter',
-        'BlobDetector',
-        'Track',
-        'MultiTargetTracker',
-        'PIDController',
-        'NavigationController',
-        'ThrusterController',
-        'Visualizer',
-        'TrackbarController',
-        'MatplotlibVisualizer',
         'GPSTransformer',
         'LiDARProcessor',
         'IMUProcessor',
@@ -48,13 +51,27 @@ try:
         'DirectController',
         'LowPassFilter',
         'AvoidanceController',
-        'BaseMission',
-        'MissionStatus',
-        'GateMission',
-        'CircleMission',
-        'AvoidMission',
-        'BlackBuoyDetector',
-        'AdvancedBlobDetector'
+
+        # 탐지 시스템
+        'DetectionSystem',
+        'MissionType',
+
+        # 미션 전략
+        'BaseMissionStrategy',
+        'PassBetweenBuoysMission',
+        'CircleBuoyMission',
+        'WaypointFollowMission',
+        'ObstacleAvoidMission',
+        'MissionManager',
+
+        # 시각화
+        'VisualizationSystem',
+
+        # 웨이포인트
+        'WaypointManager',
+
+        # ROS2 통신
+        'ROSCommunicationManager'
     ]
 except ImportError as e:
     print(f"모듈 import 오류: {e}")
