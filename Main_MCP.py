@@ -152,7 +152,7 @@ class VRXMissionController(Node):
             query_info['text_encodings'] = self.predictor.encode_text(query_info['queries'])
 
         # 탐지 파라미터
-        self.detection_threshold = 0.1
+        self.detection_threshold = 0.03
         self.min_box_area = 500
         self.max_box_area = 80000
 
@@ -224,10 +224,10 @@ class VRXMissionController(Node):
     def setup_predefined_waypoints(self):
         """미리 정의된 웨이포인트 설정"""
         predefined_waypoints = [
-            (40, 80, MissionType.PASS_BETWEEN_BUOYS, 10.0, {}),
-            (42, 100, MissionType.CIRCLE_BUOY, 10.0, {'rotation_direction': 1, 'circle_radius': 15.0}),
-            (0, 165, MissionType.WAYPOINT_FOLLOW, 10.0, {}),
-            (0, 0, MissionType.OBSTACLE_AVOID, 10.0, {})
+            (40, 80, MissionType.PASS_BETWEEN_BUOYS, 20.0, {}),
+            (42, 100, MissionType.CIRCLE_BUOY, 20.0, {'rotation_direction': 1, 'circle_radius': 15.0}),
+            (0, 165, MissionType.WAYPOINT_FOLLOW, 20.0, {}),
+            (0, 0, MissionType.OBSTACLE_AVOID, 20.0, {})
         ]
 
         for x, y, mission_type, radius, params in predefined_waypoints:
@@ -262,6 +262,8 @@ class VRXMissionController(Node):
                           self.min_box_area, 50000, self._dummy_callback)
         cv2.createTrackbar('Max Box Area', 'Parameters',
                           self.max_box_area, 150000, self._dummy_callback)
+        cv2.createTrackbar('Min Depth (m)', 'Parameters',
+                          int(self.min_depth_threshold), 100, self._dummy_callback)
         cv2.createTrackbar('Max Depth (m)', 'Parameters',
                           int(self.max_depth_threshold), 200, self._dummy_callback)
 
@@ -284,6 +286,7 @@ class VRXMissionController(Node):
         self.detection_threshold = cv2.getTrackbarPos('Detect Threshold', 'Parameters') / 1000.0
         self.min_box_area = cv2.getTrackbarPos('Min Box Area', 'Parameters')
         self.max_box_area = cv2.getTrackbarPos('Max Box Area', 'Parameters')
+        self.min_depth_threshold = float(cv2.getTrackbarPos('Min Depth (m)', 'Parameters'))
         self.max_depth_threshold = float(cv2.getTrackbarPos('Max Depth (m)', 'Parameters'))
         self.thrust_scale = float(cv2.getTrackbarPos('Thrust Scale', 'Parameters'))
 
@@ -300,7 +303,7 @@ class VRXMissionController(Node):
         """GPS 콜백"""
         gps_data = self.sensor_manager.process_gps_data(msg)
         if gps_data is not None:
-            self.agent_position = np.array([gps_data['utm_y'], gps_data['utm_x']], dtype=np.float32)
+            self.agent_position = np.array([gps_data['utm_x'], gps_data['utm_y']], dtype=np.float32)
             if not self.reference_point_set:
                 self.reference_point_set = True
 
@@ -744,7 +747,7 @@ class VRXMissionController(Node):
         forward_speed = 0.3
 
         # 부표를 중앙에 유지하기 위한 조정
-        centering_adjustment = -error * centering_gain
+        centering_adjustment = error * centering_gain
 
         # 스러스터 명령
         left_thrust = (forward_speed + turn_rate + centering_adjustment) * self.thrust_scale
