@@ -93,6 +93,7 @@ class CircleBuoyMission(BaseMissionStrategy):
         self.circle_initial_heading = None
         self.total_rotation = 0.0
         self.previous_heading = None
+        self.circling_started = False
 
     def reset(self):
         """미션 상태 초기화"""
@@ -100,6 +101,7 @@ class CircleBuoyMission(BaseMissionStrategy):
         self.circle_initial_heading = None
         self.total_rotation = 0.0
         self.previous_heading = None
+        self.circling_started = False
 
     def execute(self, detected_objects: List[Dict], current_image: np.ndarray,
                 agent_heading: float, mission_params: Dict, logger=None, **kwargs) -> Tuple[float, float]:
@@ -142,31 +144,76 @@ class CircleBuoyMission(BaseMissionStrategy):
                 logger.info("부표 회전 완료!")
             return 0.0, 0.0
 
-        # 부표 중심 위치
+        # 미션 파라미터
+        circle_radius = mission_params.get('circle_radius', 10.0)  # 목표 반경 (미터)
+        rotation_direction = mission_params.get('rotation_direction', 1)  # 1=반시계, -1=시계
+
+        # 부표 측정값
+        buoy_depth = blue_buoy['depth']  # 부표까지 거리 (미터)
         buoy_x = blue_buoy['center'][0]
         image_center_x = current_image.shape[1] / 2
+        lateral_error = buoy_x - image_center_x  # 양수 = 부표가 오른쪽
 
-        # 부표를 일정 거리에 유지하면서 회전
-        error = buoy_x - image_center_x
+        # 반경 오차 계산
+        radius_error = circle_radius - buoy_depth
 
-        # 회전 방향 (미션 파라미터에서 가져오기)
-        rotation_direction = mission_params.get('rotation_direction', 1)
+        # 두 단계 제어
+        if not self.circling_started:
+            # ===== 단계 1: 접근 단계 (목표 반경으로 접근) =====
+            if abs(radius_error) < 2.0:  # 목표 반경 ±2m 이내
+                self.circling_started = True
+                if logger:
+                    logger.info(f"선회 시작! (depth={buoy_depth:.1f}m, target={circle_radius:.1f}m)")
 
-        # 제어 게인
-        turn_rate = 0.3 * rotation_direction
-        centering_gain = 0.002
-        forward_speed = 0.3
+            # 반경 오차에 비례한 전진/후진 속도
+            forward_speed = 0.5 * np.tanh(radius_error / 5.0)
+            forward_speed = np.clip(forward_speed, -0.3, 0.7)
 
-        # 부표를 중앙에 유지하기 위한 조정
-        centering_adjustment = error * centering_gain
+            # 부표를 중앙에 유지하면서 접근
+            centering_gain = 0.002
+            angular_speed = lateral_error * centering_gain
 
-        # 스러스터 명령
-        left_thrust = (forward_speed + turn_rate + centering_adjustment) * self.thrust_scale
-        right_thrust = (forward_speed - turn_rate - centering_adjustment) * self.thrust_scale
+            mode = "APPROACH"
+        else:
+            # ===== 단계 2: 선회 단계 (반경 유지하며 회전) =====
+            # 기본 전진 속도
+            forward_speed = 0.4
+
+            # 반경 유지를 위한 속도 조정
+            radius_correction = 0.1 * radius_error / circle_radius
+            forward_speed += radius_correction
+            forward_speed = np.clip(forward_speed, 0.2, 0.6)
+
+            # 회전 속도
+            turn_rate = 0.3 * rotation_direction
+
+            # 부표를 시야에 유지하기 위한 조정
+            centering_gain = 0.002
+            centering_adjustment = lateral_error * centering_gain
+
+            angular_speed = turn_rate + centering_adjustment
+
+            mode = "CIRCLE"
+
+        # 각속도 제한
+        angular_speed = np.clip(angular_speed, -0.5, 0.5)
+
+        # 급선회 시 속도 감소
+        forward_speed = forward_speed * (1.0 - abs(angular_speed) * 0.2)
+
+        # 스러스터 명령 계산
+        left_thrust = (forward_speed + angular_speed) * self.thrust_scale
+        right_thrust = (forward_speed - angular_speed) * self.thrust_scale
+
+        # 스러스터 제한
+        left_thrust = np.clip(left_thrust, -self.thrust_scale, self.thrust_scale)
+        right_thrust = np.clip(right_thrust, -self.thrust_scale, self.thrust_scale)
 
         if logger:
             logger.info(
-                f"Circle Buoy: rotation={self.total_rotation:.1f}°, buoy_x={buoy_x:.1f}, error={error:.1f}"
+                f"Circle [{mode}]: rotation={self.total_rotation:.1f}°, "
+                f"depth={buoy_depth:.1f}m, radius_err={radius_error:.1f}m, "
+                f"lateral_err={lateral_error:.1f}px"
             )
 
         return left_thrust, right_thrust

@@ -39,6 +39,13 @@ try:
     # ROS2 통신
     from .ros_communication import ROSCommunicationManager
 
+    # IMM-PDAF 트래커
+    from .imm_pdaf_tracker import (
+        IMMPDAFTracker, Track, create_tracker,
+        MotionModel, NearlyConstantPosition, ConstantVelocity,
+        ConstantAcceleration, SingerModel
+    )
+
     __all__ = [
         # 센서 및 제어
         'MiDaSHybridDepthEstimator',
@@ -71,7 +78,17 @@ try:
         'WaypointManager',
 
         # ROS2 통신
-        'ROSCommunicationManager'
+        'ROSCommunicationManager',
+
+        # IMM-PDAF 트래커
+        'IMMPDAFTracker',
+        'Track',
+        'create_tracker',
+        'MotionModel',
+        'NearlyConstantPosition',
+        'ConstantVelocity',
+        'ConstantAcceleration',
+        'SingerModel'
     ]
 except ImportError as e:
     print(f"모듈 import 오류: {e}")

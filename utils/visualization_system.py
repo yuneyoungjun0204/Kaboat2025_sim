@@ -91,7 +91,7 @@ class VisualizationSystem:
         self.detection_threshold = cv2.getTrackbarPos('Detect Threshold', 'Parameters') / 1000.0
         self.min_box_area = cv2.getTrackbarPos('Min Box Area', 'Parameters')
         self.max_box_area = cv2.getTrackbarPos('Max Box Area', 'Parameters')
-        self.min_depth_threshold = float(cv2.getTrackbarPos('Min Depth (m)', 'Parameters'))
+        self.min_depth_threshold = float(cv2.getTrackbarPos('Min Depth (m)', 'Parameters')) / 20.0
         self.max_depth_threshold = float(cv2.getTrackbarPos('Max Depth (m)', 'Parameters'))
         self.thrust_scale = float(cv2.getTrackbarPos('Thrust Scale', 'Parameters'))
 

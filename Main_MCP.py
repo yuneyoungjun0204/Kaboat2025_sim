@@ -213,7 +213,7 @@ class VRXMissionController(Node):
         mission_sequence = [
             MissionType.PASS_BETWEEN_BUOYS,
             MissionType.CIRCLE_BUOY,
-            MissionType.WAYPOINT_FOLLOW,
+            MissionType.OBSTACLE_AVOID,
             MissionType.OBSTACLE_AVOID
         ]
 
@@ -400,8 +400,8 @@ class VRXMissionController(Node):
         try:
             outputs = self.onnx_session.run(None, {self.onnx_input_name: stacked_input})
             if len(outputs) > 2 and outputs[2] is not None:
-                linear_velocity = max(min(outputs[2][0][1] * self.v_scale, 1), 0.01)
-                angular_velocity = max(min(outputs[2][0][0] * self.w_scale, 1.0), -1.0)
+                linear_velocity = max(min(outputs[4][0][1] * self.v_scale, 1), 0.00)
+                angular_velocity = max(min(outputs[4][0][0] * self.w_scale, 1.0), -1.0)
             else:
                 linear_velocity = 0.0
                 angular_velocity = 0.0
