@@ -164,9 +164,55 @@ class CircleBuoyMission(BaseMissionStrategy):
         self.pid_controller = PIDController(kp=0.8, ki=0.001, kd=0.4)
         self.target_x = None
 
+    def calculate_rotation_target(self, rotation_direction: int, object_depth: float) -> float:
+        """
+        회전 방향에 따른 목표 x 좌표 계산 (거리에 따라 동적 조정)
+        object_approach_controller.py의 로직 사용
+        """
+        if rotation_direction == 1:  # 시계방향
+            # 시계방향: 1240 - 3000x (멀수록 크게, 가까울수록 작게)
+            target_x = 1240 - 3000 * object_depth
+            # 범위 제한 (640~1200)
+            return max(640, min(1200, target_x))
+        else:  # 반시계방향 (rotation_direction == 2 or -1)
+            # 반시계방향: 3000x (멀수록 크게, 가까울수록 작게)
+            target_x = 3000 * object_depth
+            # 범위 제한 (40~640)
+            return max(40, min(640, target_x))
+
+    def calculate_steering_command(self, error: float) -> float:
+        """조향 명령 계산 (PID 제어)"""
+        # 오차 정규화 (이미지 너비의 절반으로 나누어 -1~1 범위로)
+        normalized_error = error / (self.image_width / 2)
+
+        # PID 제어기로 조향 명령 계산
+        steering_command = self.pid_controller.update(normalized_error)
+
+        # 조향 명령 제한
+        steering_command = max(-1.0, min(1.0, steering_command))
+
+        return steering_command
+
+    def calculate_rotation_speed(self, turn_angle: float) -> float:
+        """각도에 따른 적응형 속도 계산 (각도가 클수록 속도 감소)"""
+        # 각도를 절댓값으로 변환 (0~180도)
+        abs_angle = abs(turn_angle)
+
+        # 각도가 클수록 속도 감소 (선형적)
+        # 0도: 기본 속도, 90도: 최소 속도
+        if abs_angle >= 90:
+            return self.min_speed
+        else:
+            speed_ratio = 1.0 - (abs_angle / 90.0)
+            adaptive_speed = self.min_speed + (self.base_speed - self.min_speed) * speed_ratio
+            return max(self.min_speed, adaptive_speed)
+
     def execute(self, detected_objects: List[Dict], current_image: np.ndarray,
                 agent_heading: float, mission_params: Dict, logger=None, **kwargs) -> Tuple[float, float]:
-        """파란색 부표 주변을 회전"""
+        """
+        파란색 부표 주변을 회전
+        object_approach_controller.py의 로직 사용
+        """
         # 파란색 부표 찾기
         blue_buoy = None
         for det in detected_objects:
@@ -176,11 +222,12 @@ class CircleBuoyMission(BaseMissionStrategy):
 
         if not blue_buoy:
             # 부표 미탐지 시 정지
+            self.target_x = None
             if logger:
                 logger.warn("파란색 부표 미탐지: 정지")
             return 0.0, 0.0
 
-        # 회전 시작 시간 기록
+        # 회전 시작 시간 기록 (완료 확인용)
         if self.circle_start_time is None:
             self.circle_start_time = time.time()
             self.circle_initial_heading = agent_heading
@@ -200,82 +247,74 @@ class CircleBuoyMission(BaseMissionStrategy):
         self.previous_heading = agent_heading
 
         # 360도 회전 완료 확인
-        if self.total_rotation >= 350:  # 약간의 여유
+        if self.total_rotation >= 350:
+            self.target_x = None
             if logger:
                 logger.info("부표 회전 완료!")
             return 0.0, 0.0
 
         # 미션 파라미터
-        circle_radius = mission_params.get('circle_radius', 10.0)  # 목표 반경 (미터)
-        rotation_direction = mission_params.get('rotation_direction', 1)  # 1=반시계, -1=시계
+        rotation_direction = mission_params.get('rotation_direction', 1)  # 1=시계방향, 2=반시계방향
 
         # 부표 측정값
         buoy_depth = blue_buoy['depth']  # 부표까지 거리 (미터)
         buoy_x = blue_buoy['center'][0]
-        image_center_x = current_image.shape[1] / 2
-        lateral_error = buoy_x - image_center_x  # 양수 = 부표가 오른쪽
 
-        # 반경 오차 계산
-        radius_error = circle_radius - buoy_depth
+        # stop_distance 기준 충족 시 회전 시작
+        if buoy_depth >= self.stop_distance:
+            # 회전 모드: 부표를 기준으로 일정한 방향으로 회전
+            target_x = self.calculate_rotation_target(rotation_direction, buoy_depth)
+            self.target_x = target_x  # 시각화를 위해 저장
+            error = target_x - buoy_x
 
-        # 두 단계 제어
-        if not self.circling_started:
-            # ===== 단계 1: 접근 단계 (목표 반경으로 접근) =====
-            if abs(radius_error) < 2.0:  # 목표 반경 ±2m 이내
-                self.circling_started = True
-                if logger:
-                    logger.info(f"선회 시작! (depth={buoy_depth:.1f}m, target={circle_radius:.1f}m)")
+            # 조향 명령 계산 (PID)
+            steering_command = self.calculate_steering_command(error)
 
-            # 반경 오차에 비례한 전진/후진 속도
-            forward_speed = 0.5 * np.tanh(radius_error / 5.0)
-            forward_speed = np.clip(forward_speed, -0.3, 0.7)
+            # 회전 추력 계산
+            turn_thrust = steering_command * self.max_turn_thrust
 
-            # 부표를 중앙에 유지하면서 접근
-            centering_gain = 0.002
-            angular_speed = lateral_error * centering_gain
+            # 각도에 따른 적응형 속도 계산
+            turn_angle = abs(steering_command * 90)  # 조향 명령을 각도로 변환
+            forward_thrust = self.calculate_rotation_speed(turn_angle)
+
+            # 스러스터 명령 계산
+            left_command = forward_thrust - turn_thrust
+            right_command = forward_thrust + turn_thrust
+
+            mode = "ROTATE"
+
+            if logger:
+                direction_name = "시계방향" if rotation_direction == 1 else "반시계방향"
+                logger.info(
+                    f"Circle [{mode}]: rotation={self.total_rotation:.1f}°, "
+                    f"부표 위치=({buoy_x:.1f}px), 깊이={buoy_depth:.3f}m, "
+                    f"목표={target_x:.1f}px, 오차={error:.1f}px, "
+                    f"조향={steering_command:.3f}, 방향={direction_name}"
+                )
+        else:
+            # 접근 모드: 부표에 접근
+            self.target_x = self.target_center_x  # 중앙으로 설정
+            error = self.target_center_x - buoy_x
+            steering_command = self.calculate_steering_command(error)
+            turn_thrust = steering_command * self.max_turn_thrust
+            forward_thrust = self.base_speed * 0.5  # 접근 시 천천히
+
+            # 스러스터 명령 계산
+            left_command = forward_thrust - turn_thrust
+            right_command = forward_thrust + turn_thrust
 
             mode = "APPROACH"
-        else:
-            # ===== 단계 2: 선회 단계 (반경 유지하며 회전) =====
-            # 기본 전진 속도
-            forward_speed = 0.4
 
-            # 반경 유지를 위한 속도 조정
-            radius_correction = 0.1 * radius_error / circle_radius
-            forward_speed += radius_correction
-            forward_speed = np.clip(forward_speed, 0.2, 0.6)
+            if logger:
+                logger.info(
+                    f"Circle [{mode}]: 부표 위치=({buoy_x:.1f}px), "
+                    f"깊이={buoy_depth:.3f}m, 오차={error:.1f}px, "
+                    f"조향={steering_command:.3f}"
+                )
 
-            # 회전 속도
-            turn_rate = 0.3 * rotation_direction
-
-            # 부표를 시야에 유지하기 위한 조정
-            centering_gain = 0.002
-            centering_adjustment = lateral_error * centering_gain
-
-            angular_speed = turn_rate + centering_adjustment
-
-            mode = "CIRCLE"
-
-        # 각속도 제한
-        angular_speed = np.clip(angular_speed, -0.5, 0.5)
-
-        # 급선회 시 속도 감소
-        forward_speed = forward_speed * (1.0 - abs(angular_speed) * 0.2)
-
-        # 스러스터 명령 계산
-        left_thrust = (forward_speed + angular_speed) * self.thrust_scale
-        right_thrust = (forward_speed - angular_speed) * self.thrust_scale
-
-        # 스러스터 제한
-        left_thrust = np.clip(left_thrust, -self.thrust_scale, self.thrust_scale)
-        right_thrust = np.clip(right_thrust, -self.thrust_scale, self.thrust_scale)
-
-        if logger:
-            logger.info(
-                f"Circle [{mode}]: rotation={self.total_rotation:.1f}°, "
-                f"depth={buoy_depth:.1f}m, radius_err={radius_error:.1f}m, "
-                f"lateral_err={lateral_error:.1f}px"
-            )
+        # 스러스터를 thrust_scale로 변환하여 반환
+        left_thrust = (left_command / 1000.0) * self.thrust_scale
+        right_thrust = (right_command / 1000.0) * self.thrust_scale
 
         return left_thrust, right_thrust
 
@@ -436,3 +475,10 @@ class MissionManager:
         if mission:
             return mission.execute(**kwargs)
         return 0.0, 0.0
+
+    def get_circle_buoy_target_x(self) -> Optional[float]:
+        """CIRCLE_BUOY 미션의 target_x 가져오기 (시각화용)"""
+        circle_mission = self.missions.get(MissionType.CIRCLE_BUOY)
+        if circle_mission and hasattr(circle_mission, 'target_x'):
+            return circle_mission.target_x
+        return None

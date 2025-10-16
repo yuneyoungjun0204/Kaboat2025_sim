@@ -3,11 +3,12 @@
 시각화 시스템 모듈
 - OpenCV 기반 탐지 결과 및 깊이 맵 시각화
 - 트랙바 제어
+- 원본 탐지 vs 추적 결과 구분 표시
 """
 
 import cv2
 import numpy as np
-from typing import List, Dict, Callable
+from typing import List, Dict, Callable, Optional
 from .detection_system import MissionType
 
 
@@ -33,6 +34,10 @@ class VisualizationSystem:
         self.max_depth_threshold = max_depth
         self.thrust_scale = thrust_scale
 
+        # IMM-PDAF 파라미터
+        self.max_coast_frames = 10
+        self.gate_threshold = 92  # 9.21 * 10
+
         # 색상 매핑
         self.colors = {
             "red_cone": (0, 0, 255),      # 빨강
@@ -55,7 +60,7 @@ class VisualizationSystem:
 
         # 제어 파라미터 트랙바 창
         cv2.namedWindow('Parameters', cv2.WINDOW_NORMAL)
-        cv2.resizeWindow('Parameters', 600, 400)
+        cv2.resizeWindow('Parameters', 600, 500)
 
         # 탐지 파라미터 트랙바
         cv2.createTrackbar('Detect Threshold', 'Parameters',
@@ -72,10 +77,12 @@ class VisualizationSystem:
         # 제어 파라미터 트랙바
         cv2.createTrackbar('Thrust Scale', 'Parameters',
                           int(self.thrust_scale), 3000, self._dummy_callback)
-        cv2.createTrackbar('Forward Speed x100', 'Parameters',
-                          50, 100, self._dummy_callback)
-        cv2.createTrackbar('Steering Gain x1000', 'Parameters',
-                          3, 20, self._dummy_callback)
+
+        # IMM-PDAF 파라미터 트랙바
+        cv2.createTrackbar('Max Coast Frames', 'Parameters',
+                          self.max_coast_frames, 30, self._dummy_callback)
+        cv2.createTrackbar('Gate Threshold x10', 'Parameters',
+                          self.gate_threshold, 200, self._dummy_callback)
 
     def _dummy_callback(self, val):
         """트랙바 콜백 (빈 함수)"""
@@ -95,13 +102,19 @@ class VisualizationSystem:
         self.max_depth_threshold = float(cv2.getTrackbarPos('Max Depth (m)', 'Parameters'))
         self.thrust_scale = float(cv2.getTrackbarPos('Thrust Scale', 'Parameters'))
 
+        # IMM-PDAF 파라미터
+        self.max_coast_frames = cv2.getTrackbarPos('Max Coast Frames', 'Parameters')
+        self.gate_threshold = cv2.getTrackbarPos('Gate Threshold x10', 'Parameters')
+
         return {
             'detection_threshold': self.detection_threshold,
             'min_box_area': self.min_box_area,
             'max_box_area': self.max_box_area,
             'min_depth': self.min_depth_threshold,
             'max_depth': self.max_depth_threshold,
-            'thrust_scale': self.thrust_scale
+            'thrust_scale': self.thrust_scale,
+            'max_coast_frames': self.max_coast_frames,
+            'gate_threshold': self.gate_threshold / 10.0
         }
 
     def visualize_depth_map(self, depth_map: np.ndarray, mission_name: str):
@@ -127,16 +140,18 @@ class VisualizationSystem:
 
     def visualize_detections(self, image: np.ndarray, detections: List[Dict],
                             mission_name: str, waypoint_index: int, total_waypoints: int,
+                            raw_detections: Optional[List[Dict]] = None,
                             bridge=None, viz_image_pub=None):
         """
         탐지 결과 시각화
 
         Args:
             image: BGR 이미지
-            detections: 탐지 결과 리스트
+            detections: 추적 결과 리스트 (IMM-PDAF 출력)
             mission_name: 현재 미션 이름
             waypoint_index: 현재 웨이포인트 인덱스
             total_waypoints: 전체 웨이포인트 수
+            raw_detections: 원본 탐지 결과 (NanoOWL 직접 출력)
             bridge: CvBridge 인스턴스 (선택)
             viz_image_pub: 시각화 이미지 퍼블리셔 (선택)
         """
@@ -145,7 +160,22 @@ class VisualizationSystem:
 
         vis_image = image.copy()
 
-        # 탐지 결과 그리기
+        # 원본 탐지 그리기 (얇은 점선)
+        if raw_detections:
+            for det in raw_detections:
+                x1, y1, x2, y2 = det["bbox"]
+                label = det["label"]
+                cx, cy = det["center"]
+
+                color = self.colors.get(label, (255, 255, 255))
+
+                # 얇은 점선 박스
+                self._draw_dashed_rectangle(vis_image, (x1, y1), (x2, y2), color, 1)
+
+                # 작은 원
+                cv2.circle(vis_image, (cx, cy), 3, color, 1)
+
+        # 추적 결과 그리기 (굵은 실선)
         for det in detections:
             x1, y1, x2, y2 = det["bbox"]
             label = det["label"]
@@ -155,14 +185,21 @@ class VisualizationSystem:
 
             color = self.colors.get(label, (255, 255, 255))
 
-            # 바운딩 박스
+            # 굵은 실선 박스
             cv2.rectangle(vis_image, (x1, y1), (x2, y2), color, 3)
 
-            # 중심점
-            cv2.circle(vis_image, (cx, cy), 5, color, -1)
+            # 큰 중심점
+            cv2.circle(vis_image, (cx, cy), 7, color, -1)
+
+            # 추적 정보 추가
+            track_id = det.get('track_id', -1)
+            coast = det.get('coast_count', 0)
 
             # 라벨 및 정보
-            text = f"{label}: {conf:.2f} | {depth:.1f}m"
+            text = f"{label}(T{track_id}): {conf:.2f} | {depth:.1f}m"
+            if coast > 0:
+                text += f" [C:{coast}]"
+
             font = cv2.FONT_HERSHEY_SIMPLEX
             font_scale = 0.7
             thickness = 2
@@ -178,15 +215,16 @@ class VisualizationSystem:
         mission_info = [
             f"Mission: {mission_name}",
             f"Waypoint: {waypoint_index + 1}/{total_waypoints}",
-            f"Detections: {len(detections)}",
+            f"Raw Detections: {len(raw_detections) if raw_detections else 0}",
+            f"Tracked Objects: {len(detections)}",
             f"Threshold: {self.detection_threshold:.3f}",
-            f"Box Area: {self.min_box_area}-{self.max_box_area}",
-            f"Max Depth: {self.max_depth_threshold:.1f}m"
+            f"Max Coast: {self.max_coast_frames} frames",
+            f"Gate Threshold: {self.gate_threshold / 10.0:.2f}"
         ]
 
         # 반투명 배경
         overlay = vis_image.copy()
-        cv2.rectangle(overlay, (0, 0), (vis_image.shape[1], 200), (0, 0, 0), -1)
+        cv2.rectangle(overlay, (0, 0), (vis_image.shape[1], 250), (0, 0, 0), -1)
         cv2.addWeighted(overlay, 0.6, vis_image, 0.4, 0, vis_image)
 
         # 정보 텍스트
@@ -195,6 +233,17 @@ class VisualizationSystem:
             cv2.putText(vis_image, text, (10, y_offset),
                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
             y_offset += 30
+
+        # 범례 추가
+        legend_y = y_offset + 10
+        cv2.putText(vis_image, "Legend:", (10, legend_y),
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+        legend_y += 25
+        cv2.putText(vis_image, "Thick box + big dot = Tracked (IMM-PDAF)", (15, legend_y),
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+        legend_y += 20
+        cv2.putText(vis_image, "Dashed box + small dot = Raw detection", (15, legend_y),
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, (100, 100, 100), 1)
 
         # 화면 표시
         cv2.imshow('VRX Mission Control', vis_image)
@@ -207,6 +256,37 @@ class VisualizationSystem:
                 viz_image_pub.publish(viz_msg)
             except Exception as e:
                 pass
+
+    def _draw_dashed_rectangle(self, img, pt1, pt2, color, thickness=1, dash_length=10):
+        """점선 사각형 그리기"""
+        x1, y1 = pt1
+        x2, y2 = pt2
+
+        # 상단
+        self._draw_dashed_line(img, (x1, y1), (x2, y1), color, thickness, dash_length)
+        # 하단
+        self._draw_dashed_line(img, (x1, y2), (x2, y2), color, thickness, dash_length)
+        # 왼쪽
+        self._draw_dashed_line(img, (x1, y1), (x1, y2), color, thickness, dash_length)
+        # 오른쪽
+        self._draw_dashed_line(img, (x2, y1), (x2, y2), color, thickness, dash_length)
+
+    def _draw_dashed_line(self, img, pt1, pt2, color, thickness=1, dash_length=10):
+        """점선 그리기"""
+        dist = ((pt1[0] - pt2[0])**2 + (pt1[1] - pt2[1])**2)**0.5
+        dashes = int(dist / dash_length)
+
+        for i in range(dashes):
+            if i % 2 == 0:
+                start = (
+                    int(pt1[0] + (pt2[0] - pt1[0]) * i / dashes),
+                    int(pt1[1] + (pt2[1] - pt1[1]) * i / dashes)
+                )
+                end = (
+                    int(pt1[0] + (pt2[0] - pt1[0]) * (i + 1) / dashes),
+                    int(pt1[1] + (pt2[1] - pt1[1]) * (i + 1) / dashes)
+                )
+                cv2.line(img, start, end, color, thickness)
 
     def cleanup(self):
         """시각화 창 정리"""

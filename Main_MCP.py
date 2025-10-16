@@ -21,7 +21,8 @@ import onnxruntime as ort
 from utils import (
     MiDaSHybridDepthEstimator,
     SensorDataManager,
-    AvoidanceController
+    AvoidanceController,
+    create_tracker
 )
 from utils.detection_system import DetectionSystem, MissionType
 from utils.mission_strategies import MissionManager
@@ -106,6 +107,9 @@ class VRXMissionController(Node):
         # 시각화 시스템
         self.visualization = VisualizationSystem()
 
+        # IMM-PDAF 트래커 (20Hz = 1/20 = 0.05초)
+        self.tracker = create_tracker(fps=20.0, max_coast_frames=10)
+
         self.get_logger().info("✓ 컴포넌트 초기화 완료")
 
     def _setup_ros_communication(self):
@@ -137,6 +141,7 @@ class VRXMissionController(Node):
         self.max_lidar_distance = 100.0
         self.current_image = None
         self.detected_objects = []
+        self.raw_detections = []  # 원본 탐지 결과 저장
 
     def _init_onnx_model(self):
         """ONNX 모델 초기화 (미션 4용)"""
@@ -235,13 +240,20 @@ class VRXMissionController(Node):
         # 트랙바에서 파라미터 업데이트
         params = self.visualization.update_parameters_from_trackbars()
 
-        # DetectionSystem에는 thrust_scale 제외하고 전달
-        detection_params = {k: v for k, v in params.items() if k != 'thrust_scale'}
+        # DetectionSystem에는 탐지 관련 파라미터만 전달 (thrust_scale, IMM-PDAF 파라미터 제외)
+        detection_params = {k: v for k, v in params.items()
+                          if k not in ['thrust_scale', 'max_coast_frames', 'gate_threshold']}
         self.detection_system.update_parameters(**detection_params)
 
         # MissionManager에는 thrust_scale만 업데이트
         if 'thrust_scale' in params:
             self.mission_manager.update_thrust_scale(params['thrust_scale'])
+
+        # IMM-PDAF 트래커 파라미터 동적 업데이트
+        if 'max_coast_frames' in params:
+            self.tracker.max_coast_frames = params['max_coast_frames']
+        if 'gate_threshold' in params:
+            self.tracker.gate_threshold = params['gate_threshold']
 
         # 웨이포인트 전환 확인
         self._check_waypoint_transition()
@@ -253,9 +265,23 @@ class VRXMissionController(Node):
             return
 
         # 객체 탐지 (필요한 미션만)
-        self.detected_objects = self.detection_system.detect_objects(
+        self.raw_detections = self.detection_system.detect_objects(
             self.current_image, current_mission_type
         )
+
+        # IMM-PDAF 트래커로 강건한 추적
+        self.tracker.predict_tracks()
+        self.tracker.update_tracks(self.raw_detections)
+        self.tracker.prune_tracks()
+
+        # 추적된 객체 사용 (더 부드럽고 강건함)
+        self.detected_objects = self.tracker.get_tracked_objects()
+
+        # 디버그: 원본 탐지 vs 추적 결과 비교
+        if len(self.raw_detections) > 0 or len(self.detected_objects) > 0:
+            self.get_logger().info(
+                f"Detection: raw={len(self.raw_detections)}, tracked={len(self.detected_objects)}"
+            )
 
         # 시각화
         self._visualize()
@@ -304,16 +330,6 @@ class VRXMissionController(Node):
                 logger=self.get_logger()
             )
 
-        elif mission_type == MissionType.WAYPOINT_FOLLOW:
-            current_waypoint = self.waypoint_manager.get_current_waypoint()
-            return self.mission_manager.execute_mission(
-                mission_type,
-                agent_position=self.agent_position,
-                agent_heading=self.agent_heading,
-                target_waypoint=current_waypoint,
-                logger=self.get_logger()
-            )
-
         elif mission_type == MissionType.OBSTACLE_AVOID:
             return self.mission_manager.execute_mission(
                 mission_type,
@@ -343,13 +359,14 @@ class VRXMissionController(Node):
         if depth_map is not None:
             self.visualization.visualize_depth_map(depth_map, current_mission_type.name)
 
-        # 탐지 결과 시각화
+        # 탐지 결과 시각화 (원본 탐지 + 추적 결과)
         self.visualization.visualize_detections(
             self.current_image,
             self.detected_objects,
             current_mission_type.name,
             self.waypoint_manager.get_waypoint_index(),
             self.waypoint_manager.get_total_waypoints(),
+            raw_detections=self.raw_detections,
             bridge=self.bridge,
             viz_image_pub=self.ros_comm.publishers.get('viz_image')
         )
