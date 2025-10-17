@@ -42,7 +42,7 @@ class WaypointManager:
         """미리 정의된 웨이포인트 설정"""
         predefined_waypoints = [
             (40, 80, MissionType.PASS_BETWEEN_BUOYS, 20.0, {}),
-            (42, 100, MissionType.CIRCLE_BUOY, 20.0, {'rotation_direction': 1, 'circle_radius': 15.0}),
+            (43.5, 125, MissionType.CIRCLE_BUOY, 20.0, {'rotation_direction': 1, 'circle_radius': 15.0}),
             (0, 165, MissionType.WAYPOINT_FOLLOW, 20.0, {}),
             (0, 0, MissionType.OBSTACLE_AVOID, 20.0, {})
         ]

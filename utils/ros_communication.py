@@ -129,7 +129,7 @@ class ROSCommunicationManager:
             label_id = label_to_id.get(det['label'], -1)
             data.extend([
                 float(label_id),
-                float(det['confidence']),
+                float(det.get('confidence', 0.0)),
                 float(det['bbox'][0]),
                 float(det['bbox'][1]),
                 float(det['bbox'][2]),

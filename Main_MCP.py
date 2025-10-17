@@ -25,7 +25,7 @@ from utils import (
     create_tracker
 )
 from utils.detection_system import DetectionSystem, MissionType
-from utils.mission_strategies import MissionManager
+from utils.mission_strategies_new import MissionManager
 from utils.visualization_system import VisualizationSystem
 from utils.waypoint_manager import WaypointManager
 from utils.ros_communication import ROSCommunicationManager
@@ -240,10 +240,17 @@ class VRXMissionController(Node):
         # 트랙바에서 파라미터 업데이트
         params = self.visualization.update_parameters_from_trackbars()
 
-        # DetectionSystem에는 탐지 관련 파라미터만 전달 (thrust_scale, IMM-PDAF 파라미터 제외)
-        detection_params = {k: v for k, v in params.items()
-                          if k not in ['thrust_scale', 'max_coast_frames', 'gate_threshold']}
-        self.detection_system.update_parameters(**detection_params)
+        # DetectionSystem에는 허용된 탐지 파라미터만 전달하도록 키를 선별/매핑
+        detection_params_mapped = {
+            'detection_threshold': params.get('detection_threshold'),
+            'min_box_area': params.get('min_box_area'),
+            'max_box_area': params.get('max_box_area'),
+            'min_depth': params.get('min_depth_threshold'),
+            'max_depth': params.get('max_depth_threshold'),
+        }
+        self.detection_system.update_parameters(
+            **{k: v for k, v in detection_params_mapped.items() if v is not None}
+        )
 
         # MissionManager에는 thrust_scale만 업데이트
         if 'thrust_scale' in params:
@@ -264,24 +271,30 @@ class VRXMissionController(Node):
             self.ros_comm.publish_thrust_commands(0.0, 0.0)
             return
 
-        # 객체 탐지 (필요한 미션만)
-        self.raw_detections = self.detection_system.detect_objects(
-            self.current_image, current_mission_type
-        )
-
-        # IMM-PDAF 트래커로 강건한 추적
-        self.tracker.predict_tracks()
-        self.tracker.update_tracks(self.raw_detections)
-        self.tracker.prune_tracks()
-
-        # 추적된 객체 사용 (더 부드럽고 강건함)
-        self.detected_objects = self.tracker.get_tracked_objects()
-
-        # 디버그: 원본 탐지 vs 추적 결과 비교
-        if len(self.raw_detections) > 0 or len(self.detected_objects) > 0:
-            self.get_logger().info(
-                f"Detection: raw={len(self.raw_detections)}, tracked={len(self.detected_objects)}"
+        # 객체 탐지 및 추적 (장애물 회피 미션에서는 스킵하여 성능 향상)
+        if current_mission_type != MissionType.OBSTACLE_AVOID:
+            # 객체 탐지 (필요한 미션만)
+            self.raw_detections = self.detection_system.detect_objects(
+                self.current_image, current_mission_type
             )
+
+            # IMM-PDAF 트래커로 강건한 추적
+            self.tracker.predict_tracks()
+            self.tracker.update_tracks(self.raw_detections)
+            self.tracker.prune_tracks()
+
+            # 추적된 객체 사용 (더 부드럽고 강건함)
+            self.detected_objects = self.tracker.get_tracked_objects()
+
+            # 디버그: 원본 탐지 vs 추적 결과 비교
+            if len(self.raw_detections) > 0 or len(self.detected_objects) > 0:
+                self.get_logger().info(
+                    f"Detection: raw={len(self.raw_detections)}, tracked={len(self.detected_objects)}"
+                )
+        else:
+            # 장애물 회피 미션에서는 탐지/추적 스킵
+            self.raw_detections = []
+            self.detected_objects = []
 
         # 시각화
         self._visualize()
@@ -321,12 +334,22 @@ class VRXMissionController(Node):
             )
 
         elif mission_type == MissionType.CIRCLE_BUOY:
+            # 웨이포인트 파라미터 + 트랙바 파라미터 병합
+            waypoint_params = self.waypoint_manager.get_current_mission_params()
+            trackbar_params = self.visualization.update_parameters_from_trackbars()
+
+            # 선회 미션 파라미터만 추출하여 병합
+            circle_params = {k: v for k, v in trackbar_params.items()
+                           if k.startswith('circle_')}
+            merged_params = {**waypoint_params, **circle_params}
+
             return self.mission_manager.execute_mission(
                 mission_type,
                 detected_objects=self.detected_objects,
                 current_image=self.current_image,
                 agent_heading=self.agent_heading,
-                mission_params=self.waypoint_manager.get_current_mission_params(),
+                mission_params=merged_params,
+                raw_detections=self.raw_detections,  # 측정값 전달 (끊김 방지)
                 logger=self.get_logger()
             )
 

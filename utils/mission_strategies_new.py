@@ -147,9 +147,9 @@ class CircleBuoyMission(BaseMissionStrategy):
         self.max_turn_thrust = 150.0
 
         # 거리 제어 파라미터 (깊이 값 기준)
-        self.approach_distance = 0.05
-        self.stop_distance = 0.02
-        self.slow_distance = 0.03
+        self.approach_distance = 0.00
+        self.stop_distance = 0.00
+        self.slow_distance = 0.00
 
         # 목표 X 위치 저장 (시각화용)
         self.target_x = None
@@ -171,14 +171,14 @@ class CircleBuoyMission(BaseMissionStrategy):
         """
         if rotation_direction == 1:  # 시계방향
             # 시계방향: 1240 - 3000x (멀수록 크게, 가까울수록 작게)
-            target_x = 1240 - 3000 * object_depth
+            target_x = 1240 - 200 * object_depth
             # 범위 제한 (640~1200)
-            return max(640, min(1200, target_x))
+            return max(740, min(1200, target_x))
         else:  # 반시계방향 (rotation_direction == 2 or -1)
             # 반시계방향: 3000x (멀수록 크게, 가까울수록 작게)
-            target_x = 3000 * object_depth
+            target_x = 200 * object_depth
             # 범위 제한 (40~640)
-            return max(40, min(640, target_x))
+            return max(140, min(640, target_x))
 
     def calculate_steering_command(self, error: float) -> float:
         """조향 명령 계산 (PID 제어)"""
@@ -208,24 +208,58 @@ class CircleBuoyMission(BaseMissionStrategy):
             return max(self.min_speed, adaptive_speed)
 
     def execute(self, detected_objects: List[Dict], current_image: np.ndarray,
-                agent_heading: float, mission_params: Dict, logger=None, **kwargs) -> Tuple[float, float]:
+                agent_heading: float, mission_params: Dict, logger=None,
+                raw_detections: List[Dict] = None, **kwargs) -> Tuple[float, float]:
         """
         파란색 부표 주변을 회전
         object_approach_controller.py의 로직 사용
+
+        Args:
+            detected_objects: 추적된 객체 (IMM-PDAF 출력, 추정값)
+            raw_detections: 원본 탐지 결과 (NanoOWL 직접 출력, 측정값)
+            mission_params: 미션 파라미터 (rotation_direction, circle_base_speed, circle_min_speed, circle_max_turn, circle_pid_kp)
         """
-        # 파란색 부표 찾기
+        # 트랙바 파라미터 업데이트 (동적 조정)
+        circle_base_speed = mission_params.get('circle_base_speed', self.base_speed)
+        circle_min_speed = mission_params.get('circle_min_speed', self.min_speed)
+        circle_max_turn = mission_params.get('circle_max_turn', self.max_turn_thrust)
+        circle_pid_kp = mission_params.get('circle_pid_kp', self.pid_controller.kp)
+
+        # PID Kp 값이 변경되었으면 업데이트
+        if circle_pid_kp != self.pid_controller.kp:
+            self.pid_controller.kp = circle_pid_kp
+
+        # 속도 및 회전 파라미터 업데이트
+        self.base_speed = circle_base_speed
+        self.min_speed = circle_min_speed
+        self.max_turn_thrust = circle_max_turn
+
+        # 파란색 부표 찾기 (추정값 우선)
         blue_buoy = None
+        data_source = "TRACKED"  # 데이터 출처 추적
+
+        # 1. 추정값(tracked)에서 먼저 찾기
         for det in detected_objects:
             if det['label'] == 'blue_buoy':
                 blue_buoy = det
                 break
 
+        # 2. 추정값에 없으면 측정값(raw)에서 찾기
+        if not blue_buoy and raw_detections:
+            for det in raw_detections:
+                if det['label'] == 'blue_buoy':
+                    blue_buoy = det
+                    data_source = "RAW"
+                    if logger:
+                        logger.info("⚠️ 추정값 없음 -> 측정값 사용 (끊김 방지)")
+                    break
+
         if not blue_buoy:
-            # 부표 미탐지 시 정지
+            # 부표 미탐지 시 조금씩이동
             self.target_x = None
             if logger:
-                logger.warn("파란색 부표 미탐지: 정지")
-            return 0.0, 0.0
+                logger.warn("파란색 부표 미탐지: 조금씩 이동")
+            return 200.0, 200.0
 
         # 회전 시작 시간 기록 (완료 확인용)
         if self.circle_start_time is None:
@@ -260,57 +294,57 @@ class CircleBuoyMission(BaseMissionStrategy):
         buoy_depth = blue_buoy['depth']  # 부표까지 거리 (미터)
         buoy_x = blue_buoy['center'][0]
 
-        # stop_distance 기준 충족 시 회전 시작
-        if buoy_depth >= self.stop_distance:
-            # 회전 모드: 부표를 기준으로 일정한 방향으로 회전
-            target_x = self.calculate_rotation_target(rotation_direction, buoy_depth)
-            self.target_x = target_x  # 시각화를 위해 저장
-            error = target_x - buoy_x
+    # stop_distance 기준 충족 시 회전 시작
+    # if buoy_depth >= self.stop_distance:
+        # 회전 모드: 부표를 기준으로 일정한 방향으로 회전
+        target_x = self.calculate_rotation_target(rotation_direction, buoy_depth)
+        self.target_x = target_x  # 시각화를 위해 저장
+        error = target_x - buoy_x
 
-            # 조향 명령 계산 (PID)
-            steering_command = self.calculate_steering_command(error)
+        # 조향 명령 계산 (PID)
+        steering_command = self.calculate_steering_command(error)
 
-            # 회전 추력 계산
-            turn_thrust = steering_command * self.max_turn_thrust
+        # 회전 추력 계산
+        turn_thrust = steering_command * self.max_turn_thrust
 
-            # 각도에 따른 적응형 속도 계산
-            turn_angle = abs(steering_command * 90)  # 조향 명령을 각도로 변환
-            forward_thrust = self.calculate_rotation_speed(turn_angle)
+        # 각도에 따른 적응형 속도 계산
+        turn_angle = abs(steering_command * 90)  # 조향 명령을 각도로 변환
+        forward_thrust = self.calculate_rotation_speed(turn_angle)
 
-            # 스러스터 명령 계산
-            left_command = forward_thrust - turn_thrust
-            right_command = forward_thrust + turn_thrust
+        # 스러스터 명령 계산
+        left_command = forward_thrust - turn_thrust
+        right_command = forward_thrust + turn_thrust
 
-            mode = "ROTATE"
+        mode = "ROTATE"
 
-            if logger:
-                direction_name = "시계방향" if rotation_direction == 1 else "반시계방향"
-                logger.info(
-                    f"Circle [{mode}]: rotation={self.total_rotation:.1f}°, "
-                    f"부표 위치=({buoy_x:.1f}px), 깊이={buoy_depth:.3f}m, "
-                    f"목표={target_x:.1f}px, 오차={error:.1f}px, "
-                    f"조향={steering_command:.3f}, 방향={direction_name}"
-                )
-        else:
-            # 접근 모드: 부표에 접근
-            self.target_x = self.target_center_x  # 중앙으로 설정
-            error = self.target_center_x - buoy_x
-            steering_command = self.calculate_steering_command(error)
-            turn_thrust = steering_command * self.max_turn_thrust
-            forward_thrust = self.base_speed * 0.5  # 접근 시 천천히
+        if logger:
+            direction_name = "시계방향" if rotation_direction == 1 else "반시계방향"
+            logger.info(
+                f"Circle [{mode}][{data_source}]: rotation={self.total_rotation:.1f}°, "
+                f"부표 위치=({buoy_x:.1f}px), 깊이={buoy_depth:.3f}m, "
+                f"목표={target_x:.1f}px, 오차={error:.1f}px, "
+                f"조향={steering_command:.3f}, 방향={direction_name}"
+            )
+        # else:
+        #     # 접근 모드: 부표에 접근
+        #     self.target_x = self.target_center_x  # 중앙으로 설정
+        #     error = self.target_center_x - buoy_x
+        #     steering_command = self.calculate_steering_command(error)
+        #     turn_thrust = steering_command * self.max_turn_thrust
+        #     forward_thrust = self.base_speed * 0.5  # 접근 시 천천히
 
-            # 스러스터 명령 계산
-            left_command = forward_thrust - turn_thrust
-            right_command = forward_thrust + turn_thrust
+        #     # 스러스터 명령 계산
+        #     left_command = forward_thrust - turn_thrust
+        #     right_command = forward_thrust + turn_thrust
 
-            mode = "APPROACH"
+        #     mode = "APPROACH"
 
-            if logger:
-                logger.info(
-                    f"Circle [{mode}]: 부표 위치=({buoy_x:.1f}px), "
-                    f"깊이={buoy_depth:.3f}m, 오차={error:.1f}px, "
-                    f"조향={steering_command:.3f}"
-                )
+        #     if logger:
+        #         logger.info(
+        #             f"Circle [{mode}][{data_source}]: 부표 위치=({buoy_x:.1f}px), "
+        #             f"깊이={buoy_depth:.3f}m, 오차={error:.1f}px, "
+        #             f"조향={steering_command:.3f}"
+        #         )
 
         # 스러스터를 thrust_scale로 변환하여 반환
         left_thrust = (left_command / 1000.0) * self.thrust_scale

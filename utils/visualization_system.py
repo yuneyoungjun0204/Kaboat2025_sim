@@ -84,6 +84,18 @@ class VisualizationSystem:
         cv2.createTrackbar('Gate Threshold x10', 'Parameters',
                           self.gate_threshold, 200, self._dummy_callback)
 
+        # 선회 미션 파라미터 트랙바
+        cv2.createTrackbar('Circle: Rotation Dir', 'Parameters',
+                          1, 2, self._dummy_callback)  # 1=시계방향, 2=반시계방향
+        cv2.createTrackbar('Circle: Base Speed', 'Parameters',
+                          150, 300, self._dummy_callback)
+        cv2.createTrackbar('Circle: Min Speed', 'Parameters',
+                          50, 200, self._dummy_callback)
+        cv2.createTrackbar('Circle: Max Turn', 'Parameters',
+                          150, 250, self._dummy_callback)
+        cv2.createTrackbar('Circle: PID Kp x10', 'Parameters',
+                          8, 50, self._dummy_callback)  # 0.8-5.0
+
     def _dummy_callback(self, val):
         """트랙바 콜백 (빈 함수)"""
         pass
@@ -106,6 +118,13 @@ class VisualizationSystem:
         self.max_coast_frames = cv2.getTrackbarPos('Max Coast Frames', 'Parameters')
         self.gate_threshold = cv2.getTrackbarPos('Gate Threshold x10', 'Parameters')
 
+        # 선회 미션 파라미터
+        circle_rotation_dir = cv2.getTrackbarPos('Circle: Rotation Dir', 'Parameters')
+        circle_base_speed = float(cv2.getTrackbarPos('Circle: Base Speed', 'Parameters'))
+        circle_min_speed = float(cv2.getTrackbarPos('Circle: Min Speed', 'Parameters'))
+        circle_max_turn = float(cv2.getTrackbarPos('Circle: Max Turn', 'Parameters'))
+        circle_pid_kp = cv2.getTrackbarPos('Circle: PID Kp x10', 'Parameters') / 10.0
+
         return {
             'detection_threshold': self.detection_threshold,
             'min_box_area': self.min_box_area,
@@ -114,7 +133,12 @@ class VisualizationSystem:
             'max_depth': self.max_depth_threshold,
             'thrust_scale': self.thrust_scale,
             'max_coast_frames': self.max_coast_frames,
-            'gate_threshold': self.gate_threshold / 10.0
+            'gate_threshold': self.gate_threshold / 10.0,
+            'circle_rotation_dir': circle_rotation_dir,
+            'circle_base_speed': circle_base_speed,
+            'circle_min_speed': circle_min_speed,
+            'circle_max_turn': circle_max_turn,
+            'circle_pid_kp': circle_pid_kp
         }
 
     def visualize_depth_map(self, depth_map: np.ndarray, mission_name: str):
