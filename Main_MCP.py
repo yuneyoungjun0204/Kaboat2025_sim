@@ -143,6 +143,10 @@ class VRXMissionController(Node):
         self.detected_objects = []
         self.raw_detections = []  # 원본 탐지 결과 저장
 
+        # 수동 목표 위치 (trajectory_viz에서 클릭한 좌표)
+        self.manual_target_x = None
+        self.manual_target_y = None
+
     def _init_onnx_model(self):
         """ONNX 모델 초기화 (미션 4용)"""
         self.get_logger().info("ONNX 모델 로딩 중...")
@@ -214,9 +218,15 @@ class VRXMissionController(Node):
         self.lidar_distances = raw_ranges.astype(np.float32)
 
     def waypoint_callback(self, msg):
-        """웨이포인트 콜백"""
+        """웨이포인트 콜백 - 수동 목표 설정 및 자동 웨이포인트 추가"""
+        # trajectory_viz에서 클릭한 좌표를 수동 목표로 저장 (수동 장애물 회피 모드용)
+        self.manual_target_x = float(msg.x)
+        self.manual_target_y = float(msg.y)
+        self.get_logger().info(f"수동 목표 설정: ({self.manual_target_x:.1f}, {self.manual_target_y:.1f})")
+
+        # 자동 모드를 위한 웨이포인트 추가 로직
         mission_sequence = [
-            MissionType.PASS_BETWEEN_BUOYS,
+            MissionType.OBSTACLE_AVOID,
             MissionType.CIRCLE_BUOY,
             MissionType.OBSTACLE_AVOID,
             MissionType.OBSTACLE_AVOID
@@ -262,11 +272,27 @@ class VRXMissionController(Node):
         if 'gate_threshold' in params:
             self.tracker.gate_threshold = params['gate_threshold']
 
-        # 웨이포인트 전환 확인
-        self._check_waypoint_transition()
+        # 트랙바로부터 미션 모드 읽어오기
+        # 0: 자동 (웨이포인트 기반), 1: 장애물 회피, 2: 부표 사이 통과, 3: 부표 회전
+        mission_mode = params.get('mission_mode', 0)
 
-        # 현재 미션 타입 가져오기
-        current_mission_type = self.waypoint_manager.get_current_mission_type()
+        # 미션 모드에 따라 현재 미션 타입 결정
+        if mission_mode == 0:
+            # 자동 모드: 웨이포인트 전환 확인
+            self._check_waypoint_transition()
+            current_mission_type = self.waypoint_manager.get_current_mission_type()
+        elif mission_mode == 1:
+            # 수동 장애물 회피 모드
+            current_mission_type = MissionType.OBSTACLE_AVOID
+        elif mission_mode == 2:
+            # 수동 부표 사이 통과 모드
+            current_mission_type = MissionType.PASS_BETWEEN_BUOYS
+        elif mission_mode == 3:
+            # 수동 부표 회전 모드
+            current_mission_type = MissionType.CIRCLE_BUOY
+        else:
+            current_mission_type = None
+
         if current_mission_type is None:
             self.ros_comm.publish_thrust_commands(0.0, 0.0)
             return

@@ -123,7 +123,7 @@ class PIDController:
 
 
 class CircleBuoyMission(BaseMissionStrategy):
-    """미션 2: 부표 주변 회전 (object_approach_controller 로직 사용)"""
+    """미션 2: 부표 주변 회전 (main_circle.py 로직 사용)"""
 
     def __init__(self, thrust_scale: float = 1000.0):
         super().__init__(thrust_scale)
@@ -133,7 +133,7 @@ class CircleBuoyMission(BaseMissionStrategy):
         self.previous_heading = None
         self.circling_started = False
 
-        # PID 제어기 초기화 (object_approach_controller와 동일)
+        # PID 제어기 초기화 (main_circle.py와 동일)
         self.pid_controller = PIDController(kp=0.8, ki=0.001, kd=0.4)
 
         # 제어 파라미터
@@ -151,8 +151,18 @@ class CircleBuoyMission(BaseMissionStrategy):
         self.stop_distance = 0.00
         self.slow_distance = 0.00
 
+        # target_x 결정식 파라미터 (main_circle.py와 동일)
+        self.tx_base_x = 1240.0
+        self.tx_slope = 700.0
+        self.tx_min_x = 800.0
+        self.tx_max_x = 1200.0
+
         # 목표 X 위치 저장 (시각화용)
         self.target_x = None
+
+        # 마지막으로 성공한 스러스터 명령 저장 (탐지 실패 시 사용)
+        self.last_known_left_cmd = 0.0
+        self.last_known_right_cmd = 0.0
 
     def reset(self):
         """미션 상태 초기화"""
@@ -166,16 +176,16 @@ class CircleBuoyMission(BaseMissionStrategy):
 
     def calculate_rotation_target(self, rotation_direction: int, object_depth: float) -> float:
         """
-        회전 방향에 따른 목표 x 좌표 계산 (거리에 따라 동적 조정)
-        object_approach_controller.py의 로직 사용
+        회전 방향에 따른 목표 x 좌표 계산 (main_circle.py와 동일)
+        시계방향: base_x - slope * depth (min_x ~ max_x로 클램프)
         """
         if rotation_direction == 1:  # 시계방향
-            # 시계방향: 1240 - 3000x (멀수록 크게, 가까울수록 작게)
-            target_x = 1240 - 200 * object_depth
-            # 범위 제한 (640~1200)
-            return max(740, min(1200, target_x))
+            # main_circle.py와 동일한 공식 사용
+            target_x = self.tx_base_x - self.tx_slope * object_depth
+            # 범위 제한
+            return max(self.tx_min_x, min(self.tx_max_x, target_x))
         else:  # 반시계방향 (rotation_direction == 2 or -1)
-            # 반시계방향: 3000x (멀수록 크게, 가까울수록 작게)
+            # 반시계방향: 반대 로직 (추후 필요 시 트랙바 파라미터 추가 가능)
             target_x = 200 * object_depth
             # 범위 제한 (40~640)
             return max(140, min(640, target_x))
@@ -211,19 +221,27 @@ class CircleBuoyMission(BaseMissionStrategy):
                 agent_heading: float, mission_params: Dict, logger=None,
                 raw_detections: List[Dict] = None, **kwargs) -> Tuple[float, float]:
         """
-        파란색 부표 주변을 회전
-        object_approach_controller.py의 로직 사용
+        파란색 부표 주변을 회전 (main_circle.py 로직 사용)
 
         Args:
             detected_objects: 추적된 객체 (IMM-PDAF 출력, 추정값)
             raw_detections: 원본 탐지 결과 (NanoOWL 직접 출력, 측정값)
-            mission_params: 미션 파라미터 (rotation_direction, circle_base_speed, circle_min_speed, circle_max_turn, circle_pid_kp)
+            mission_params: 미션 파라미터
         """
         # 트랙바 파라미터 업데이트 (동적 조정)
         circle_base_speed = mission_params.get('circle_base_speed', self.base_speed)
         circle_min_speed = mission_params.get('circle_min_speed', self.min_speed)
         circle_max_turn = mission_params.get('circle_max_turn', self.max_turn_thrust)
         circle_pid_kp = mission_params.get('circle_pid_kp', self.pid_controller.kp)
+
+        # target_x 결정식 파라미터 업데이트 (main_circle.py와 동일)
+        self.tx_base_x = mission_params.get('circle_tx_base_x', self.tx_base_x)
+        self.tx_slope = mission_params.get('circle_tx_slope', self.tx_slope)
+        tx_min_x = mission_params.get('circle_tx_min_x', self.tx_min_x)
+        tx_max_x = mission_params.get('circle_tx_max_x', self.tx_max_x)
+        # min/max 순서 보장
+        self.tx_min_x = min(tx_min_x, tx_max_x - 1.0)
+        self.tx_max_x = max(tx_max_x, self.tx_min_x + 1.0)
 
         # PID Kp 값이 변경되었으면 업데이트
         if circle_pid_kp != self.pid_controller.kp:
@@ -236,7 +254,7 @@ class CircleBuoyMission(BaseMissionStrategy):
 
         # 파란색 부표 찾기 (추정값 우선)
         blue_buoy = None
-        data_source = "TRACKED"  # 데이터 출처 추적
+        data_source = "TRACKED"
 
         # 1. 추정값(tracked)에서 먼저 찾기
         for det in detected_objects:
@@ -254,31 +272,25 @@ class CircleBuoyMission(BaseMissionStrategy):
                         logger.info("⚠️ 추정값 없음 -> 측정값 사용 (끊김 방지)")
                     break
 
-        if not blue_buoy:
-            # 부표 미탐지 시 조금씩이동
-            self.target_x = None
-            if logger:
-                logger.warn("파란색 부표 미탐지: 조금씩 이동")
-            return 200.0, 200.0
-
         # 회전 시작 시간 기록 (완료 확인용)
         if self.circle_start_time is None:
             self.circle_start_time = time.time()
-            self.circle_initial_heading = agent_heading
-            self.previous_heading = agent_heading
+            self.circle_initial_heading = agent_heading if agent_heading else 0.0
+            self.previous_heading = agent_heading if agent_heading else 0.0
             self.total_rotation = 0.0
 
         # 누적 회전 각도 계산
-        heading_diff = agent_heading - self.previous_heading
+        if agent_heading is not None:
+            heading_diff = agent_heading - self.previous_heading
 
-        # 각도 차이 정규화 (-180 ~ 180)
-        if heading_diff > 180:
-            heading_diff -= 360
-        elif heading_diff < -180:
-            heading_diff += 360
+            # 각도 차이 정규화 (-180 ~ 180)
+            if heading_diff > 180:
+                heading_diff -= 360
+            elif heading_diff < -180:
+                heading_diff += 360
 
-        self.total_rotation += abs(heading_diff)
-        self.previous_heading = agent_heading
+            self.total_rotation += abs(heading_diff)
+            self.previous_heading = agent_heading
 
         # 360도 회전 완료 확인
         if self.total_rotation >= 350:
@@ -287,18 +299,25 @@ class CircleBuoyMission(BaseMissionStrategy):
                 logger.info("부표 회전 완료!")
             return 0.0, 0.0
 
+        # 부표 미탐지 시 이전 명령 사용 (main_circle.py와 동일)
+        if not blue_buoy:
+            self.target_x = None
+            left_cmd = self.last_known_left_cmd
+            right_cmd = self.last_known_right_cmd
+            if logger:
+                logger.warn(f"파란색 부표 미탐지: 이전 명령 사용 L={left_cmd:.1f}, R={right_cmd:.1f}")
+            return left_cmd, right_cmd
+
         # 미션 파라미터
-        rotation_direction = mission_params.get('rotation_direction', 1)  # 1=시계방향, 2=반시계방향
+        rotation_direction = mission_params.get('rotation_direction', 1)
 
         # 부표 측정값
-        buoy_depth = blue_buoy['depth']  # 부표까지 거리 (미터)
+        buoy_depth = blue_buoy['depth']
         buoy_x = blue_buoy['center'][0]
 
-    # stop_distance 기준 충족 시 회전 시작
-    # if buoy_depth >= self.stop_distance:
         # 회전 모드: 부표를 기준으로 일정한 방향으로 회전
         target_x = self.calculate_rotation_target(rotation_direction, buoy_depth)
-        self.target_x = target_x  # 시각화를 위해 저장
+        self.target_x = target_x
         error = target_x - buoy_x
 
         # 조향 명령 계산 (PID)
@@ -308,43 +327,25 @@ class CircleBuoyMission(BaseMissionStrategy):
         turn_thrust = steering_command * self.max_turn_thrust
 
         # 각도에 따른 적응형 속도 계산
-        turn_angle = abs(steering_command * 90)  # 조향 명령을 각도로 변환
+        turn_angle = abs(steering_command * 90)
         forward_thrust = self.calculate_rotation_speed(turn_angle)
 
         # 스러스터 명령 계산
         left_command = forward_thrust - turn_thrust
         right_command = forward_thrust + turn_thrust
 
-        mode = "ROTATE"
+        # 마지막으로 성공한 명령 저장 (main_circle.py와 동일)
+        self.last_known_left_cmd = left_command
+        self.last_known_right_cmd = right_command
 
         if logger:
             direction_name = "시계방향" if rotation_direction == 1 else "반시계방향"
             logger.info(
-                f"Circle [{mode}][{data_source}]: rotation={self.total_rotation:.1f}°, "
+                f"Circle [ROTATE][{data_source}]: rotation={self.total_rotation:.1f}°, "
                 f"부표 위치=({buoy_x:.1f}px), 깊이={buoy_depth:.3f}m, "
                 f"목표={target_x:.1f}px, 오차={error:.1f}px, "
                 f"조향={steering_command:.3f}, 방향={direction_name}"
             )
-        # else:
-        #     # 접근 모드: 부표에 접근
-        #     self.target_x = self.target_center_x  # 중앙으로 설정
-        #     error = self.target_center_x - buoy_x
-        #     steering_command = self.calculate_steering_command(error)
-        #     turn_thrust = steering_command * self.max_turn_thrust
-        #     forward_thrust = self.base_speed * 0.5  # 접근 시 천천히
-
-        #     # 스러스터 명령 계산
-        #     left_command = forward_thrust - turn_thrust
-        #     right_command = forward_thrust + turn_thrust
-
-        #     mode = "APPROACH"
-
-        #     if logger:
-        #         logger.info(
-        #             f"Circle [{mode}][{data_source}]: 부표 위치=({buoy_x:.1f}px), "
-        #             f"깊이={buoy_depth:.3f}m, 오차={error:.1f}px, "
-        #             f"조향={steering_command:.3f}"
-        #         )
 
         # 스러스터를 thrust_scale로 변환하여 반환
         left_thrust = (left_command / 1000.0) * self.thrust_scale

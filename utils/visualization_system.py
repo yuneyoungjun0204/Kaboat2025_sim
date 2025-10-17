@@ -96,6 +96,21 @@ class VisualizationSystem:
         cv2.createTrackbar('Circle: PID Kp x10', 'Parameters',
                           8, 50, self._dummy_callback)  # 0.8-5.0
 
+        # target_x 결정식 파라미터 트랙바 (main_circle.py와 동일)
+        cv2.createTrackbar('Circle: TX BaseX', 'Parameters',
+                          1240, 2000, self._dummy_callback)
+        cv2.createTrackbar('Circle: TX Slope', 'Parameters',
+                          700, 10000, self._dummy_callback)
+        cv2.createTrackbar('Circle: TX MinX', 'Parameters',
+                          800, 2000, self._dummy_callback)
+        cv2.createTrackbar('Circle: TX MaxX', 'Parameters',
+                          1200, 2000, self._dummy_callback)
+
+        # 미션 모드 선택 트랙바
+        # 0: 자동 (웨이포인트 기반), 1: 장애물 회피, 2: 부표 사이 통과, 3: 부표 회전
+        cv2.createTrackbar('Mission Mode', 'Parameters',
+                          0, 3, self._dummy_callback)
+
     def _dummy_callback(self, val):
         """트랙바 콜백 (빈 함수)"""
         pass
@@ -125,6 +140,15 @@ class VisualizationSystem:
         circle_max_turn = float(cv2.getTrackbarPos('Circle: Max Turn', 'Parameters'))
         circle_pid_kp = cv2.getTrackbarPos('Circle: PID Kp x10', 'Parameters') / 10.0
 
+        # target_x 결정식 파라미터 (main_circle.py와 동일)
+        circle_tx_base_x = float(cv2.getTrackbarPos('Circle: TX BaseX', 'Parameters'))
+        circle_tx_slope = float(cv2.getTrackbarPos('Circle: TX Slope', 'Parameters'))
+        circle_tx_min_x = float(cv2.getTrackbarPos('Circle: TX MinX', 'Parameters'))
+        circle_tx_max_x = float(cv2.getTrackbarPos('Circle: TX MaxX', 'Parameters'))
+
+        # 미션 모드 선택
+        mission_mode = cv2.getTrackbarPos('Mission Mode', 'Parameters')
+
         return {
             'detection_threshold': self.detection_threshold,
             'min_box_area': self.min_box_area,
@@ -138,7 +162,12 @@ class VisualizationSystem:
             'circle_base_speed': circle_base_speed,
             'circle_min_speed': circle_min_speed,
             'circle_max_turn': circle_max_turn,
-            'circle_pid_kp': circle_pid_kp
+            'circle_pid_kp': circle_pid_kp,
+            'circle_tx_base_x': circle_tx_base_x,
+            'circle_tx_slope': circle_tx_slope,
+            'circle_tx_min_x': circle_tx_min_x,
+            'circle_tx_max_x': circle_tx_max_x,
+            'mission_mode': mission_mode
         }
 
     def visualize_depth_map(self, depth_map: np.ndarray, mission_name: str):
