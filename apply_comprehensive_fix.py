@@ -1,5 +1,16 @@
 #!/usr/bin/env python3
 """
+부표 미션 종합 수정 스크립트
+1. 추정값/측정값 fallback을 RED/GREEN 개별로 처리
+2. pass_max_depth_diff 스케일 통일 (*0.05 제거)
+3. 필터링된 객체에 플래그 추가
+4. visualization_system.py에서 필터링된 객체 박스 안 그리기
+"""
+
+def apply_all_fixes():
+    # mission_strategies_new.py 전체 내용
+    mission_strategies_content = '''#!/usr/bin/env python3
+"""
 미션 전략 모듈
 - 4가지 미션의 제어 로직을 캡슐화
 """
@@ -577,3 +588,19 @@ class MissionManager:
         if circle_mission and hasattr(circle_mission, 'target_x'):
             return circle_mission.target_x
         return None
+'''
+
+    # mission_strategies_new.py 작성
+    with open('/home/yuneyoungjun/vrx_ws/src/vrx/Scripts_git/utils/mission_strategies_new.py', 'w', encoding='utf-8') as f:
+        f.write(mission_strategies_content)
+
+    print("=" * 80)
+    print("✓ mission_strategies_new.py 수정 완료")
+    print("  1. 추정값/측정값 개별 fallback 적용 (RED/GREEN 각각 판단)")
+    print("  2. pass_max_depth_diff 스케일 통일 (*0.05 제거)")
+    print("  3. 필터링 플래그 추가 (filtered_by_depth_diff)")
+    print("  4. 로그 메시지 업데이트 (R:source/G:source 형식)")
+    print("=" * 80)
+
+if __name__ == '__main__':
+    apply_all_fixes()

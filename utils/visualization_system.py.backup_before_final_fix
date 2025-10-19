@@ -215,10 +215,6 @@ class VisualizationSystem:
         # 원본 탐지 그리기 (얇은 점선)
         if raw_detections:
             for det in raw_detections:
-                # pass_max_depth_diff로 필터링된 객체는 그리지 않음
-                if det.get('filtered_by_depth_diff', False):
-                    continue
-
                 x1, y1, x2, y2 = det["bbox"]
                 label = det["label"]
                 cx, cy = det["center"]
@@ -233,10 +229,6 @@ class VisualizationSystem:
 
         # 추적 결과 그리기 (굵은 실선)
         for det in detections:
-            # pass_max_depth_diff로 필터링된 객체는 그리지 않음
-            if det.get('filtered_by_depth_diff', False):
-                continue
-
             x1, y1, x2, y2 = det["bbox"]
             label = det["label"]
             conf = det["confidence"]

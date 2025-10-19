@@ -42,45 +42,34 @@ class PassBetweenBuoysMission(BaseMissionStrategy):
             detected_objects: 추적된 객체 (IMM-PDAF 출력, 추정값)
             raw_detections: 원본 탐지 결과 (NanoOWL 직접 출력, 측정값)
         """
-        # 빨간색/초록색 부표 찾기 (추정값 우선, 개별 fallback)
+        # 빨간색/초록색 부표 찾기 (원본 탐지값 우선 사용)
         red_buoy = None
         green_buoy = None
-        red_source = None
-        green_source = None
+        data_source = "RAW"
 
-        # 1. 빨간색 부표: 추정값(tracked) 우선, 없으면 측정값(raw) 사용
-        if detected_objects:
-            for det in detected_objects:
-                if det['label'] == 'red_cone':
-                    red_buoy = det
-                    red_source = "TRACKED"
-                    break
-
-        if not red_buoy and raw_detections:
+        # 1. 원본 탐지값(raw)에서 먼저 찾기
+        if raw_detections:
             for det in raw_detections:
                 if det['label'] == 'red_cone':
                     red_buoy = det
-                    red_source = "RAW"
-                    if logger:
-                        logger.info("⚠️ 빨간색 부표: 추정값 없음 -> 측정값 사용")
-                    break
-
-        # 2. 초록색 부표: 추정값(tracked) 우선, 없으면 측정값(raw) 사용
-        if detected_objects:
-            for det in detected_objects:
-                if det['label'] == 'green_cone':
+                elif det['label'] == 'green_cone':
                     green_buoy = det
-                    green_source = "TRACKED"
-                    break
 
-        if not green_buoy and raw_detections:
-            for det in raw_detections:
-                if det['label'] == 'green_cone':
-                    green_buoy = det
-                    green_source = "RAW"
-                    if logger:
-                        logger.info("⚠️ 초록색 부표: 추정값 없음 -> 측정값 사용")
-                    break
+        # 2. 원본값에 없으면 추적값(tracked)에서 찾기 (fallback)
+        if (not red_buoy or not green_buoy) and detected_objects:
+            data_source = "TRACKED"
+            if not red_buoy:
+                for det in detected_objects:
+                    if det['label'] == 'red_cone':
+                        red_buoy = det
+                        break
+            if not green_buoy:
+                for det in detected_objects:
+                    if det['label'] == 'green_cone':
+                        green_buoy = det
+                        break
+            if logger and (red_buoy or green_buoy):
+                logger.info("⚠️ 원본값 없음 -> 추적값 사용 (fallback)")
 
         # 두 부표가 모두 탐지된 경우
         if red_buoy and green_buoy:
@@ -91,18 +80,14 @@ class PassBetweenBuoysMission(BaseMissionStrategy):
             depth_diff = abs(red_depth - green_depth)
 
             if depth_diff > max_depth_diff:
-                # 깊이 차이가 너무 크면 멀리 있는 부표 무시하고 필터링 플래그 추가
+                # 깊이 차이가 너무 크면 멀리 있는 부표 무시
                 if red_depth > green_depth:
                     if logger:
                         logger.warn(f"빨간 부표 무시 (깊이 차이 {depth_diff:.2f}m > {max_depth_diff:.2f}m)")
-                    # 필터링 플래그 추가
-                    red_buoy['filtered_by_depth_diff'] = True
                     red_buoy = None
                 else:
                     if logger:
                         logger.warn(f"초록 부표 무시 (깊이 차이 {depth_diff:.2f}m > {max_depth_diff:.2f}m)")
-                    # 필터링 플래그 추가
-                    green_buoy['filtered_by_depth_diff'] = True
                     green_buoy = None
 
         # 필터링 후 두 부표가 모두 있는 경우
@@ -130,7 +115,6 @@ class PassBetweenBuoysMission(BaseMissionStrategy):
             right_thrust = (forward_speed - steering) * self.thrust_scale
 
             if logger:
-                data_source = f"R:{red_source}/G:{green_source}"
                 logger.info(
                     f"Pass Buoys [{data_source}]: midpoint={midpoint_x:.1f}, error={error:.1f}, steering={steering:.3f}"
                 )

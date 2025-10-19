@@ -14,7 +14,8 @@
       "Bash(python3 fix_all_files.py)",
       "Bash(chmod +x fix_all_files.py)",
       "Bash(/usr/bin/python3 fix_all_files.py)",
-      "Bash(python fix_all_files.py)"
+      "Bash(python fix_all_files.py)",
+      "Bash(lsof /home/yuneyoungjun/vrx_ws/src/vrx/Scripts_git/utils/mission_strategies_new.py)"
     ],
     "deny": [],
     "ask": []
