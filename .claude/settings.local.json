@@ -9,7 +9,12 @@
       "Bash(cat apply_depth_filter.py)",
       "Bash(python3 apply_buoy_fix.py)",
       "Bash(python3 ./apply_buoy_fix.py)",
-      "Bash(chmod +x apply_buoy_fix.py)"
+      "Bash(chmod +x apply_buoy_fix.py)",
+      "Bash(lsof)",
+      "Bash(python3 fix_all_files.py)",
+      "Bash(chmod +x fix_all_files.py)",
+      "Bash(/usr/bin/python3 fix_all_files.py)",
+      "Bash(python fix_all_files.py)"
     ],
     "deny": [],
     "ask": []
