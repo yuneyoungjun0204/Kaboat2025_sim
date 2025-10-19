@@ -272,9 +272,26 @@ class VRXMissionController(Node):
         if 'gate_threshold' in params:
             self.tracker.gate_threshold = params['gate_threshold']
 
-        # 자동 모드: 웨이포인트 기반 미션 전환
-        self._check_waypoint_transition()
-        current_mission_type = self.waypoint_manager.get_current_mission_type()
+        # 트랙바로부터 미션 모드 읽어오기
+        # 0: 자동 (웨이포인트 기반), 1: 장애물 회피, 2: 부표 사이 통과, 3: 부표 회전
+        mission_mode = params.get('mission_mode', 0)
+
+        # 미션 모드에 따라 현재 미션 타입 결정
+        if mission_mode == 0:
+            # 자동 모드: 웨이포인트 전환 확인
+            self._check_waypoint_transition()
+            current_mission_type = self.waypoint_manager.get_current_mission_type()
+        elif mission_mode == 1:
+            # 수동 장애물 회피 모드
+            current_mission_type = MissionType.OBSTACLE_AVOID
+        elif mission_mode == 2:
+            # 수동 부표 사이 통과 모드
+            current_mission_type = MissionType.PASS_BETWEEN_BUOYS
+        elif mission_mode == 3:
+            # 수동 부표 회전 모드
+            current_mission_type = MissionType.CIRCLE_BUOY
+        else:
+            current_mission_type = None
 
         if current_mission_type is None:
             self.ros_comm.publish_thrust_commands(0.0, 0.0)
@@ -335,18 +352,10 @@ class VRXMissionController(Node):
     def _execute_current_mission(self, mission_type: MissionType) -> tuple:
         """현재 미션 실행"""
         if mission_type == MissionType.PASS_BETWEEN_BUOYS:
-            # 트랙바 파라미터 가져오기
-            trackbar_params = self.visualization.update_parameters_from_trackbars()
-            pass_params = {
-                'pass_max_depth_diff': trackbar_params.get('pass_max_depth_diff', 5.0)
-            }
-
             return self.mission_manager.execute_mission(
                 mission_type,
                 detected_objects=self.detected_objects,
                 current_image=self.current_image,
-                raw_detections=self.raw_detections,
-                mission_params=pass_params,
                 logger=self.get_logger()
             )
 

@@ -106,9 +106,10 @@ class VisualizationSystem:
         cv2.createTrackbar('Circle: TX MaxX', 'Parameters',
                           1200, 2000, self._dummy_callback)
 
-        # 부표 사이 통과 미션 파라미터 트랙바
-        cv2.createTrackbar('Pass: Max Depth Diff x10', 'Parameters',
-                          50, 200, self._dummy_callback)  # 기본값 5.0m (50/10)
+        # 미션 모드 선택 트랙바
+        # 0: 자동 (웨이포인트 기반), 1: 장애물 회피, 2: 부표 사이 통과, 3: 부표 회전
+        cv2.createTrackbar('Mission Mode', 'Parameters',
+                          0, 3, self._dummy_callback)
 
     def _dummy_callback(self, val):
         """트랙바 콜백 (빈 함수)"""
@@ -146,8 +147,8 @@ class VisualizationSystem:
         circle_tx_max_x = float(cv2.getTrackbarPos('Circle: TX MaxX', 'Parameters'))
 
         # 미션 모드 선택
-        # 부표 사이 통과 미션 파라미터
-        pass_max_depth_diff = cv2.getTrackbarPos('Pass: Max Depth Diff x10', 'Parameters') / 10.0
+        mission_mode = cv2.getTrackbarPos('Mission Mode', 'Parameters')
+
         return {
             'detection_threshold': self.detection_threshold,
             'min_box_area': self.min_box_area,
@@ -166,7 +167,7 @@ class VisualizationSystem:
             'circle_tx_slope': circle_tx_slope,
             'circle_tx_min_x': circle_tx_min_x,
             'circle_tx_max_x': circle_tx_max_x,
-            'pass_max_depth_diff': pass_max_depth_diff
+            'mission_mode': mission_mode
         }
 
     def visualize_depth_map(self, depth_map: np.ndarray, mission_name: str):

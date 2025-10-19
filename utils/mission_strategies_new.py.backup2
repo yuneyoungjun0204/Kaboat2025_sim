@@ -74,7 +74,7 @@ class PassBetweenBuoysMission(BaseMissionStrategy):
         # 두 부표가 모두 탐지된 경우
         if red_buoy and green_buoy:
             # 깊이 차이 필터링 (너무 차이 나면 멀리 있는 것 무시)
-            max_depth_diff = kwargs.get('mission_params', {}).get('pass_max_depth_diff', 5.0)*0.05
+            max_depth_diff = kwargs.get('mission_params', {}).get('max_depth_diff', 5.0)*0.05
             red_depth = red_buoy.get('depth', 0.0)
             green_depth = green_buoy.get('depth', 0.0)
             depth_diff = abs(red_depth - green_depth)
