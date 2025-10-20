@@ -52,11 +52,11 @@ class VisualizationSystem:
         """시각화 창 및 트랙바 설정"""
         # 메인 시각화 창
         cv2.namedWindow('VRX Mission Control', cv2.WINDOW_NORMAL)
-        cv2.resizeWindow('VRX Mission Control', 1280, 720)
+        cv2.resizeWindow('VRX Mission Control', 640, 480)
 
-        # 깊이 맵 시각화 창
-        cv2.namedWindow('Depth Map', cv2.WINDOW_NORMAL)
-        cv2.resizeWindow('Depth Map', 640, 480)
+        # # 깊이 맵 시각화 창
+        # cv2.namedWindow('Depth Map', cv2.WINDOW_NORMAL)
+        # cv2.resizeWindow('Depth Map', 640, 480)
 
         # 제어 파라미터 트랙바 창
         cv2.namedWindow('Parameters', cv2.WINDOW_NORMAL)
@@ -98,7 +98,7 @@ class VisualizationSystem:
 
         # target_x 결정식 파라미터 트랙바 (main_circle.py와 동일)
         cv2.createTrackbar('Circle: TX BaseX', 'Parameters',
-                          1240, 2000, self._dummy_callback)
+                          1040, 2000, self._dummy_callback)
         cv2.createTrackbar('Circle: TX Slope', 'Parameters',
                           700, 10000, self._dummy_callback)
         cv2.createTrackbar('Circle: TX MinX', 'Parameters',
