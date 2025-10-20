@@ -146,7 +146,7 @@ class PassBetweenBuoysMission(BaseMissionStrategy):
 
 class PIDController:
     """PID 제어기"""
-    def __init__(self, kp=0.4, ki=0.001, kd=0.4):
+    def __init__(self, kp=0.8, ki=0.001, kd=0.7):
         self.kp = kp
         self.ki = ki
         self.kd = kd

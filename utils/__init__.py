@@ -21,7 +21,7 @@ try:
     from .detection_system import DetectionSystem, MissionType
 
     # 미션 전략
-    from .mission_strategies import (
+    from .mission_strategies_new import (
         BaseMissionStrategy,
         PassBetweenBuoysMission,
         CircleBuoyMission,
@@ -45,6 +45,13 @@ try:
         MotionModel, NearlyConstantPosition, ConstantVelocity,
         ConstantAcceleration, SingerModel
     )
+
+    # 새로운 유틸리티 모듈
+    from .config import Constants
+    from .parameter_manager import ParameterManager
+    from .sensor_callbacks import SensorCallbackHandler
+    from .onnx_controller import ONNXController
+    from .mission_executor import MissionExecutor
 
     __all__ = [
         # 센서 및 제어
@@ -88,7 +95,14 @@ try:
         'NearlyConstantPosition',
         'ConstantVelocity',
         'ConstantAcceleration',
-        'SingerModel'
+        'SingerModel',
+
+        # 새로운 유틸리티
+        'Constants',
+        'ParameterManager',
+        'SensorCallbackHandler',
+        'ONNXController',
+        'MissionExecutor'
     ]
 except ImportError as e:
     print(f"모듈 import 오류: {e}")
