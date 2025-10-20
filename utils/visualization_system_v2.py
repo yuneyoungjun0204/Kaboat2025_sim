@@ -10,7 +10,7 @@
 import cv2
 import numpy as np
 from typing import List, Dict, Callable, Optional
-from .detection_system import MissionType
+from .detection_system_v2 import MissionType
 
 
 class VisualizationSystem:
@@ -154,8 +154,8 @@ class VisualizationSystem:
             'detection_threshold': self.detection_threshold,
             'min_box_area': self.min_box_area,
             'max_box_area': self.max_box_area,
-            'min_depth_threshold': self.min_depth_threshold,
-            'max_depth_threshold': self.max_depth_threshold,
+            'min_depth': self.min_depth_threshold,
+            'max_depth': self.max_depth_threshold,
             'thrust_scale': self.thrust_scale,
             'max_coast_frames': self.max_coast_frames,
             'gate_threshold': self.gate_threshold / 10.0,

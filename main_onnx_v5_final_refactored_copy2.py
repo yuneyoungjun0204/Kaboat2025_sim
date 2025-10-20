@@ -23,6 +23,7 @@ class VRXONNXControllerV5Refactored(Node):
         # self.model_path = '/home/yuneyoungjun/vrx_ws/src/vrx/Scripts_git/models/correct_IMU/Ray-7999790.onnx'
         # self.model_path = '/home/yuneyoungjun/vrx_ws/src/vrx/Scripts_git/models/correct_IMU/Ray-10092127.onnx'
         self.model_path = '/home/yuneyoungjun/vrx_ws/src/vrx/Scripts_git/models/correct_IMU//gpu/Ray-9558758.onnx'
+        self.model_path = '/home/yuneyoungjun/vrx_ws/src/vrx/Scripts_git/models/correct_IMU//gpu/Ray.onnx'
         self.session = ort.InferenceSession(self.model_path)
         self.input_name = self.session.get_inputs()[0].name
         
@@ -58,13 +59,13 @@ class VRXONNXControllerV5Refactored(Node):
         # 제어 파라미터
         self.v_scale = 1.0
         self.w_scale = -1.0
-        self.thrust_scale = 2500
+        self.thrust_scale = 2000
         self.angular_velocity_y_scale = 1
         self.lidar_scale_factor = 1.0
         
         # 장애물 회피 컨트롤러
         self.avoidance_controller = AvoidanceController(
-            boat_width=1.82,
+            boat_width=1.32,
             boat_height=50.0,
             max_lidar_distance=100.0,
             los_delta=10.0,
@@ -289,7 +290,7 @@ class VRXONNXControllerV5Refactored(Node):
         outputs = self.session.run(None, {self.input_name: stacked_input})
         
         if len(outputs) > 2 and outputs[2] is not None:
-            linear_velocity = max(min(outputs[4][0][1] * self.v_scale, 1), 0.01)
+            linear_velocity = max(min(outputs[4][0][1] * self.v_scale, 1), 0.02)
             angular_velocity = max(min(outputs[4][0][0] * self.w_scale, 1.0), -1.0)
             if linear_velocity+angular_velocity > 1.0 :
                 angular_velocity = 1.0-linear_velocity
