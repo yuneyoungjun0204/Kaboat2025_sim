@@ -91,6 +91,19 @@ class ROSCommunicationManager:
         self.publishers['viz_image'] = self.node.create_publisher(
             Image, '/vrx/visualization', 10
         )
+        # trajectory_viz용 제어 출력값 및 모드 정보
+        self.publishers['control_output'] = self.node.create_publisher(
+            Float64MultiArray, '/vrx/control_output', 10
+        )
+        self.publishers['control_mode'] = self.node.create_publisher(
+            String, '/vrx/control_mode', 10
+        )
+        self.publishers['obstacle_check_area'] = self.node.create_publisher(
+            Float64MultiArray, '/vrx/obstacle_check_area', 10
+        )
+        self.publishers['los_target'] = self.node.create_publisher(
+            Float64MultiArray, '/vrx/los_target', 10
+        )
 
     def publish_thrust_commands(self, left_thrust: float, right_thrust: float):
         """스러스터 명령 발행"""
@@ -139,3 +152,52 @@ class ROSCommunicationManager:
 
         msg.data = data
         self.publishers['detections'].publish(msg)
+
+    def publish_control_output(self, linear_velocity: float, angular_velocity: float):
+        """
+        제어 출력값 발행 (ONNX 모델 또는 직접 제어)
+
+        Args:
+            linear_velocity: 선속도
+            angular_velocity: 각속도
+        """
+        msg = Float64MultiArray()
+        msg.data = [float(linear_velocity), float(angular_velocity)]
+        self.publishers['control_output'].publish(msg)
+
+    def publish_control_mode(self, mode: str):
+        """
+        제어 모드 발행
+
+        Args:
+            mode: 제어 모드 (ONNX_MODEL, DIRECT_CONTROL 등)
+        """
+        msg = String()
+        msg.data = mode
+        self.publishers['control_mode'].publish(msg)
+
+    def publish_obstacle_check_area(self, area_points: list):
+        """
+        장애물 체크 영역 발행
+
+        Args:
+            area_points: 체크 영역 점들 [(x1, y1), (x2, y2), ...]
+        """
+        msg = Float64MultiArray()
+        data = []
+        for point in area_points:
+            data.extend([float(point[0]), float(point[1])])
+        msg.data = data
+        self.publishers['obstacle_check_area'].publish(msg)
+
+    def publish_los_target(self, target_x: float, target_y: float):
+        """
+        LOS 타겟 위치 발행
+
+        Args:
+            target_x: 타겟 X 좌표
+            target_y: 타겟 Y 좌표
+        """
+        msg = Float64MultiArray()
+        msg.data = [float(target_x), float(target_y)]
+        self.publishers['los_target'].publish(msg)

@@ -65,7 +65,7 @@ class VRXONNXControllerV5Refactored(Node):
         
         # 장애물 회피 컨트롤러
         self.avoidance_controller = AvoidanceController(
-            boat_width=1.32,
+            boat_width=1.82,
             boat_height=50.0,
             max_lidar_distance=100.0,
             los_delta=10.0,

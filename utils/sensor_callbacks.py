@@ -50,7 +50,7 @@ class SensorCallbackHandler:
         """GPS 콜백"""
         gps_data = self.sensor_manager.process_gps_data(msg)
         if gps_data is not None:
-            self.agent_position = np.array([gps_data['utm_x'], gps_data['utm_y']], dtype=np.float32)
+            self.agent_position = np.array([gps_data['utm_y'], gps_data['utm_x']], dtype=np.float32)
             if not self.reference_point_set:
                 self.reference_point_set = True
 

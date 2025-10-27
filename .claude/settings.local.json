@@ -1,24 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "mcp__sequential-thinking__sequentialthinking",
       "Read(//home/yuneyoungjun/vrx_ws/src/vrx/Scripts_git/**)",
-      "Bash(python3 apply_fix.py)",
-      "Bash(chmod +x apply_fix.py)",
-      "Bash(./apply_fix.py)",
-      "Bash(cat apply_depth_filter.py)",
-      "Bash(python3 apply_buoy_fix.py)",
-      "Bash(python3 ./apply_buoy_fix.py)",
-      "Bash(chmod +x apply_buoy_fix.py)",
-      "Bash(lsof)",
-      "Bash(python3 fix_all_files.py)",
-      "Bash(chmod +x fix_all_files.py)",
-      "Bash(/usr/bin/python3 fix_all_files.py)",
-      "Bash(python fix_all_files.py)",
-      "Bash(lsof /home/yuneyoungjun/vrx_ws/src/vrx/Scripts_git/utils/mission_strategies_new.py)",
-      "Bash(rm -f utils/mission_strategies.py utils/mission_strategies_new_temp.py)",
-      "Bash(rm -f utils/visualization_system.py.backup utils/visualization_system.py.backup_before_final_fix)",
-      "Bash(rm -f *.md apply_fix.sh)"
+      "Read(//mnt/c/Users/ANSL/Pictures/Screenshots/**)"
     ],
     "deny": [],
     "ask": []

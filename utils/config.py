@@ -22,11 +22,12 @@ class Constants:
     DEFAULT_WAYPOINT_RADIUS = 20.0
 
     # ONNX 모델
+    ONNX_MODEL_PATH = '/home/yuneyoungjun/vrx_ws/src/vrx/Scripts_git/models/correct_IMU/gpu/Ray-23999963.onnx'
     ONNX_MODEL_PATH = '/home/yuneyoungjun/vrx_ws/src/vrx/Scripts_git/models/correct_IMU/gpu/Ray-9558758.onnx'
     ONNX_INPUT_SIZE = 426
     ONNX_V_SCALE = 1.0
     ONNX_W_SCALE = -1.0
-    ONNX_LINEAR_VELOCITY_RANGE = (0.0, 1.0)
+    ONNX_LINEAR_VELOCITY_RANGE = (0.12, 1.0)
     ONNX_ANGULAR_VELOCITY_RANGE = (-1.0, 1.0)
 
     # 장애물 회피 설정

@@ -303,20 +303,23 @@ class VRXMissionController(Node):
         """현재 미션 실행"""
         if mission_type == MissionType.PASS_BETWEEN_BUOYS:
             mission_params = self.param_manager.get_mission_parameters(mission_type)
-            return self.mission_executor.execute_pass_between_buoys(
+            left_thrust, right_thrust = self.mission_executor.execute_pass_between_buoys(
                 self.detected_objects,
                 self.sensor_handler.current_image,
                 self.raw_detections,
                 mission_params,
                 self.get_logger()
             )
+            # 제어 출력값 발행 (속도 계산)
+            self._publish_control_info(left_thrust, right_thrust, "BUOY_MISSION")
+            return left_thrust, right_thrust
 
         elif mission_type == MissionType.CIRCLE_BUOY:
             waypoint_params = self.waypoint_manager.get_current_mission_params()
             mission_params = self.param_manager.get_mission_parameters(
                 mission_type, waypoint_params
             )
-            return self.mission_executor.execute_circle_buoy(
+            left_thrust, right_thrust = self.mission_executor.execute_circle_buoy(
                 self.detected_objects,
                 self.sensor_handler.current_image,
                 self.sensor_handler.agent_heading,
@@ -324,21 +327,81 @@ class VRXMissionController(Node):
                 self.raw_detections,
                 self.get_logger()
             )
+            # 제어 출력값 발행 (속도 계산)
+            self._publish_control_info(left_thrust, right_thrust, "CIRCLE_MISSION")
+            return left_thrust, right_thrust
 
         elif mission_type == MissionType.OBSTACLE_AVOID:
-            return self.mission_executor.execute_obstacle_avoid(
+            return self._execute_obstacle_avoid_with_debug()
+
+        return 0.0, 0.0
+
+    def _execute_obstacle_avoid_with_debug(self) -> Tuple[float, float]:
+        """디버그 정보를 포함한 장애물 회피 미션 실행"""
+        # 웨이포인트 준비
+        waypoints = self.waypoint_manager.waypoints
+        waypoint_index = self.waypoint_manager.get_waypoint_index()
+
+        # 강제 장애물 회피 모드에서는 수동 목표 사용
+        if self.param_manager.is_force_obstacle_avoid() and \
+           self.sensor_handler.manual_target_x is not None and \
+           self.sensor_handler.manual_target_y is not None:
+            manual_waypoint = {
+                'x': self.sensor_handler.manual_target_y,
+                'y': self.sensor_handler.manual_target_x,
+                'mission_type': MissionType.OBSTACLE_AVOID,
+                'radius': 15.0,
+                'params': {}
+            }
+            waypoints = [manual_waypoint]
+            waypoint_index = 0
+
+        # LOS target 계산
+        waypoints_array = [[wp['x'], wp['y']] for wp in waypoints]
+        los_target = self.avoidance_controller.get_los_target(
+            self.sensor_handler.agent_position,
+            waypoints_array,
+            waypoint_index
+        )
+
+        # LOS target 발행
+        self.ros_comm.publish_los_target(los_target[0], los_target[1])
+
+        # 장애물 확인 및 제어 명령 계산
+        use_direct_control, linear_velocity, angular_velocity, check_area_points = \
+            self.avoidance_controller.check_obstacles_and_get_control(
                 self.sensor_handler.agent_position,
+                los_target,
                 self.sensor_handler.agent_heading,
                 self.sensor_handler.lidar_distances,
                 self.sensor_handler.get_lidar_distance_at_angle,
-                self._get_onnx_control,
-                self.param_manager.is_force_obstacle_avoid(),
-                self.sensor_handler.manual_target_x,
-                self.sensor_handler.manual_target_y,
-                self.get_logger()
+                self._get_onnx_control
             )
 
-        return 0.0, 0.0
+        # 장애물 체크 영역 발행 (UTM 좌표로 변환)
+        if len(check_area_points) > 0:
+            area_points = []
+            for i in range(0, len(check_area_points), 2):
+                if i + 1 < len(check_area_points):
+                    area_points.append((check_area_points[i], check_area_points[i + 1]))
+            self.ros_comm.publish_obstacle_check_area(area_points)
+
+        # 제어 모드 발행
+        control_mode = "DIRECT_CONTROL" if use_direct_control else "ONNX_MODEL"
+        self.ros_comm.publish_control_mode(control_mode)
+
+        # 제어 출력값 발행
+        self.ros_comm.publish_control_output(linear_velocity, angular_velocity)
+
+        # 필터 적용
+        filtered_linear, filtered_angular = self.avoidance_controller.apply_filters(
+            linear_velocity, angular_velocity
+        )
+
+        # 스러스터 명령으로 변환
+        left_thrust, right_thrust = self._convert_to_thrust(filtered_linear, filtered_angular)
+
+        return left_thrust, right_thrust
 
     def _get_onnx_control(self) -> Tuple[float, float]:
         """ONNX 제어 래퍼"""
@@ -353,6 +416,33 @@ class VRXMissionController(Node):
             previous_target,
             next_target
         )
+
+    def _convert_to_thrust(self, linear_velocity: float, angular_velocity: float) -> Tuple[float, float]:
+        """속도 명령을 스러스터 명령으로 변환"""
+        thrust_scale = self.param_manager.get_thrust_scale() or Constants.DEFAULT_THRUST_SCALE
+
+        forward_thrust = linear_velocity * thrust_scale
+        turn_thrust = angular_velocity * thrust_scale
+
+        left_thrust = np.clip(forward_thrust + turn_thrust, -2000, 2000)
+        right_thrust = np.clip(forward_thrust - turn_thrust, -2000, 2000)
+
+        return float(left_thrust), float(right_thrust)
+
+    def _publish_control_info(self, left_thrust: float, right_thrust: float, mode: str):
+        """제어 정보 발행 (스러스터 → 속도 역변환)"""
+        thrust_scale = self.param_manager.get_thrust_scale() or Constants.DEFAULT_THRUST_SCALE
+
+        # 스러스터 명령에서 속도 역계산
+        forward_thrust = (left_thrust + right_thrust) / 2.0
+        turn_thrust = (left_thrust - right_thrust) / 2.0
+
+        linear_velocity = forward_thrust / thrust_scale
+        angular_velocity = turn_thrust / thrust_scale
+
+        # 제어 출력값 발행
+        self.ros_comm.publish_control_output(linear_velocity, angular_velocity)
+        self.ros_comm.publish_control_mode(mode)
 
     def _publish_control_commands(self, left_thrust: float, right_thrust: float,
                                  mission_type: MissionType) -> None:
