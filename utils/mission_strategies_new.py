@@ -33,6 +33,27 @@ class BaseMissionStrategy:
 class PassBetweenBuoysMission(BaseMissionStrategy):
     """미션 1: 부표 사이 지나가기"""
 
+    def __init__(self, thrust_scale: float = 1000.0):
+        super().__init__(thrust_scale)
+        # config에서 PID 게인 가져오기
+        from .config import Constants
+        self.pid_controller = PIDController(
+            kp=Constants.PASS_BETWEEN_PID_KP,
+            ki=Constants.PASS_BETWEEN_PID_KI,
+            kd=Constants.PASS_BETWEEN_PID_KD
+        )
+        self.forward_speed = Constants.PASS_BETWEEN_FORWARD_SPEED
+        self.max_steering = Constants.PASS_BETWEEN_MAX_STEERING
+
+    def reset(self):
+        """미션 상태 초기화"""
+        from .config import Constants
+        self.pid_controller = PIDController(
+            kp=Constants.PASS_BETWEEN_PID_KP,
+            ki=Constants.PASS_BETWEEN_PID_KI,
+            kd=Constants.PASS_BETWEEN_PID_KD
+        )
+
     def execute(self, detected_objects: List[Dict], current_image: np.ndarray,
                 logger=None, raw_detections: List[Dict] = None, **kwargs) -> Tuple[float, float]:
         """
@@ -118,21 +139,18 @@ class PassBetweenBuoysMission(BaseMissionStrategy):
             # 오차 계산
             error = midpoint_x - image_center_x
 
-            # 비례 제어
-            steering_gain = 0.003
-            forward_speed = 0.5
-
-            steering = error * steering_gain
-            steering = np.clip(steering, -0.3, 0.3)
+            # PID 제어
+            steering = self.pid_controller.update(error)
+            steering = np.clip(steering, -self.max_steering, self.max_steering)
 
             # 스러스터 명령 계산
-            left_thrust = (forward_speed + steering) * self.thrust_scale
-            right_thrust = (forward_speed - steering) * self.thrust_scale
+            left_thrust = (self.forward_speed + steering) * self.thrust_scale
+            right_thrust = (self.forward_speed - steering) * self.thrust_scale
 
             if logger:
                 data_source = f"R:{red_source}/G:{green_source}"
                 logger.info(
-                    f"Pass Buoys [{data_source}]: midpoint={midpoint_x:.1f}, error={error:.1f}, steering={steering:.3f}"
+                    f"Pass Buoys [PID][{data_source}]: midpoint={midpoint_x:.1f}, error={error:.1f}, steering={steering:.3f}"
                 )
         else:
             # 부표 미탐지 시 천천히 전진

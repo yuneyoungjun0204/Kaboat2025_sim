@@ -35,6 +35,7 @@ class Constants:
     # 미리 정의된 웨이포인트 (x, y, mission_type, radius, params)
     # mission_type: 'PASS_BETWEEN_BUOYS', 'CIRCLE_BUOY', 'WAYPOINT_FOLLOW', 'OBSTACLE_AVOID'
     PREDEFINED_WAYPOINTS = [
+        (25, 5, 'CIRCLE_BUOY', DEFAULT_WAYPOINT_RADIUS, {}),
         (160, 0, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {}),
         (100, 45, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {'rotation_direction': 2, 'circle_radius': 15.0}),
         (80, 45, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {}),
@@ -73,8 +74,10 @@ class Constants:
     # ============================================================================
     # 미션별 PID 게인 설정
     # ============================================================================
-    # PassBetweenBuoys 미션
-    PASS_BETWEEN_STEERING_GAIN = 0.003
+    # PassBetweenBuoys 미션 PID 게인
+    PASS_BETWEEN_PID_KP = 0.003
+    PASS_BETWEEN_PID_KI = 0.0001
+    PASS_BETWEEN_PID_KD = 0.001
     PASS_BETWEEN_FORWARD_SPEED = 0.6
     PASS_BETWEEN_MAX_STEERING = 0.2
     PASS_BETWEEN_MAX_DEPTH_DIFF = 5.0  # 부표 간 최대 깊이 차이 (미터)
