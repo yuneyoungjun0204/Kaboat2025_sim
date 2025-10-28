@@ -9,12 +9,13 @@ import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import LaserScan, NavSatFix, Imu
 from geometry_msgs.msg import Point
-from std_msgs.msg import Float64MultiArray
+from std_msgs.msg import Float64MultiArray, String
 import matplotlib.pyplot as plt
 import numpy as np
 import time
 from collections import deque
 from utils import SensorDataManager
+from utils.config import Constants
 
 class TrajectoryVizNode(Node):
     """VRX 로봇 궤적 시각화 노드"""
@@ -22,108 +23,107 @@ class TrajectoryVizNode(Node):
     def __init__(self):
         super().__init__('trajectory_viz_node')
         
-        # ROS2 서브스크라이버
+        # ROS2 서브스크라이버 (config에서 토픽명 가져오기)
         self.gps_sub = self.create_subscription(
             NavSatFix,
-            '/wamv/sensors/gps/gps/fix',
+            Constants.Topics.GPS_FIX,
             self.gps_callback,
             10
         )
-        
+
         self.imu_sub = self.create_subscription(
             Imu,
-            '/wamv/sensors/imu/imu/data',
+            Constants.Topics.IMU_DATA,
             self.imu_callback,
             10
         )
-        
+
         self.lidar_sub = self.create_subscription(
             LaserScan,
-            '/wamv/sensors/lidars/lidar_wamv_sensor/scan',
+            Constants.Topics.LIDAR_SCAN,
             self.lidar_callback,
             10
         )
-        
+
         # ONNX 모델 제어 출력값 서브스크라이버
         self.control_output_sub = self.create_subscription(
             Float64MultiArray,
-            '/vrx/control_output',
+            Constants.Topics.CONTROL_OUTPUT,
             self.control_output_callback,
             10
         )
-        
+
         # v5 모드 정보 서브스크라이버
-        from std_msgs.msg import String
         self.mode_sub = self.create_subscription(
             String,
-            '/vrx/current_mode',
+            Constants.Topics.CURRENT_MODE,
             self.mode_callback,
             10
         )
-        
-        # goal_check 영역 정보 서브스크라이버 (main_onnx_v5.py에서 받음)
+
+        # goal_check 영역 정보 서브스크라이버
         self.goal_check_sub = self.create_subscription(
             Float64MultiArray,
-            '/vrx/goal_check_areas',
+            Constants.Topics.GOAL_CHECK_AREAS,
             self.goal_check_callback,
             10
         )
-        
-        # 제어 모드 정보 서브스크라이버 (main_onnx_v5_final.py에서 받음)
+
+        # 제어 모드 정보 서브스크라이버
         self.control_mode_sub = self.create_subscription(
             String,
-            '/vrx/control_mode',
+            Constants.Topics.CONTROL_MODE,
             self.control_mode_callback,
             10
         )
-        
-        # 장애물 체크 영역 정보 서브스크라이버 (main_onnx_v5_final.py에서 받음)
+
+        # 장애물 체크 영역 정보 서브스크라이버
         self.obstacle_check_area_sub = self.create_subscription(
             Float64MultiArray,
-            '/vrx/obstacle_check_area',
+            Constants.Topics.OBSTACLE_CHECK_AREA,
             self.obstacle_check_area_callback,
             10
         )
-        
-        # LOS target 정보 서브스크라이버 (main_onnx_v5_final.py에서 받음)
+
+        # LOS target 정보 서브스크라이버
         self.los_target_sub = self.create_subscription(
             Float64MultiArray,
-            '/vrx/los_target',
+            Constants.Topics.LOS_TARGET,
             self.los_target_callback,
             10
         )
         
         # 센서 데이터 관리자 초기화
         self.sensor_manager = SensorDataManager()
-        
-        # 히스토리
-        self.position_history = deque(maxlen=2000)
-        self.heading_history = deque(maxlen=2000)
-        
-        # 축 범위 고정을 위한 변수
+
+        # 히스토리 (config에서 길이 가져오기)
+        self.position_history = deque(maxlen=Constants.Visualization.POSITION_HISTORY_MAXLEN)
+        self.heading_history = deque(maxlen=Constants.Visualization.HEADING_HISTORY_MAXLEN)
+
+        # 축 범위 고정을 위한 변수 (config에서 가져오기)
         self.axis_initialized = False
         self.center_x = 0.0
         self.center_y = 0.0
-        self.axis_margin=200.0
-        self.axis_margin_y = 180.0  # 가로 세로 100씩 여분
-        self.axis_margin_x = 60.0  # 가로 세로 100씩 여분
-        
+        self.axis_margin = Constants.Visualization.AXIS_MARGIN
+        self.axis_margin_y = Constants.Visualization.AXIS_MARGIN_Y
+        self.axis_margin_x = Constants.Visualization.AXIS_MARGIN_X
+
         # 헤딩 보정 (필요시 조정)
         self.heading_offset = 0.0  # 헤딩 오프셋 (도 단위)
-        
+
         # matplotlib 설정
         self.setup_matplotlib()
-        
-        # 웨이포인트 퍼블리셔 (클릭한 점을 v3로 전송)
-        self.waypoint_pub = self.create_publisher(Point, '/vrx/waypoint', 10)
+
+        # 웨이포인트 퍼블리셔 (config에서 토픽명 가져오기)
+        self.waypoint_pub = self.create_publisher(Point, Constants.Topics.WAYPOINT, 10)
         
         # 웨이포인트 관련 변수
         self.waypoints = []  # 클릭한 웨이포인트들 저장
         self.current_waypoint = None
-        
-        # 배 폭 및 장애물 회피 설정
-        self.boat_width = 5.0  # 배 폭 (미터)
-        self.safety_margin = 2.0  # 안전 여유 (미터)
+
+        # 배 폭 및 안전 여유 (config에서 가져오기)
+        self.boat_width = Constants.Visualization.BOAT_WIDTH
+        self.safety_margin = Constants.Visualization.SAFETY_MARGIN
         self.total_width = self.boat_width + self.safety_margin  # 총 폭
         
         # 배 폭 경로 시각화용 변수
@@ -156,9 +156,9 @@ class TrajectoryVizNode(Node):
         
         # LOS target 관련 변수
         self.current_los_target = None  # 현재 LOS target 위치
-        
-        # 타이머로 주기적 업데이트
-        self.timer = self.create_timer(0.1, self.update_plot)  # 10Hz 업데이트
+
+        # 타이머로 주기적 업데이트 (config에서 주기 가져오기)
+        self.timer = self.create_timer(Constants.Visualization.UPDATE_RATE, self.update_plot)
         
         self.get_logger().info('🗺️ VRX 로봇 궤적 시각화 시작!')
         self.get_logger().info('🖱️  궤적 플롯에서 클릭하여 웨이포인트를 설정하세요!')
@@ -217,8 +217,8 @@ class TrajectoryVizNode(Node):
     
     def setup_matplotlib(self):
         """matplotlib 설정"""
-        # Figure 생성 (2개 subplot + 트랙바)
-        self.fig = plt.figure(figsize=(18, 10))
+        # Figure 생성 (config에서 크기 가져오기)
+        self.fig = plt.figure(figsize=Constants.Visualization.FIGURE_SIZE)
         
         # 서브플롯 레이아웃 설정
         gs = self.fig.add_gridspec(2, 3, width_ratios=[2, 2, 1], height_ratios=[4, 1])
@@ -500,7 +500,7 @@ class TrajectoryVizNode(Node):
                 # 헤딩 화살표 업데이트
                 if len(self.heading_history) > 0:
                     current_heading = self.heading_history[-1]
-                    arrow_length = 10.0  # 화살표 길이
+                    arrow_length = Constants.Visualization.HEADING_ARROW_LENGTH  # config에서 가져오기
                     
                     # 헤딩 방향 계산 (UTM 좌표계 기준)
                     # UTM 좌표계: X=Easting(동서), Y=Northing(남북)
@@ -535,9 +535,9 @@ class TrajectoryVizNode(Node):
                     # 현재 IMU heading에 angular_angle을 더함
                     target_heading = current_heading + angular_angle
                     target_heading_rad = np.radians(target_heading)
-                    
-                    # 목표 heading 화살표 길이 (헤딩 화살표보다 길게)
-                    target_arrow_length = 25.0  # 길이 조정
+
+                    # 목표 heading 화살표 길이 (config에서 가져오기)
+                    target_arrow_length = Constants.Visualization.TARGET_HEADING_ARROW_LENGTH
                     target_dx = target_arrow_length * np.cos(target_heading_rad)
                     target_dy = target_arrow_length * np.sin(target_heading_rad)
                     
@@ -573,9 +573,9 @@ class TrajectoryVizNode(Node):
                 current_heading = self.heading_history[-1]
                 target_heading = current_heading + angular_angle
                 target_heading_rad = np.radians(target_heading)
-                
-                # 목표 heading 화살표 길이 (LiDAR 창용, 길게)
-                target_arrow_length = 30.0  # LiDAR 창에서 더 잘 보이도록 길게
+
+                # 목표 heading 화살표 길이 (config에서 가져오기)
+                target_arrow_length = Constants.Visualization.LIDAR_TARGET_HEADING_ARROW_LENGTH
                 target_dx = -target_arrow_length * np.cos(target_heading_rad)
                 target_dy = target_arrow_length * np.sin(target_heading_rad)
                 
@@ -588,8 +588,8 @@ class TrajectoryVizNode(Node):
                     fc='blue', ec='blue', alpha=0.8, linewidth=3
                 )
             
-            # 축 범위 고정 (원형좌표계이므로 고정 범위 사용)
-            max_range = 50.0  # LiDAR 최대 범위
+            # 축 범위 고정 (config에서 최대 범위 가져오기)
+            max_range = Constants.Visualization.LIDAR_MAX_RANGE
             self.ax2.set_xlim(-max_range, max_range)
             self.ax2.set_ylim(-max_range, max_range)
     

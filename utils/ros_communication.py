@@ -8,6 +8,7 @@ from rclpy.node import Node
 from sensor_msgs.msg import Image, LaserScan, NavSatFix, Imu
 from geometry_msgs.msg import Point
 from std_msgs.msg import Float64, Float64MultiArray, String
+from .config import Constants
 
 
 class ROSCommunicationManager:
@@ -33,7 +34,7 @@ class ROSCommunicationManager:
         if 'image' in callbacks:
             self.subscribers['image'] = self.node.create_subscription(
                 Image,
-                '/wamv/sensors/cameras/front_left_camera_sensor/image_raw',
+                Constants.Topics.CAMERA_IMAGE,
                 callbacks['image'],
                 10
             )
@@ -42,7 +43,7 @@ class ROSCommunicationManager:
         if 'lidar' in callbacks:
             self.subscribers['lidar'] = self.node.create_subscription(
                 LaserScan,
-                '/wamv/sensors/lidars/lidar_wamv_sensor/scan',
+                Constants.Topics.LIDAR_SCAN,
                 callbacks['lidar'],
                 10
             )
@@ -51,7 +52,7 @@ class ROSCommunicationManager:
         if 'gps' in callbacks:
             self.subscribers['gps'] = self.node.create_subscription(
                 NavSatFix,
-                '/wamv/sensors/gps/gps/fix',
+                Constants.Topics.GPS_FIX,
                 callbacks['gps'],
                 10
             )
@@ -60,7 +61,7 @@ class ROSCommunicationManager:
         if 'imu' in callbacks:
             self.subscribers['imu'] = self.node.create_subscription(
                 Imu,
-                '/wamv/sensors/imu/imu/data',
+                Constants.Topics.IMU_DATA,
                 callbacks['imu'],
                 10
             )
@@ -69,7 +70,7 @@ class ROSCommunicationManager:
         if 'waypoint' in callbacks:
             self.subscribers['waypoint'] = self.node.create_subscription(
                 Point,
-                '/vrx/waypoint',
+                Constants.Topics.WAYPOINT,
                 callbacks['waypoint'],
                 10
             )
@@ -77,32 +78,32 @@ class ROSCommunicationManager:
     def setup_publishers(self):
         """ROS2 발행자 설정"""
         self.publishers['left_thrust'] = self.node.create_publisher(
-            Float64, '/wamv/thrusters/left/thrust', 10
+            Float64, Constants.Topics.LEFT_THRUST, 10
         )
         self.publishers['right_thrust'] = self.node.create_publisher(
-            Float64, '/wamv/thrusters/right/thrust', 10
+            Float64, Constants.Topics.RIGHT_THRUST, 10
         )
         self.publishers['mission_status'] = self.node.create_publisher(
-            String, '/vrx/mission_status', 10
+            String, Constants.Topics.MISSION_STATUS, 10
         )
         self.publishers['detections'] = self.node.create_publisher(
-            Float64MultiArray, '/vrx/detections', 10
+            Float64MultiArray, Constants.Topics.DETECTIONS, 10
         )
         self.publishers['viz_image'] = self.node.create_publisher(
-            Image, '/vrx/visualization', 10
+            Image, Constants.Topics.VISUALIZATION, 10
         )
         # trajectory_viz용 제어 출력값 및 모드 정보
         self.publishers['control_output'] = self.node.create_publisher(
-            Float64MultiArray, '/vrx/control_output', 10
+            Float64MultiArray, Constants.Topics.CONTROL_OUTPUT, 10
         )
         self.publishers['control_mode'] = self.node.create_publisher(
-            String, '/vrx/control_mode', 10
+            String, Constants.Topics.CONTROL_MODE, 10
         )
         self.publishers['obstacle_check_area'] = self.node.create_publisher(
-            Float64MultiArray, '/vrx/obstacle_check_area', 10
+            Float64MultiArray, Constants.Topics.OBSTACLE_CHECK_AREA, 10
         )
         self.publishers['los_target'] = self.node.create_publisher(
-            Float64MultiArray, '/vrx/los_target', 10
+            Float64MultiArray, Constants.Topics.LOS_TARGET, 10
         )
 
     def publish_thrust_commands(self, left_thrust: float, right_thrust: float):

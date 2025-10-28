@@ -102,7 +102,7 @@ class ONNXController:
         return np.array(observation_values, dtype=np.float32)
 
     def _parse_output(self, outputs: List) -> Tuple[float, float]:
-        """ONNX 모델 출력 파싱"""
+        """ONNX 모델 출력 파싱 (differential drive 제약 조건 포함)"""
         if len(outputs) > 2 and outputs[2] is not None:
             linear_velocity = np.clip(
                 outputs[4][0][1] * Constants.ONNX_V_SCALE,
@@ -114,8 +114,40 @@ class ONNXController:
                 Constants.ONNX_ANGULAR_VELOCITY_RANGE[0],
                 Constants.ONNX_ANGULAR_VELOCITY_RANGE[1]
             )
+
+            # Differential drive 물리적 제약 조건 적용
+            # Left thrust = linear + angular, Right thrust = linear - angular
+            # 각 thrust는 [-1, 1] 범위를 가져야 함
+            if linear_velocity + angular_velocity > 1.0:
+                angular_velocity = 1.0 - linear_velocity
+            elif linear_velocity + angular_velocity < -1.0:
+                angular_velocity = -linear_velocity - 1.0
+
+            if linear_velocity - angular_velocity > 1.0:
+                angular_velocity = linear_velocity - 1.0
+            elif linear_velocity - angular_velocity < -1.0:
+                angular_velocity = linear_velocity + 1.0
+
         else:
             linear_velocity = 0.0
             angular_velocity = 0.0
 
+        # ⚠️ 주의: 이전 입력은 필터 적용 후에 업데이트되어야 함
+        # 여기서 업데이트하지 않고, 외부에서 update_previous_inputs() 호출
+        # (main_onnx_v5 방식과 일치)
+
         return linear_velocity, angular_velocity
+
+    def update_previous_inputs(self, angular_velocity: float, linear_velocity: float) -> None:
+        """
+        이전 입력 업데이트 (필터 적용 후 호출)
+
+        Args:
+            angular_velocity: 필터 적용된 각속도
+            linear_velocity: 필터 적용된 선속도
+
+        Note:
+            main_onnx_v5와 일관성을 위해 필터 적용 후 값을 저장
+        """
+        self.previous_moment_input = angular_velocity
+        self.previous_force_input = linear_velocity

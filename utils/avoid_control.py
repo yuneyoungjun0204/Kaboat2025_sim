@@ -212,8 +212,8 @@ class ObstacleDetector:
 
             # 체크 영역 점 계산 (UTM 좌표)
             world_angle = current_psi + np.radians(lidar_angle_deg)
-            check_x = current_pos[0] + search_distance * np.sin(world_angle)
-            check_y = current_pos[1] + search_distance * np.cos(world_angle)
+            check_y = current_pos[0] + search_distance * np.sin(world_angle)
+            check_x = current_pos[1] + search_distance * np.cos(world_angle)
             check_area_points.extend([check_x, check_y])
 
             # LiDAR 거리 조회

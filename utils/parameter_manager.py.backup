@@ -6,7 +6,6 @@
 from typing import Dict, Any, Optional
 from utils.detection_system import MissionType
 from utils.visualization_system import VisualizationSystem
-from utils.config import Constants
 
 
 class ParameterManager:
@@ -75,36 +74,6 @@ class ParameterManager:
 
         return {}
 
-    def get_force_mission_mode(self) -> int:
-        """
-        강제 미션 모드 값 반환
-
-        Returns:
-            0: 일반 모드 (웨이포인트 기반)
-            1: 강제 장애물 회피 모드
-            2: 강제 부표 사이 지나기 미션
-            3: 강제 부표 한바퀴 돌기 미션
-        """
-        return self._cached_params.get('force_mission_mode', Constants.ForceMissionMode.NORMAL)
-
     def is_force_obstacle_avoid(self) -> bool:
-        """강제 장애물 회피 모드 확인 (하위 호환성)"""
-        return self.get_force_mission_mode() == Constants.ForceMissionMode.OBSTACLE_AVOID
-
-    def get_forced_mission_type(self) -> Optional[MissionType]:
-        """
-        트랙바로 설정된 강제 미션 타입 반환
-
-        Returns:
-            강제 미션 타입 또는 None (일반 모드일 때)
-        """
-        force_mode = self.get_force_mission_mode()
-
-        if force_mode == Constants.ForceMissionMode.OBSTACLE_AVOID:
-            return MissionType.OBSTACLE_AVOID
-        elif force_mode == Constants.ForceMissionMode.PASS_BETWEEN_BUOYS:
-            return MissionType.PASS_BETWEEN_BUOYS
-        elif force_mode == Constants.ForceMissionMode.CIRCLE_BUOY:
-            return MissionType.CIRCLE_BUOY
-        else:
-            return None
+        """강제 장애물 회피 모드 확인"""
+        return self._cached_params.get('force_obstacle_avoid', False)

@@ -58,6 +58,10 @@ class VRXMissionController(Node):
         # 강제 장애물 회피 모드 상태
         self.original_mission_type = None
 
+        # 성능 최적화 카운터
+        self.loop_counter = 0
+        self.param_update_interval = 10  # 파라미터는 10번에 1번만 업데이트
+
         self.get_logger().info("✓ 초기화 완료!")
         self.get_logger().info("=" * 80)
 
@@ -165,8 +169,8 @@ class VRXMissionController(Node):
         """클릭한 위치에서 웨이포인트 추가"""
         mission_sequence = [
             MissionType.OBSTACLE_AVOID,
-            MissionType.CIRCLE_BUOY,
             MissionType.OBSTACLE_AVOID,
+            MissionType.PASS_BETWEEN_BUOYS,
             MissionType.OBSTACLE_AVOID
         ]
 
@@ -186,13 +190,9 @@ class VRXMissionController(Node):
         self.get_logger().info(f"웨이포인트 추가: {mission_type.name} at ({msg.y:.1f}, {msg.x:.1f})")
 
     def main_control_loop(self) -> None:
-        """메인 제어 루프"""
+        """메인 제어 루프 (최적화됨)"""
         try:
-            # 파라미터 업데이트
-            self._update_system_parameters()
-
-            # 웨이포인트 전환 확인
-            self._check_waypoint_transition()
+            self.loop_counter += 1
 
             # 현재 미션 확인
             current_mission_type = self.waypoint_manager.get_current_mission_type()
@@ -200,60 +200,96 @@ class VRXMissionController(Node):
                 self.ros_comm.publish_thrust_commands(0.0, 0.0)
                 return
 
-            # 강제 장애물 회피 모드 처리
-            effective_mission_type = self._handle_force_obstacle_mode(current_mission_type)
+            # 강제 미션 모드 처리 (트랙바로 제어)
+            effective_mission_type = self._handle_force_mission_mode(current_mission_type)
 
-            # 객체 탐지 및 추적
-            self._perform_detection_and_tracking(effective_mission_type)
+            # 장애물 회피 모드 전용 최적화 경로
+            is_obstacle_avoid = (effective_mission_type == MissionType.OBSTACLE_AVOID)
 
-            # 시각화
-            self._visualize(effective_mission_type)
+            # 파라미터 업데이트 (주기적으로만, 장애물 회피 시 간소화)
+            if self.loop_counter % self.param_update_interval == 0:
+                self._update_system_parameters(is_obstacle_avoid)
+
+            # 웨이포인트 전환 확인 (장애물 회피 모드에서는 스킵)
+            if not is_obstacle_avoid:
+                self._check_waypoint_transition()
+
+            # 객체 탐지 및 추적 (장애물 회피에서는 이미 스킵됨)
+            if not is_obstacle_avoid:
+                self._perform_detection_and_tracking(effective_mission_type)
+
+            # 시각화 (장애물 회피에서는 최소화)
+            if not is_obstacle_avoid:
+                self._visualize(effective_mission_type)
 
             # 미션 실행
             left_thrust, right_thrust = self._execute_current_mission(effective_mission_type)
 
-            # 명령 발행
-            self._publish_control_commands(left_thrust, right_thrust, effective_mission_type)
+            # 명령 발행 (장애물 회피 시 간소화)
+            self._publish_control_commands(left_thrust, right_thrust, effective_mission_type, is_obstacle_avoid)
 
         except Exception as e:
             self.get_logger().error(f"제어 루프 오류: {e}")
             self.ros_comm.publish_thrust_commands(0.0, 0.0)
 
-    def _update_system_parameters(self) -> None:
-        """시스템 파라미터 업데이트"""
+    def _update_system_parameters(self, is_obstacle_avoid: bool = False) -> None:
+        """
+        시스템 파라미터 업데이트 (최적화됨)
+
+        Args:
+            is_obstacle_avoid: 장애물 회피 모드 여부
+        """
         # 모든 파라미터 업데이트
         self.param_manager.update_all_parameters()
 
-        # DetectionSystem 파라미터 업데이트
+        # MissionManager thrust_scale 업데이트 (항상 필요)
+        thrust_scale = self.param_manager.get_thrust_scale()
+        if thrust_scale is not None:
+            self.mission_manager.update_thrust_scale(thrust_scale)
+
+        # 장애물 회피 모드에서는 아래 업데이트 스킵 (성능 최적화)
+        if is_obstacle_avoid:
+            return
+
+        # DetectionSystem 파라미터 업데이트 (부표 미션에만 필요)
         detection_params = self.param_manager.get_detection_parameters()
         self.detection_system.update_parameters(
             **{k: v for k, v in detection_params.items() if v is not None}
         )
 
-        # MissionManager thrust_scale 업데이트
-        thrust_scale = self.param_manager.get_thrust_scale()
-        if thrust_scale is not None:
-            self.mission_manager.update_thrust_scale(thrust_scale)
-
-        # Tracker 파라미터 업데이트
+        # Tracker 파라미터 업데이트 (부표 미션에만 필요)
         tracker_params = self.param_manager.get_tracker_parameters()
         if tracker_params.get('max_coast_frames') is not None:
             self.tracker.max_coast_frames = tracker_params['max_coast_frames']
         if tracker_params.get('gate_threshold') is not None:
             self.tracker.gate_threshold = tracker_params['gate_threshold']
 
-    def _handle_force_obstacle_mode(self, current_mission_type: MissionType) -> MissionType:
-        """강제 장애물 회피 모드 처리"""
-        force_obstacle_avoid = self.param_manager.is_force_obstacle_avoid()
+    def _handle_force_mission_mode(self, current_mission_type: MissionType) -> MissionType:
+        """
+        강제 미션 모드 처리 (최적화됨)
 
-        if force_obstacle_avoid:
+        트랙바 값:
+        - 0: 일반 모드 (웨이포인트 기반)
+        - 1: 강제 장애물 회피 모드
+        - 2: 강제 부표 사이 지나기 미션
+        - 3: 강제 부표 한바퀴 돌기 미션
+        """
+        forced_mission_type = self.param_manager.get_forced_mission_type()
+
+        if forced_mission_type is not None:
+            # 강제 모드 진입 (로그는 한 번만)
             if self.original_mission_type is None:
                 self.original_mission_type = current_mission_type
-                self.get_logger().info("🚨 강제 장애물 회피 모드 진입!")
-            return MissionType.OBSTACLE_AVOID
+                self.get_logger().info(f"🚨 강제 {forced_mission_type.name} 모드 진입!")
+            elif self.original_mission_type != forced_mission_type:
+                # 다른 강제 모드로 전환 (로그는 한 번만)
+                self.get_logger().info(f"🔄 강제 모드 전환: {forced_mission_type.name}")
+                self.original_mission_type = forced_mission_type
+            return forced_mission_type
 
         elif self.original_mission_type is not None:
-            self.get_logger().info(f"✅ 강제 장애물 회피 모드 해제 -> {self.original_mission_type.name} 복귀")
+            # 강제 모드 해제 (로그는 한 번만)
+            self.get_logger().info(f"✅ 강제 모드 해제 -> {self.original_mission_type.name} 복귀")
             self.original_mission_type = None
 
         return current_mission_type
@@ -398,6 +434,9 @@ class VRXMissionController(Node):
             linear_velocity, angular_velocity
         )
 
+        # ⭐ 필터 적용 후 이전 입력 업데이트 (main_onnx_v5 방식)
+        self.onnx_controller.update_previous_inputs(filtered_angular, filtered_linear)
+
         # 스러스터 명령으로 변환
         left_thrust, right_thrust = self._convert_to_thrust(filtered_linear, filtered_angular)
 
@@ -412,7 +451,7 @@ class VRXMissionController(Node):
             self.sensor_handler.agent_heading,
             self.sensor_handler.angular_velocity_y,
             self.sensor_handler.agent_position,
-            current_target,
+            [current_target[1], current_target[0]],
             previous_target,
             next_target
         )
@@ -445,15 +484,32 @@ class VRXMissionController(Node):
         self.ros_comm.publish_control_mode(mode)
 
     def _publish_control_commands(self, left_thrust: float, right_thrust: float,
-                                 mission_type: MissionType) -> None:
-        """제어 명령 발행"""
+                                 mission_type: MissionType, is_obstacle_avoid: bool = False) -> None:
+        """
+        제어 명령 발행 (최적화됨)
+
+        Args:
+            is_obstacle_avoid: 장애물 회피 모드 여부
+        """
+        # 스러스터 명령 발행 (항상 필요)
         self.ros_comm.publish_thrust_commands(left_thrust, right_thrust)
-        self.ros_comm.publish_mission_status(
-            mission_type.name,
-            self.waypoint_manager.get_waypoint_index(),
-            self.waypoint_manager.get_total_waypoints()
-        )
-        self.ros_comm.publish_detections(self.detected_objects)
+
+        # 장애물 회피 모드에서는 최소한의 정보만 발행
+        if is_obstacle_avoid:
+            # 미션 상태만 발행 (trajectory_viz를 위해)
+            self.ros_comm.publish_mission_status(
+                mission_type.name,
+                self.waypoint_manager.get_waypoint_index(),
+                self.waypoint_manager.get_total_waypoints()
+            )
+        else:
+            # 부표 미션에서는 모든 정보 발행
+            self.ros_comm.publish_mission_status(
+                mission_type.name,
+                self.waypoint_manager.get_waypoint_index(),
+                self.waypoint_manager.get_total_waypoints()
+            )
+            self.ros_comm.publish_detections(self.detected_objects)
 
     def _visualize(self, mission_type: MissionType) -> None:
         """시각화"""

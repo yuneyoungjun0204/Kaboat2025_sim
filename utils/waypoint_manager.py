@@ -8,6 +8,7 @@
 import numpy as np
 from typing import List, Dict, Optional
 from .detection_system import MissionType
+from .config import Constants
 
 
 class WaypointManager:
@@ -18,7 +19,7 @@ class WaypointManager:
         self.current_waypoint_index = 0
 
     def add_waypoint(self, x: float, y: float, mission_type: MissionType,
-                    radius: float = 20.0, params: Optional[Dict] = None):
+                    radius: float = None, params: Optional[Dict] = None):
         """
         웨이포인트 추가
 
@@ -26,29 +27,32 @@ class WaypointManager:
             x: X 좌표
             y: Y 좌표
             mission_type: 미션 타입
-            radius: 도달 판정 반경 (미터)
+            radius: 도달 판정 반경 (미터), None이면 기본값 사용
             params: 미션별 파라미터
         """
         waypoint = {
             'x': x,
             'y': y,
             'mission_type': mission_type,
-            'radius': radius,
+            'radius': radius if radius is not None else Constants.DEFAULT_WAYPOINT_RADIUS,
             'params': params if params else {}
         }
         self.waypoints.append(waypoint)
 
     def setup_predefined_waypoints(self):
-        """미리 정의된 웨이포인트 설정"""
-        predefined_waypoints = [
-            (40, 80, MissionType.PASS_BETWEEN_BUOYS, 20.0, {}),
-            (42, 115, MissionType.CIRCLE_BUOY, 20.0, {'rotation_direction': 2, 'circle_radius': 15.0}),
-            (0, 165, MissionType.WAYPOINT_FOLLOW, 20.0, {}),
-            (0, 0, MissionType.OBSTACLE_AVOID, 20.0, {})
-        ]
+        """미리 정의된 웨이포인트 설정 (config에서 가져오기)"""
+        # mission_type 문자열을 MissionType enum으로 변환하는 매핑
+        mission_type_map = {
+            'PASS_BETWEEN_BUOYS': MissionType.PASS_BETWEEN_BUOYS,
+            'CIRCLE_BUOY': MissionType.CIRCLE_BUOY,
+            'WAYPOINT_FOLLOW': MissionType.WAYPOINT_FOLLOW,
+            'OBSTACLE_AVOID': MissionType.OBSTACLE_AVOID
+        }
 
-        for x, y, mission_type, radius, params in predefined_waypoints:
-            self.add_waypoint(x, y, mission_type, radius, params)
+        for x, y, mission_type_str, radius, params in Constants.PREDEFINED_WAYPOINTS:
+            mission_type = mission_type_map.get(mission_type_str)
+            if mission_type:
+                self.add_waypoint(x, y, mission_type, radius, params)
 
     def check_waypoint_reached(self, agent_position: np.ndarray) -> Optional[Dict]:
         """

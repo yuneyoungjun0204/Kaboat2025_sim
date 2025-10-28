@@ -110,9 +110,9 @@ class VisualizationSystem:
         cv2.createTrackbar('Pass: Max Depth Diff x10', 'Parameters',
                           10, 200, self._dummy_callback)  # 기본값 5.0m (50/10)
 
-        # 강제 장애물 회피 모드 트랙바 (0=자동, 1=강제 ON)
-        cv2.createTrackbar('Force Obstacle Avoid', 'Parameters',
-                          0, 1, self._dummy_callback)
+        # 강제 미션 모드 트랙바 (0=일반, 1=장애물회피, 2=부표사이지나기, 3=부표한바퀴)
+        cv2.createTrackbar('Force Mission Mode', 'Parameters',
+                          0, 3, self._dummy_callback)
 
     def _dummy_callback(self, val):
         """트랙바 콜백 (빈 함수)"""
@@ -153,8 +153,8 @@ class VisualizationSystem:
         # 부표 사이 통과 미션 파라미터
         pass_max_depth_diff = cv2.getTrackbarPos('Pass: Max Depth Diff x10', 'Parameters') / 10.0
 
-        # 강제 장애물 회피 모드
-        force_obstacle_avoid = cv2.getTrackbarPos('Force Obstacle Avoid', 'Parameters')
+        # 강제 미션 모드 (0=일반, 1=장애물회피, 2=부표사이지나기, 3=부표한바퀴)
+        force_mission_mode = cv2.getTrackbarPos('Force Mission Mode', 'Parameters')
 
         return {
             'detection_threshold': self.detection_threshold,
@@ -175,7 +175,9 @@ class VisualizationSystem:
             'circle_tx_min_x': circle_tx_min_x,
             'circle_tx_max_x': circle_tx_max_x,
             'pass_max_depth_diff': pass_max_depth_diff,
-            'force_obstacle_avoid': bool(force_obstacle_avoid)
+            'force_mission_mode': force_mission_mode,
+            # 하위 호환성을 위해 유지
+            'force_obstacle_avoid': bool(force_mission_mode == 1)
         }
 
     def visualize_depth_map(self, depth_map: np.ndarray, mission_name: str):
