@@ -22,198 +22,108 @@ class TrajectoryVizNode(Node):
     
     def __init__(self):
         super().__init__('trajectory_viz_node')
-        
-        # ROS2 서브스크라이버 (config에서 토픽명 가져오기)
-        self.gps_sub = self.create_subscription(
-            NavSatFix,
-            Constants.Topics.GPS_FIX,
-            self.gps_callback,
-            10
-        )
 
-        self.imu_sub = self.create_subscription(
-            Imu,
-            Constants.Topics.IMU_DATA,
-            self.imu_callback,
-            10
-        )
-
-        self.lidar_sub = self.create_subscription(
-            LaserScan,
-            Constants.Topics.LIDAR_SCAN,
-            self.lidar_callback,
-            10
-        )
-
-        # ONNX 모델 제어 출력값 서브스크라이버
-        self.control_output_sub = self.create_subscription(
-            Float64MultiArray,
-            Constants.Topics.CONTROL_OUTPUT,
-            self.control_output_callback,
-            10
-        )
-
-        # v5 모드 정보 서브스크라이버
-        self.mode_sub = self.create_subscription(
-            String,
-            Constants.Topics.CURRENT_MODE,
-            self.mode_callback,
-            10
-        )
-
-        # goal_check 영역 정보 서브스크라이버
-        self.goal_check_sub = self.create_subscription(
-            Float64MultiArray,
-            Constants.Topics.GOAL_CHECK_AREAS,
-            self.goal_check_callback,
-            10
-        )
-
-        # 제어 모드 정보 서브스크라이버
-        self.control_mode_sub = self.create_subscription(
-            String,
-            Constants.Topics.CONTROL_MODE,
-            self.control_mode_callback,
-            10
-        )
-
-        # 장애물 체크 영역 정보 서브스크라이버
-        self.obstacle_check_area_sub = self.create_subscription(
-            Float64MultiArray,
-            Constants.Topics.OBSTACLE_CHECK_AREA,
-            self.obstacle_check_area_callback,
-            10
-        )
-
-        # LOS target 정보 서브스크라이버
-        self.los_target_sub = self.create_subscription(
-            Float64MultiArray,
-            Constants.Topics.LOS_TARGET,
-            self.los_target_callback,
-            10
-        )
-        
-        # 센서 데이터 관리자 초기화
-        self.sensor_manager = SensorDataManager()
-
-        # 히스토리 (config에서 길이 가져오기)
-        self.position_history = deque(maxlen=Constants.Visualization.POSITION_HISTORY_MAXLEN)
-        self.heading_history = deque(maxlen=Constants.Visualization.HEADING_HISTORY_MAXLEN)
-
-        # 축 범위 고정을 위한 변수 (config에서 가져오기)
-        self.axis_initialized = False
-        self.center_x = 0.0
-        self.center_y = 0.0
-        self.axis_margin = Constants.Visualization.AXIS_MARGIN
-        self.axis_margin_y = Constants.Visualization.AXIS_MARGIN_Y
-        self.axis_margin_x = Constants.Visualization.AXIS_MARGIN_X
-
-        # 헤딩 보정 (필요시 조정)
-        self.heading_offset = 0.0  # 헤딩 오프셋 (도 단위)
-
-        # matplotlib 설정
+        self._setup_subscribers()
+        self._initialize_variables()
         self.setup_matplotlib()
 
-        # 웨이포인트 퍼블리셔 (config에서 토픽명 가져오기)
         self.waypoint_pub = self.create_publisher(Point, Constants.Topics.WAYPOINT, 10)
-        
-        # 웨이포인트 관련 변수
-        self.waypoints = []  # 클릭한 웨이포인트들 저장
-        self.current_waypoint = None
-
-        # 배 폭 및 안전 여유 (config에서 가져오기)
-        self.boat_width = Constants.Visualization.BOAT_WIDTH
-        self.safety_margin = Constants.Visualization.SAFETY_MARGIN
-        self.total_width = self.boat_width + self.safety_margin  # 총 폭
-        
-        # 배 폭 경로 시각화용 변수
-        self.path_width_points = []  # 배 폭 경로 점들
-        self.path_check_points = []  # 경로 체크 포인트들
-        
-        # 현재 네모 영역 추적용 변수
-        self.current_path_area = None  # 현재 네모 영역 (Polygon 객체)
-        self.current_path_lines = []  # 현재 경로 라인들
-        
-        # goal_check 영역 시각화용 변수
-        self.goal_check_areas = []  # goal_check에서 체크하는 영역들
-        self.goal_check_lines = []  # goal_check 경계선들
-        
-        # ONNX 모델 제어 출력값 저장
-        self.linear_velocity = 0.0
-        self.angular_velocity = 0.0
-        
-        # v5 모드 표시용 변수
-        self.current_mode = "UNKNOWN"  # 현재 모드 (ONNX/DIRECT/UNKNOWN)
-        
-        # goal_check 영역 정보 저장용 변수
-        self.current_goal_check_areas = []  # 현재 goal_check 영역들
-        
-        # 제어 모드 관련 변수
-        self.current_control_mode = "UNKNOWN"  # 현재 제어 모드 (DIRECT_CONTROL/ONNX_MODEL/UNKNOWN)
-        
-        # 장애물 체크 영역 관련 변수
-        self.current_obstacle_check_area = []  # 현재 장애물 체크 영역 점들
-        
-        # LOS target 관련 변수
-        self.current_los_target = None  # 현재 LOS target 위치
-
-        # 타이머로 주기적 업데이트 (config에서 주기 가져오기)
         self.timer = self.create_timer(Constants.Visualization.UPDATE_RATE, self.update_plot)
-        
+
         self.get_logger().info('🗺️ VRX 로봇 궤적 시각화 시작!')
         self.get_logger().info('🖱️  궤적 플롯에서 클릭하여 웨이포인트를 설정하세요!')
 
-    def calculate_path_width_points(self, start_pos, end_pos):
+    def _setup_subscribers(self):
+        """ROS2 구독자 설정"""
+        subscriptions = [
+            (NavSatFix, Constants.Topics.GPS_FIX, self.gps_callback),
+            (Imu, Constants.Topics.IMU_DATA, self.imu_callback),
+            (LaserScan, Constants.Topics.LIDAR_SCAN, self.lidar_callback),
+            (Float64MultiArray, Constants.Topics.CONTROL_OUTPUT, self.control_output_callback),
+            (String, Constants.Topics.CURRENT_MODE, self.mode_callback),
+            (Float64MultiArray, Constants.Topics.GOAL_CHECK_AREAS, self.goal_check_callback),
+            (String, Constants.Topics.CONTROL_MODE, self.control_mode_callback),
+            (Float64MultiArray, Constants.Topics.OBSTACLE_CHECK_AREA, self.obstacle_check_area_callback),
+            (Float64MultiArray, Constants.Topics.LOS_TARGET, self.los_target_callback)
+        ]
+
+        for msg_type, topic, callback in subscriptions:
+            self.create_subscription(msg_type, topic, callback, 10)
+
+    def _initialize_variables(self):
+        """변수 초기화"""
+        self.sensor_manager = SensorDataManager()
+
+        # 히스토리
+        self.position_history = deque(maxlen=Constants.Visualization.POSITION_HISTORY_MAXLEN)
+        self.heading_history = deque(maxlen=Constants.Visualization.HEADING_HISTORY_MAXLEN)
+
+        # 축 범위 설정
+        self.axis_initialized = False
+        self.center_x = self.center_y = 0.0
+        self.axis_margin = Constants.Visualization.AXIS_MARGIN
+        self.axis_margin_y = Constants.Visualization.AXIS_MARGIN_Y
+        self.axis_margin_x = Constants.Visualization.AXIS_MARGIN_X
+        self.heading_offset = 0.0
+
+        # 웨이포인트
+        self.waypoints = []
+        self.current_waypoint = None
+
+        # 배 관련
+        self.boat_width = Constants.Visualization.BOAT_WIDTH
+        self.safety_margin = Constants.Visualization.SAFETY_MARGIN
+        self.total_width = self.boat_width + self.safety_margin
+
+        # 시각화 데이터
+        self.path_width_points = []
+        self.path_check_points = []
+        self.current_path_area = None
+        self.current_path_lines = []
+        self.goal_check_areas = []
+        self.goal_check_lines = []
+
+        # 제어 관련
+        self.linear_velocity = 0.0
+        self.angular_velocity = 0.0
+        self.current_mode = "UNKNOWN"
+        self.current_control_mode = "UNKNOWN"
+
+        # 영역 데이터
+        self.current_goal_check_areas = []
+        self.current_obstacle_check_area = []
+        self.current_los_target = None
+
+    def _calculate_path_width_points(self, start_pos, end_pos):
         """배 폭만큼의 경로 점들 계산 - 네모 영역 전체"""
         if len(start_pos) < 2 or len(end_pos) < 2:
             return [], []
-            
-        # 시작점과 끝점 사이의 거리
+
         distance = np.sqrt((end_pos[0] - start_pos[0])**2 + (end_pos[1] - start_pos[1])**2)
-        
         if distance < 0.1:
             return [], []
-            
-        # 방향 벡터 계산
-        direction_x = (end_pos[0] - start_pos[0]) / distance
-        direction_y = (end_pos[1] - start_pos[1]) / distance
-        
-        # 수직 방향 벡터 (배 폭 방향)
-        perp_x = -direction_y
-        perp_y = direction_x
-        
-        # 네모 영역의 네 모서리 점들 계산
-        # 시작점의 양쪽 모서리
-        start_left_x = start_pos[0] + (self.total_width / 2.0) * perp_x
-        start_left_y = start_pos[1] + (self.total_width / 2.0) * perp_y
-        start_right_x = start_pos[0] - (self.total_width / 2.0) * perp_x
-        start_right_y = start_pos[1] - (self.total_width / 2.0) * perp_y
-        
-        # 끝점의 양쪽 모서리
-        end_left_x = end_pos[0] + (self.total_width / 2.0) * perp_x
-        end_left_y = end_pos[1] + (self.total_width / 2.0) * perp_y
-        end_right_x = end_pos[0] - (self.total_width / 2.0) * perp_x
-        end_right_y = end_pos[1] - (self.total_width / 2.0) * perp_y
-        
-        # 네모 영역을 그리기 위한 점들 (시계방향)
-        path_width_points = [
-            [start_left_x, start_left_y],   # 시작점 왼쪽
-            [end_left_x, end_left_y],       # 끝점 왼쪽
-            [end_right_x, end_right_y],     # 끝점 오른쪽
-            [start_right_x, start_right_y], # 시작점 오른쪽
-            [start_left_x, start_left_y]    # 시작점 왼쪽 (닫기)
+
+        # 방향 벡터
+        direction = np.array([(end_pos[0] - start_pos[0]) / distance,
+                              (end_pos[1] - start_pos[1]) / distance])
+        perp = np.array([-direction[1], direction[0]])  # 수직 벡터
+
+        # 네 모서리 점들 계산
+        half_width = self.total_width / 2.0
+        corners = [
+            start_pos + half_width * perp,
+            end_pos + half_width * perp,
+            end_pos - half_width * perp,
+            start_pos - half_width * perp,
+            start_pos + half_width * perp  # 닫기
         ]
-        
-        # 경로 체크 포인트들 (중앙선)
-        path_check_points = []
-        num_check_points = max(int(distance / 5.0), 5)  # 5m 간격으로 체크
-        for i in range(num_check_points + 1):
-            t = i / num_check_points
-            path_x = start_pos[0] + t * (end_pos[0] - start_pos[0])
-            path_y = start_pos[1] + t * (end_pos[1] - start_pos[1])
-            path_check_points.append([path_x, path_y])
-        
-        return path_width_points, path_check_points
+
+        # 경로 체크 포인트들
+        num_points = max(int(distance / 5.0), 5)
+        check_points = [start_pos + t * (end_pos - start_pos)
+                       for t in np.linspace(0, 1, num_points + 1)]
+
+        return corners, check_points
     
     def setup_matplotlib(self):
         """matplotlib 설정"""
@@ -342,106 +252,75 @@ class TrajectoryVizNode(Node):
     def gps_callback(self, msg):
         """GPS 데이터 콜백"""
         gps_data = self.sensor_manager.process_gps_data(msg)
-        if gps_data is not None:
-            # UTM 좌표로 변환된 위치 사용
-            utm_x = gps_data['utm_x']
-            utm_y = gps_data['utm_y']
-            
-            # 첫 번째 GPS 데이터로 축 범위 고정 설정 (이미 센서 전처리에서 기준점 설정됨)
-            if not self.axis_initialized:
-                self.center_x = 0.0  # 첫 번째 GPS 값이 (0,0)으로 설정됨
-                self.center_y = 0.0
-                self.axis_initialized = True
-                
-                # 축 범위 고정 설정 (기준점을 중심으로)
-                self.ax1.set_xlim(self.center_x - self.axis_margin_x, self.center_x + self.axis_margin_x)
-                self.ax1.set_ylim(self.center_y - self.axis_margin_y, self.center_y + self.axis_margin_y)
-                
-                self.get_logger().info(f'축 범위 고정 설정: 중심 (0,0) 기준, 범위 ±{self.axis_margin}m')
-            
-            # 위치 히스토리 업데이트
-            self.position_history.append([utm_x, utm_y])
-            
-            self.get_logger().info(f'GPS 데이터 수신: UTM X={utm_x:.2f}m, UTM Y={utm_y:.2f}m')
-    
+        if gps_data is None:
+            return
+
+        utm_x, utm_y = gps_data['utm_x'], gps_data['utm_y']
+
+        if not self.axis_initialized:
+            self.center_x = self.center_y = 0.0
+            self.axis_initialized = True
+            self.ax1.set_xlim(self.center_x - self.axis_margin_x, self.center_x + self.axis_margin_x)
+            self.ax1.set_ylim(self.center_y - self.axis_margin_y, self.center_y + self.axis_margin_y)
+            self.get_logger().info(f'축 범위 설정: ±{self.axis_margin}m')
+
+        self.position_history.append([utm_x, utm_y])
+        self.get_logger().debug(f'GPS: X={utm_x:.2f}m, Y={utm_y:.2f}m')
+
     def imu_callback(self, msg):
         """IMU 데이터 콜백"""
         imu_data = self.sensor_manager.process_imu_data(msg)
-        
-        # 헤딩 히스토리 업데이트
         self.heading_history.append(imu_data['yaw_degrees'])
-        
-        corrected_heading = imu_data["yaw_degrees"] + self.heading_offset
-        self.get_logger().info(f'IMU 데이터 수신: 원본 Heading={imu_data["yaw_degrees"]:.1f}°, 보정된 Heading={corrected_heading:.1f}°')
-    
+        self.get_logger().debug(f'IMU Heading: {imu_data["yaw_degrees"]:.1f}°')
+
     def lidar_callback(self, msg):
         """LiDAR 데이터 콜백"""
         lidar_data = self.sensor_manager.process_lidar_data(msg)
-        
-        self.get_logger().info(f'LiDAR 데이터 수신: {lidar_data["valid_count"]}개 장애물 (원본: {lidar_data["raw_count"]}개)')
-    
+        self.get_logger().debug(f'LiDAR: {lidar_data["valid_count"]}개 장애물')
+
     def control_output_callback(self, msg):
         """ONNX 모델 제어 출력값 콜백"""
         if len(msg.data) >= 2:
             self.linear_velocity = float(msg.data[0])
             self.angular_velocity = float(msg.data[1])
-            self.get_logger().info(f'제어 출력값 수신: Linear={self.linear_velocity:.3f}, Angular={self.angular_velocity:.3f}')
-    
+            self.get_logger().debug(f'제어: L={self.linear_velocity:.3f}, A={self.angular_velocity:.3f}')
+
     def mode_callback(self, msg):
         """v5 모드 정보 콜백"""
         self.current_mode = msg.data
-        self.get_logger().info(f'현재 모드: {self.current_mode}')
+        self.get_logger().debug(f'모드: {self.current_mode}')
     
     def goal_check_callback(self, msg):
-        """goal_check 영역 정보 콜백 (main_onnx_v5.py에서 받음)"""
-        if len(msg.data) > 0:
-            # 메시지 데이터 파싱
-            # 형식: [type, x1, y1, x2, y2, x3, y3, x4, y4] (직사각형의 경우)
-            area_type = msg.data[0]
-            
-            if area_type == 4.0 and len(msg.data) >= 9:  # 직사각형 영역
-                # 4개 모서리 점들 추출
-                corners = []
-                for i in range(1, len(msg.data), 2):
-                    if i + 1 < len(msg.data):
-                        corners.append([msg.data[i], msg.data[i + 1]])
-                
-                if len(corners) >= 4:
-                    self.current_goal_check_areas = [{
-                        'type': area_type,
-                        'corners': corners
-                    }]
-                    self.get_logger().debug(f'goal_check 영역 수신: {len(corners)}개 모서리')
-            else:
-                # 다른 타입의 영역들은 현재 처리하지 않음
-                self.current_goal_check_areas = []
+        """goal_check 영역 정보 콜백"""
+        if len(msg.data) < 9 or msg.data[0] != 4.0:
+            self.current_goal_check_areas = []
+            return
+
+        corners = [[msg.data[i], msg.data[i + 1]]
+                   for i in range(1, len(msg.data) - 1, 2)]
+
+        if len(corners) >= 4:
+            self.current_goal_check_areas = [{'type': msg.data[0], 'corners': corners}]
+            self.get_logger().debug(f'goal_check: {len(corners)}개 모서리')
         else:
             self.current_goal_check_areas = []
-    
+
     def control_mode_callback(self, msg):
-        """제어 모드 정보 콜백 (main_onnx_v5_final.py에서 받음)"""
+        """제어 모드 정보 콜백"""
         self.current_control_mode = msg.data
-        self.get_logger().info(f'현재 제어 모드: {self.current_control_mode}')
-    
+        self.get_logger().debug(f'제어 모드: {self.current_control_mode}')
+
     def obstacle_check_area_callback(self, msg):
-        """장애물 체크 영역 정보 콜백 (main_onnx_v5_final.py에서 받음)"""
-        if len(msg.data) > 0:
-            # 메시지 데이터를 점들로 변환 (x1, y1, x2, y2, ... 형태)
-            self.current_obstacle_check_area = []
-            for i in range(0, len(msg.data), 2):
-                if i + 1 < len(msg.data):
-                    self.current_obstacle_check_area.append([msg.data[i], msg.data[i + 1]])
-            self.get_logger().debug(f'장애물 체크 영역 수신: {len(self.current_obstacle_check_area)}개 점')
-        else:
-            self.current_obstacle_check_area = []
-    
+        """장애물 체크 영역 정보 콜백"""
+        self.current_obstacle_check_area = [[msg.data[i], msg.data[i + 1]]
+                                             for i in range(0, len(msg.data) - 1, 2)]
+        self.get_logger().debug(f'장애물 영역: {len(self.current_obstacle_check_area)}개 점')
+
     def los_target_callback(self, msg):
-        """LOS target 정보 콜백 (main_onnx_v5_final.py에서 받음)"""
-        if len(msg.data) >= 2:
-            self.current_los_target = [msg.data[0], msg.data[1]]
-            self.get_logger().debug(f'LOS target 수신: ({self.current_los_target[0]:.1f}, {self.current_los_target[1]:.1f})')
-        else:
-            self.current_los_target = None
+        """LOS target 정보 콜백"""
+        self.current_los_target = [msg.data[0], msg.data[1]] if len(msg.data) >= 2 else None
+        if self.current_los_target:
+            self.get_logger().debug(f'LOS target: ({self.current_los_target[0]:.1f}, {self.current_los_target[1]:.1f})')
     
     def update_plot(self):
         """플롯 업데이트"""
@@ -649,20 +528,14 @@ class TrajectoryVizNode(Node):
                     label='Current Waypoint'
                 )
 
-    def clear_path_width_plots(self):
-        """배 폭 관련 모든 플롯 제거 (legacy)"""
-        # clear_all_plots에서 처리됨
-        pass
-
     def update_path_width_plot(self):
         """배 폭 경로 시각화 업데이트"""
         if len(self.position_history) > 0 and self.current_waypoint is not None:
-            # 현재 위치와 현재 웨이포인트 사이의 배 폭 경로 계산
-            current_pos = [self.position_history[-1][0], self.position_history[-1][1]]
-            target_pos = self.current_waypoint
-            
+            current_pos = np.array([self.position_history[-1][0], self.position_history[-1][1]])
+            target_pos = np.array(self.current_waypoint)
+
             # 배 폭 경로 점들 계산
-            path_width_points, path_check_points = self.calculate_path_width_points(current_pos, target_pos)
+            path_width_points, path_check_points = self._calculate_path_width_points(current_pos, target_pos)
             
             if len(path_width_points) > 0:
                 # 배 폭 경로 시각화 (네모 영역 채우기)
@@ -692,207 +565,67 @@ class TrajectoryVizNode(Node):
     
     def clear_all_plots(self):
         """모든 플롯 요소들 완전 제거 (중첩 방지)"""
-        # goal_check 영역들 제거 (legacy)
-        for area in self.goal_check_areas:
-            try:
-                area.remove()
-            except:
-                pass
-        self.goal_check_areas.clear()
-        
-        # goal_check 라인들 제거 (legacy)
-        for line in self.goal_check_lines:
-            try:
-                line.remove()
-            except:
-                pass
-        self.goal_check_lines.clear()
-        
-        # ROS로 받은 goal_check 영역들 제거
-        if hasattr(self, 'current_goal_check_areas'):
-            for area_obj in self.current_goal_check_areas:
-                if 'plot_objects' in area_obj:
-                    for plot_obj in area_obj['plot_objects']:
-                        try:
-                            plot_obj.remove()
-                        except:
-                            pass
-            # current_goal_check_areas 초기화
-            self.current_goal_check_areas = []
-        
+        # 리스트로 관리되는 플롯 요소들 제거
+        for obj_list in [self.goal_check_areas, self.goal_check_lines, self.current_path_lines]:
+            for obj in obj_list:
+                try:
+                    obj.remove()
+                except:
+                    pass
+            obj_list.clear()
+
+        # ROS goal_check 영역들 제거
+        for area_obj in self.current_goal_check_areas:
+            if 'plot_objects' in area_obj:
+                for plot_obj in area_obj['plot_objects']:
+                    try:
+                        plot_obj.remove()
+                    except:
+                        pass
+        self.current_goal_check_areas = []
+
         # 배 폭 경로 영역 제거
         if self.current_path_area is not None:
             try:
                 self.current_path_area.remove()
-                self.current_path_area = None
             except:
                 pass
-        
-        # 배 폭 경로 라인들 제거
-        for line in self.current_path_lines:
-            try:
-                line.remove()
-            except:
-                pass
-        self.current_path_lines.clear()
-        
-        # 모든 화살표 제거
-        arrow_attributes = [
-            'lidar_target_heading_arrow',
-            'target_heading_arrow', 
-            'heading_arrow'
+            self.current_path_area = None
+
+        # 동적 플롯 요소들 제거 (화살표, 마커 등)
+        dynamic_attrs = [
+            'lidar_target_heading_arrow', 'target_heading_arrow', 'heading_arrow',
+            'lidar_trajectory_points', 'current_waypoint_marker',
+            'obstacle_check_area_line', 'obstacle_check_area_points',
+            'lidar_obstacle_check_area_line', 'lidar_obstacle_check_area_points',
+            'los_target_marker', 'los_target_line',
+            'lidar_los_target_marker', 'lidar_los_target_line'
         ]
-        
-        for attr in arrow_attributes:
+
+        for attr in dynamic_attrs:
             if hasattr(self, attr):
                 try:
                     getattr(self, attr).remove()
                     delattr(self, attr)
                 except:
                     pass
-        
-        # 모든 마커/포인트 제거
-        marker_attributes = [
-            'lidar_trajectory_points',
-            'current_waypoint_marker',
-            'obstacle_check_area_line',
-            'obstacle_check_area_points',
-            'lidar_obstacle_check_area_line',
-            'lidar_obstacle_check_area_points',
-            'los_target_marker',
-            'los_target_line',
-            'lidar_los_target_marker',
-            'lidar_los_target_line'
-        ]
-        
-        for attr in marker_attributes:
-            if hasattr(self, attr):
-                try:
-                    getattr(self, attr).remove()
-                    delattr(self, attr)
-                except:
-                    pass
-        
-        # 모든 축의 추가된 아티스트들 제거
+
+        # 축의 collections와 patches 제거
         for ax in [self.ax1, self.ax2]:
-            # 축에 추가된 모든 라인, 패치, 텍스트 제거
-            for artist in ax.get_children():
-                if hasattr(artist, '_goal_check_marker') or hasattr(artist, '_path_width_marker'):
-                    try:
-                        artist.remove()
-                    except:
-                        pass
-            
-            # 축의 collections 제거 (화살표, 패치 등)
             for collection in ax.collections[:]:
                 try:
                     collection.remove()
                 except:
                     pass
-            
-            # 축의 patches 제거
             for patch in ax.patches[:]:
                 try:
                     patch.remove()
                 except:
                     pass
-
-    def clear_goal_check_plots(self):
-        """goal_check 관련 모든 플롯 제거 (legacy)"""
-        # clear_all_plots에서 처리됨
-        pass
     
-    def clear_goal_check_rectangles(self):
-        """goal_check 사각형들만 전용으로 제거"""
-        # ROS로 받은 goal_check 영역들 제거
-        if hasattr(self, 'current_goal_check_areas'):
-            for area_obj in self.current_goal_check_areas:
-                if 'plot_objects' in area_obj:
-                    for plot_obj in area_obj['plot_objects']:
-                        try:
-                            plot_obj.remove()
-                        except:
-                            pass
-            # current_goal_check_areas 초기화
-            self.current_goal_check_areas = []
-        
-        # ax1에서 모든 patches와 collections 제거 (사각형 관련)
-        for patch in self.ax1.patches[:]:
-            try:
-                patch.remove()
-            except:
-                pass
-        
-        for collection in self.ax1.collections[:]:
-            try:
-                collection.remove()
-            except:
-                pass
-    
-    def calculate_goal_check_areas(self, current_pos, target_pos, goal_distance, goal_psi, boat_width=0.1):
-        """
-        goal_check에서 체크하는 영역들을 계산
-        main_onnx_v5.py의 goal_check 함수와 동일한 로직
-        """
-        l = goal_distance
-        theta = int(np.degrees(np.arctan2(boat_width/2, l))) + np.pi/2
-        
-        areas = []
-        
-        # 좌측 경계 영역들
-        for i in range(0, 90 - int(theta)):
-            angle = self.normalize_angle(int(goal_psi) + i)
-            r = boat_width / (2 * np.cos(np.radians(i)) + 1)
-            
-            # 각도에 따른 영역 계산
-            area_info = {
-                'center': current_pos,
-                'angle': angle,
-                'radius': r,
-                'type': 'left_boundary'
-            }
-            areas.append(area_info)
-        
-        # 전방 중앙선 영역들
-        for i in range(-int(theta), int(theta) + 1):
-            angle = self.normalize_angle(int(goal_psi) + i)
-            
-            area_info = {
-                'center': current_pos,
-                'angle': angle,
-                'radius': l,
-                'type': 'center_line'
-            }
-            areas.append(area_info)
-        
-        # 우측 경계 영역들
-        for i in range(0, 90 - int(theta)):
-            angle = self.normalize_angle(int(goal_psi) + 180 - i)
-            r = boat_width / (2 * np.cos(np.radians(i)) + 1)
-            
-            area_info = {
-                'center': current_pos,
-                'angle': angle,
-                'radius': r,
-                'type': 'right_boundary'
-            }
-            areas.append(area_info)
-        
-        return areas
-    
-    def normalize_angle(self, angle):
-        """각도를 0-359도 범위로 정규화"""
-        while angle < 0:
-            angle += 360
-        while angle >= 360:
-            angle -= 360
-        return angle
     
     def update_goal_check_area_from_ros(self):
         """ROS 메시지로 받은 goal_check 영역 시각화 업데이트"""
-        # 먼저 이전 goal_check 영역들을 완전히 제거
-        self.clear_goal_check_rectangles()
-        
         if len(self.current_goal_check_areas) > 0:
             for area_obj in self.current_goal_check_areas:
                 if area_obj['type'] == 4.0 and 'corners' in area_obj:  # 직사각형 영역
@@ -926,8 +659,8 @@ class TrajectoryVizNode(Node):
         """장애물 체크 영역 시각화 업데이트"""
         if len(self.current_obstacle_check_area) > 0:
             # 체크 영역 점들을 연결하여 선으로 표시
-            check_x = [point[0] for point in self.current_obstacle_check_area]
-            check_y = [point[1] for point in self.current_obstacle_check_area]
+            check_y = [point[0] for point in self.current_obstacle_check_area]
+            check_x = [point[1] for point in self.current_obstacle_check_area]
             
             # 체크 영역 선 그리기 (주황색으로 표시)
             self.obstacle_check_area_line, = self.ax1.plot(
@@ -1009,129 +742,40 @@ class TrajectoryVizNode(Node):
                     label='LOS Line', zorder=5
                 )
 
-    def update_goal_check_area(self):
-        """goal_check 영역 시각화 업데이트 (legacy)"""
-        if len(self.position_history) > 0 and self.current_waypoint is not None:
-            # 현재 위치와 목표 위치
-            current_pos = [self.position_history[-1][0], self.position_history[-1][1]]
-            target_pos = self.current_waypoint
-            
-            # 거리와 방향 계산
-            dx = target_pos[0] - current_pos[0]
-            dy = target_pos[1] - current_pos[1]
-            goal_distance = np.sqrt(dx**2 + dy**2)
-            goal_psi = np.degrees(np.arctan2(dx, dy))
-            goal_psi = self.normalize_angle(int(goal_psi))
-            
-            # goal_check 영역들 계산
-            goal_check_areas = self.calculate_goal_check_areas(
-                current_pos, target_pos, goal_distance, goal_psi
-            )
-            
-            # 영역들을 시각화
-            for i, area in enumerate(goal_check_areas):
-                center = area['center']
-                angle = area['angle']
-                radius = area['radius']
-                area_type = area['type']
-                
-                # 각도에 따른 방향 벡터 계산
-                angle_rad = np.radians(angle)
-                end_x = center[0] + radius * np.cos(angle_rad)
-                end_y = center[1] + radius * np.sin(angle_rad)
-                
-                # 영역 타입에 따른 색상 설정
-                if area_type == 'left_boundary':
-                    color = 'orange'
-                    alpha = 0.6
-                elif area_type == 'center_line':
-                    color = 'red'
-                    alpha = 0.8
-                elif area_type == 'right_boundary':
-                    color = 'purple'
-                    alpha = 0.6
-                else:
-                    color = 'gray'
-                    alpha = 0.5
-                
-                # 선 그리기
-                line = self.ax1.plot(
-                    [center[0], end_x], [center[1], end_y],
-                    color=color, alpha=alpha, linewidth=2, zorder=4
-                )[0]
-                self.goal_check_lines.append(line)
-                
-                # 각도와 거리 정보 표시 (일부만)
-                if i % 10 == 0:  # 10개마다 하나씩만 표시
-                    text_x = (center[0] + end_x) / 2
-                    text_y = (center[1] + end_y) / 2
-                    self.ax1.text(
-                        text_x, text_y, f'{int(radius)}m',
-                        fontsize=8, color=color, alpha=0.8,
-                        ha='center', va='center'
-                    )
-    
     def update_control_output_plot(self):
         """제어 출력값 트랙바 업데이트"""
-        # Linear velocity 트랙바 업데이트 (0~1 범위)
-        linear_width = max(0, min(1, (self.linear_velocity + 1) / 2))  # -1~1을 0~1로 정규화
+        # 속도 트랙바 업데이트
+        linear_width = max(0, min(1, (self.linear_velocity + 1) / 2))
+        angular_width = max(0, min(1, (self.angular_velocity + 1) / 2))
         self.linear_bar[0].set_width(linear_width)
-        
-        # Angular velocity 트랙바 업데이트 (-1~1 범위)
-        angular_width = max(0, min(1, (self.angular_velocity + 1) / 2))  # -1~1을 0~1로 정규화
         self.angular_bar[0].set_width(angular_width)
-        
+
         # 텍스트 업데이트
         self.linear_text.set_text(f'{self.linear_velocity:.3f}')
         self.angular_text.set_text(f'{self.angular_velocity:.3f}')
-        
-        # 제어 모드 표시 업데이트 (main_onnx_v5_final.py에서 받은 정보 우선)
-        mode_color = "lightgray"
-        display_mode = "UNKNOWN"
-        
-        if self.current_control_mode != "UNKNOWN":
-            # main_onnx_v5_final.py에서 받은 제어 모드 정보 사용
-            display_mode = self.current_control_mode
-            if self.current_control_mode == "DIRECT_CONTROL":
-                mode_color = "lightgreen"
-            elif self.current_control_mode == "ONNX_MODEL":
-                mode_color = "lightblue"
-        else:
-            # 기존 v5 모드 정보 사용 (fallback)
-            display_mode = self.current_mode
-            if self.current_mode in ["ONNX", "ONNX_BOTH", "ONNX_FORWARD", "ONNX_PATH", "ONNX_CLOSE"]:
-                mode_color = "lightblue"
-            elif self.current_mode in ["DIRECT", "DIRECT_CLEAR", "DIRECT_FORWARD", "DIRECT_PATH", "DIRECT_UNKNOWN"]:
-                mode_color = "lightgreen"
-            elif self.current_mode == "STOP":
-                mode_color = "lightcoral"
-            elif self.current_mode == "REACHED":
-                mode_color = "lightyellow"
-            elif self.current_mode == "UNKNOWN":
-                mode_color = "lightgray"
-        
+
+        # 모드 표시 및 색상 결정
+        mode_colors = {
+            "DIRECT_CONTROL": "lightgreen", "ONNX_MODEL": "lightblue",
+            "ONNX": "lightblue", "ONNX_BOTH": "lightblue", "ONNX_FORWARD": "lightblue",
+            "ONNX_PATH": "lightblue", "ONNX_CLOSE": "lightblue",
+            "DIRECT": "lightgreen", "DIRECT_CLEAR": "lightgreen", "DIRECT_FORWARD": "lightgreen",
+            "DIRECT_PATH": "lightgreen", "DIRECT_UNKNOWN": "lightgreen",
+            "STOP": "lightcoral", "REACHED": "lightyellow"
+        }
+
+        display_mode = self.current_control_mode if self.current_control_mode != "UNKNOWN" else self.current_mode
+        mode_color = mode_colors.get(display_mode, "lightgray")
+
         self.mode_text.set_text(f'Mode: {display_mode}')
         self.mode_text.set_bbox(dict(boxstyle="round,pad=0.3", facecolor=mode_color, alpha=0.8))
-        
-        # 색상 변경 (값에 따라)
-        if self.linear_velocity > 0:
-            self.linear_bar[0].set_color('blue')
-        elif self.linear_velocity < 0:
-            self.linear_bar[0].set_color('red')
-        else:
-            self.linear_bar[0].set_color('gray')
-            
-        if self.angular_velocity > 0:
-            self.angular_bar[0].set_color('green')
-        elif self.angular_velocity < 0:
-            self.angular_bar[0].set_color('orange')
-        else:
-            self.angular_bar[0].set_color('gray')
-    
+
+        # 속도 바 색상 업데이트
+        self.linear_bar[0].set_color('blue' if self.linear_velocity > 0 else 'red' if self.linear_velocity < 0 else 'gray')
+        self.angular_bar[0].set_color('green' if self.angular_velocity > 0 else 'orange' if self.angular_velocity < 0 else 'gray')
+
     def destroy_node(self):
         """노드 종료 시 정리"""
-        # goal_check 플롯들 정리
-        self.clear_goal_check_plots()
         plt.close('all')
         super().destroy_node()
 

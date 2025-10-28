@@ -210,9 +210,8 @@ class VRXMissionController(Node):
             if self.loop_counter % self.param_update_interval == 0:
                 self._update_system_parameters(is_obstacle_avoid)
 
-            # 웨이포인트 전환 확인 (장애물 회피 모드에서는 스킵)
-            if not is_obstacle_avoid:
-                self._check_waypoint_transition()
+            # 웨이포인트 전환 확인 (모든 미션에서 체크)
+            self._check_waypoint_transition()
 
             # 객체 탐지 및 추적 (장애물 회피에서는 이미 스킵됨)
             if not is_obstacle_avoid:
@@ -323,17 +322,37 @@ class VRXMissionController(Node):
 
     def _check_waypoint_transition(self) -> None:
         """웨이포인트 도달 확인 및 미션 전환"""
+        # 현재 웨이포인트 정보 가져오기
+        current_wp = self.waypoint_manager.get_current_waypoint()
+        if current_wp is None:
+            return
+
+        # 거리 계산 및 로그 (10번에 1번만 출력)
+        if self.loop_counter % 100 == 0:  # 1초에 1번 (100Hz 루프)
+            target_pos = np.array([current_wp['x'], current_wp['y']], dtype=np.float32)
+            distance = np.linalg.norm(self.sensor_handler.agent_position - target_pos)
+            self.get_logger().info(
+                f"웨이포인트 {self.waypoint_manager.get_waypoint_index()}: "
+                f"거리={distance:.1f}m, 목표반경={current_wp['radius']:.1f}m, "
+                f"미션={current_wp['mission_type'].name}"
+            )
+
+        # 웨이포인트 도달 체크
         next_waypoint = self.waypoint_manager.check_waypoint_reached(
             self.sensor_handler.agent_position
         )
 
         if next_waypoint is not None:
             if 'completed' in next_waypoint:
-                self.get_logger().info("모든 미션 완료!")
+                self.get_logger().info("🎉 모든 미션 완료!")
+                self.ros_comm.publish_thrust_commands(0.0, 0.0)
             else:
                 new_mission_type = next_waypoint['mission_type']
                 self.mission_manager.set_mission(new_mission_type)
-                self.get_logger().info(f"미션 전환: {new_mission_type.name}")
+                self.get_logger().info(
+                    f"✅ 웨이포인트 도달! 미션 전환: {new_mission_type.name} "
+                    f"(#{self.waypoint_manager.get_waypoint_index()}/{self.waypoint_manager.get_total_waypoints()})"
+                )
 
     def _execute_current_mission(self, mission_type: MissionType) -> Tuple[float, float]:
         """현재 미션 실행"""
