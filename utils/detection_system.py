@@ -77,11 +77,10 @@ class DetectionSystem:
             },
             MissionType.CIRCLE_BUOY: {
                 'queries': [
-                    "a blue buoy not red,green", "a floating blue marker not red,green", "a blue navigation buoy not red,green",
-                    "a round blue object in the water not red,green"
+                    "a blue circle"
                 ],
                 'label_mapping': {
-                    0: "blue_buoy", 1: "blue_buoy", 2: "blue_buoy", 3: "blue_buoy"
+                    0: "blue_buoy"
                 }
             }
         }

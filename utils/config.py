@@ -37,8 +37,8 @@ class Constants:
     PREDEFINED_WAYPOINTS = [
         (25, 5, 'CIRCLE_BUOY', DEFAULT_WAYPOINT_RADIUS, {}),
         (160, 0, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {}),
-        (100, 45, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {'rotation_direction': 2, 'circle_radius': 15.0}),
-        (80, 45, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {}),
+        (120, 45, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {'rotation_direction': 2, 'circle_radius': 15.0}),
+        (80, 43, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {}),
         (0, 0, 'PASS_BETWEEN_BUOYS', DEFAULT_WAYPOINT_RADIUS, {})
     ]
 
@@ -51,7 +51,7 @@ class Constants:
     ONNX_INPUT_SIZE = 426
     ONNX_V_SCALE = 1.0
     ONNX_W_SCALE = -1.0
-    ONNX_LINEAR_VELOCITY_RANGE = (0.12, 1.0)
+    ONNX_LINEAR_VELOCITY_RANGE = (0.08, 1.0)
     ONNX_ANGULAR_VELOCITY_RANGE = (-1.0, 1.0)
 
     # ============================================================================
@@ -93,8 +93,8 @@ class Constants:
     CIRCLE_MAX_TURN_THRUST = 150.0
 
     # CircleBuoy 미션 target_x 결정식 파라미터
-    CIRCLE_TX_BASE_X = 1240.0
-    CIRCLE_TX_SLOPE = 700.0
+    CIRCLE_TX_BASE_X = 1200.0
+    CIRCLE_TX_SLOPE = 1000.0
     CIRCLE_TX_MIN_X = 800.0
     CIRCLE_TX_MAX_X = 1200.0
 

@@ -139,18 +139,21 @@ class PassBetweenBuoysMission(BaseMissionStrategy):
             # 오차 계산
             error = midpoint_x - image_center_x
 
-            # PID 제어
-            steering = self.pid_controller.update(error)
-            steering = np.clip(steering, -self.max_steering, self.max_steering)
+            # 비례 제어
+            steering_gain = 0.0005
+            forward_speed = 0.5
+
+            steering = error * steering_gain
+            steering = np.clip(steering, -0.3, 0.3)
 
             # 스러스터 명령 계산
-            left_thrust = (self.forward_speed + steering) * self.thrust_scale
-            right_thrust = (self.forward_speed - steering) * self.thrust_scale
+            left_thrust = (forward_speed + steering) * self.thrust_scale
+            right_thrust = (forward_speed - steering) * self.thrust_scale
 
             if logger:
                 data_source = f"R:{red_source}/G:{green_source}"
                 logger.info(
-                    f"Pass Buoys [PID][{data_source}]: midpoint={midpoint_x:.1f}, error={error:.1f}, steering={steering:.3f}"
+                    f"Pass Buoys [{data_source}]: midpoint={midpoint_x:.1f}, error={error:.1f}, steering={steering:.3f}"
                 )
         else:
             # 부표 미탐지 시 천천히 전진
@@ -210,6 +213,7 @@ class CircleBuoyMission(BaseMissionStrategy):
         self.total_rotation = 0.0
         self.previous_heading = None
         self.circling_started = False
+        self.is_completed = False  # 360도 회전 완료 플래그
 
         # PID 제어기 초기화 (main_circle.py와 동일)
         self.pid_controller = PIDController(kp=0.8, ki=0.001, kd=0.4)
@@ -249,6 +253,7 @@ class CircleBuoyMission(BaseMissionStrategy):
         self.total_rotation = 0.0
         self.previous_heading = None
         self.circling_started = False
+        self.is_completed = False  # 완료 플래그 초기화
         self.pid_controller = PIDController(kp=0.8, ki=0.001, kd=0.4)
         self.target_x = None
 
@@ -372,10 +377,14 @@ class CircleBuoyMission(BaseMissionStrategy):
 
         # 360도 회전 완료 확인
         if self.total_rotation >= 350:
+            self.is_completed = True
             self.target_x = None
             if logger:
-                logger.info("부표 회전 완료!")
-            return 0.0, 0.0
+                logger.info("🎉 부표 360도 회전 완료! 다음 미션으로 전환됩니다.")
+            # 미션 완료 후에도 스러스터 명령 반환 (다음 미션 전환까지 천천히 전진)
+            left_thrust = 0.3 * self.thrust_scale
+            right_thrust = 0.3 * self.thrust_scale
+            return left_thrust, right_thrust
 
         # 부표 미탐지 시 이전 명령 사용 (main_circle.py와 동일)
         if not blue_buoy:
@@ -595,3 +604,19 @@ class MissionManager:
         if circle_mission and hasattr(circle_mission, 'target_x'):
             return circle_mission.target_x
         return None
+    def is_circle_mission_completed(self) -> bool:
+        """
+        CircleBuoyMission의 완료 여부 확인 (360도 회전 완료)
+
+        Returns:
+            bool: 360도 회전이 완료되었으면 True, 아니면 False
+        """
+        circle_mission = self.missions.get(MissionType.CIRCLE_BUOY)
+        if circle_mission:
+            # is_completed 플래그가 설정되어 있으면 그 값 사용
+            if hasattr(circle_mission, 'is_completed'):
+                return circle_mission.is_completed
+            # 없으면 total_rotation으로 직접 확인 (후방 호환성)
+            if hasattr(circle_mission, 'total_rotation'):
+                return circle_mission.total_rotation >= 350
+        return False

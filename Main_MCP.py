@@ -327,32 +327,54 @@ class VRXMissionController(Node):
         if current_wp is None:
             return
 
+        # 현재 미션 타입
+        current_mission_type = current_wp['mission_type']
+
+        # 거리 계산
+        target_pos = np.array([current_wp['x'], current_wp['y']], dtype=np.float32)
+        distance = np.linalg.norm(self.sensor_handler.agent_position - target_pos)
+
         # 거리 계산 및 로그 (10번에 1번만 출력)
         if self.loop_counter % 100 == 0:  # 1초에 1번 (100Hz 루프)
-            target_pos = np.array([current_wp['x'], current_wp['y']], dtype=np.float32)
-            distance = np.linalg.norm(self.sensor_handler.agent_position - target_pos)
+            extra_info = ""
+            if current_mission_type == MissionType.CIRCLE_BUOY:
+                rotation_completed = self.mission_manager.is_circle_mission_completed()
+                extra_info = f", 회전완료={rotation_completed}"
             self.get_logger().info(
                 f"웨이포인트 {self.waypoint_manager.get_waypoint_index()}: "
                 f"거리={distance:.1f}m, 목표반경={current_wp['radius']:.1f}m, "
-                f"미션={current_wp['mission_type'].name}"
+                f"미션={current_mission_type.name}{extra_info}"
             )
 
-        # 웨이포인트 도달 체크
-        next_waypoint = self.waypoint_manager.check_waypoint_reached(
-            self.sensor_handler.agent_position
-        )
+        # 웨이포인트 도달 체크 (기본: 거리만 확인)
+        distance_reached = distance < current_wp['radius']
 
-        if next_waypoint is not None:
-            if 'completed' in next_waypoint:
-                self.get_logger().info("🎉 모든 미션 완료!")
-                self.ros_comm.publish_thrust_commands(0.0, 0.0)
-            else:
+        # CIRCLE_BUOY 미션일 때는 거리 + 360도 회전 완료를 모두 확인
+        if current_mission_type == MissionType.CIRCLE_BUOY:
+            rotation_completed = self.mission_manager.is_circle_mission_completed()
+            waypoint_reached = distance_reached and rotation_completed
+
+            if distance_reached and not rotation_completed and self.loop_counter % 100 == 0:
+                self.get_logger().info("⚠️ 웨이포인트 도달했으나 360도 회전 미완료 - 계속 회전 중...")
+        else:
+            waypoint_reached = distance_reached
+
+        # 웨이포인트 도달 확인되면 다음 웨이포인트로 전환
+        if waypoint_reached:
+            # 수동으로 인덱스 증가
+            self.waypoint_manager.current_waypoint_index += 1
+
+            if self.waypoint_manager.current_waypoint_index < len(self.waypoint_manager.waypoints):
+                next_waypoint = self.waypoint_manager.waypoints[self.waypoint_manager.current_waypoint_index]
                 new_mission_type = next_waypoint['mission_type']
                 self.mission_manager.set_mission(new_mission_type)
                 self.get_logger().info(
                     f"✅ 웨이포인트 도달! 미션 전환: {new_mission_type.name} "
                     f"(#{self.waypoint_manager.get_waypoint_index()}/{self.waypoint_manager.get_total_waypoints()})"
                 )
+            else:
+                self.get_logger().info("🎉 모든 미션 완료!")
+                self.ros_comm.publish_thrust_commands(0.0, 0.0)
 
     def _execute_current_mission(self, mission_type: MissionType) -> Tuple[float, float]:
         """현재 미션 실행"""
