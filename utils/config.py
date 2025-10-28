@@ -30,15 +30,15 @@ class Constants:
     # ============================================================================
     # 웨이포인트 설정
     # ============================================================================
-    DEFAULT_WAYPOINT_RADIUS = 50.0
+    DEFAULT_WAYPOINT_RADIUS = 20.0
 
     # 미리 정의된 웨이포인트 (x, y, mission_type, radius, params)
     # mission_type: 'PASS_BETWEEN_BUOYS', 'CIRCLE_BUOY', 'WAYPOINT_FOLLOW', 'OBSTACLE_AVOID'
     PREDEFINED_WAYPOINTS = [
-        (150, 0, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {}),
-        (140, 42, 'PASS_BETWEEN_BUOYS', DEFAULT_WAYPOINT_RADIUS, {'rotation_direction': 2, 'circle_radius': 15.0}),
-        (0, 165, 'PASS_BETWEEN_BUOYS', DEFAULT_WAYPOINT_RADIUS, {}),
-        (0, 0, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {})
+        (160, 0, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {}),
+        (100, 45, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {'rotation_direction': 2, 'circle_radius': 15.0}),
+        (80, 45, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {}),
+        (0, 0, 'PASS_BETWEEN_BUOYS', DEFAULT_WAYPOINT_RADIUS, {})
     ]
 
     # ============================================================================
@@ -56,7 +56,7 @@ class Constants:
     # ============================================================================
     # 장애물 회피 설정
     # ============================================================================
-    BOAT_WIDTH = 2.0
+    BOAT_WIDTH = 2.1
     BOAT_HEIGHT = 50.0
     LOS_DELTA = 10.0
     LOS_LOOKAHEAD_MIN = 30.0
@@ -75,13 +75,13 @@ class Constants:
     # ============================================================================
     # PassBetweenBuoys 미션
     PASS_BETWEEN_STEERING_GAIN = 0.003
-    PASS_BETWEEN_FORWARD_SPEED = 0.5
-    PASS_BETWEEN_MAX_STEERING = 0.3
+    PASS_BETWEEN_FORWARD_SPEED = 0.6
+    PASS_BETWEEN_MAX_STEERING = 0.2
     PASS_BETWEEN_MAX_DEPTH_DIFF = 5.0  # 부표 간 최대 깊이 차이 (미터)
 
     # CircleBuoy 미션 PID 게인
-    CIRCLE_PID_KP = 0.8
-    CIRCLE_PID_KI = 0.001
+    CIRCLE_PID_KP = 0.5
+    CIRCLE_PID_KI = 0.000
     CIRCLE_PID_KD = 0.4
 
     # CircleBuoy 미션 속도 파라미터
