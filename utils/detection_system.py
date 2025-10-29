@@ -13,8 +13,11 @@ from PIL import Image as PILImage
 from enum import Enum
 from typing import List, Dict, Optional
 
+# config 모듈에서 경로 가져오기
+from .config import Constants
+
 # NanoOWL 경로 추가
-sys.path.insert(0, '/home/yuneyoungjun/vrx_ws/src/vrx/vrx_env/nanoowl')
+sys.path.insert(0, str(Constants.Paths.NANOOWL_DIR))
 from nanoowl.owl_predictor import OwlPredictor
 
 

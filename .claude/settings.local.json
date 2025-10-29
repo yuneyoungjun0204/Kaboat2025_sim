@@ -5,7 +5,10 @@
       "Read(//mnt/c/Users/ANSL/Pictures/Screenshots/**)",
       "Bash(git rm:*)",
       "Bash(git add:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "mcp__sequential-thinking__sequentialthinking",
+      "Bash(python3 -m py_compile:*)",
+      "Bash(python3:*)"
     ],
     "deny": [],
     "ask": []

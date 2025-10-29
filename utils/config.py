@@ -2,17 +2,66 @@
 """
 VRX 시스템 설정 상수
 - 모든 시스템 파라미터를 중앙 관리
-- ROS 토픽명, PID 게인, 웨이포인트, 미션 파라미터 등
+- ROS 토픽명, PID 게인, 웨이포인트, 미션 파라미터, 파일 경로 등
 """
+
+import os
+from pathlib import Path
 
 
 class Constants:
     """시스템 전역 상수"""
 
     # ============================================================================
+    # 프로젝트 경로
+    # ============================================================================
+    class Paths:
+        """파일 및 디렉토리 경로 관리"""
+
+        # 프로젝트 루트 디렉토리 (config.py 위치 기준)
+        PROJECT_ROOT = Path(__file__).parent.parent.absolute()
+
+        # NanoOWL 경로
+        NANOOWL_DIR = Path('/home/yuneyoungjun/vrx_ws/src/vrx/vrx_env/nanoowl')
+
+        # 모델 디렉토리
+        MODELS_DIR = PROJECT_ROOT / 'models' / 'correct_IMU' / 'gpu'
+
+        # ONNX 모델 파일
+        ONNX_MODEL = MODELS_DIR / 'Ray.onnx'
+        ONNX_MODEL_FALLBACK_1 = MODELS_DIR / 'Ray-9558758.onnx'
+        ONNX_MODEL_FALLBACK_2 = MODELS_DIR / 'Ray-23999963.onnx'
+
+        @classmethod
+        def get_onnx_model_path(cls) -> str:
+            """
+            사용 가능한 ONNX 모델 경로 반환
+
+            Returns:
+                str: 존재하는 첫 번째 ONNX 모델의 절대 경로
+
+            Raises:
+                FileNotFoundError: 사용 가능한 모델이 없을 때
+            """
+            for model_path in [cls.ONNX_MODEL, cls.ONNX_MODEL_FALLBACK_1, cls.ONNX_MODEL_FALLBACK_2]:
+                if model_path.exists():
+                    return str(model_path)
+            raise FileNotFoundError(f"ONNX 모델을 찾을 수 없습니다: {cls.MODELS_DIR}")
+
+    # ============================================================================
+    # ROS2 통신 설정
+    # ============================================================================
+    class QueueSizes:
+        """ROS2 퍼블리셔/서브스크라이버 큐 크기"""
+        DEFAULT = 10
+        SENSOR = 10
+        CONTROL = 10
+        STATUS = 10
+
+    # ============================================================================
     # 타이머 주기
     # ============================================================================
-    MAIN_LOOP_HZ = 100  # 20Hz
+    MAIN_LOOP_HZ = 100  # 100Hz
     MAIN_LOOP_PERIOD = 1.0 / MAIN_LOOP_HZ
 
     # ============================================================================
@@ -37,17 +86,20 @@ class Constants:
     PREDEFINED_WAYPOINTS = [
         (25, 5, 'CIRCLE_BUOY', DEFAULT_WAYPOINT_RADIUS, {}),
         (160, 0, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {}),
-        (120, 45, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {'rotation_direction': 2, 'circle_radius': 15.0}),
-        (80, 43, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {}),
+        (140, 42, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {'rotation_direction': 2, 'circle_radius': 15.0}),
+        (80, 42, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {}),
         (0, 0, 'PASS_BETWEEN_BUOYS', DEFAULT_WAYPOINT_RADIUS, {})
     ]
 
     # ============================================================================
     # ONNX 모델 설정
     # ============================================================================
-    ONNX_MODEL_PATH = '/home/yuneyoungjun/vrx_ws/src/vrx/Scripts_git/models/correct_IMU/gpu/Ray-9558758.onnx'
-    # ONNX_MODEL_PATH = '/home/yuneyoungjun/vrx_ws/src/vrx/Scripts_git/models/correct_IMU/gpu/Ray-23999963.onnx'
-    ONNX_MODEL_PATH = '/home/yuneyoungjun/vrx_ws/src/vrx/Scripts_git/models/correct_IMU//gpu/Ray.onnx'
+    # ONNX_MODEL_PATH는 이제 Paths.get_onnx_model_path()를 사용하세요
+    @property
+    def ONNX_MODEL_PATH(self) -> str:
+        """하위 호환성을 위한 프로퍼티 (deprecated)"""
+        return self.Paths.get_onnx_model_path()
+
     ONNX_INPUT_SIZE = 426
     ONNX_V_SCALE = 1.0
     ONNX_W_SCALE = -1.0
@@ -88,9 +140,9 @@ class Constants:
     CIRCLE_PID_KD = 0.4
 
     # CircleBuoy 미션 속도 파라미터
-    CIRCLE_BASE_SPEED = 150.0
+    CIRCLE_BASE_SPEED = 200.0
     CIRCLE_MIN_SPEED = 50.0
-    CIRCLE_MAX_TURN_THRUST = 150.0
+    CIRCLE_MAX_TURN_THRUST = 200.0
 
     # CircleBuoy 미션 target_x 결정식 파라미터
     CIRCLE_TX_BASE_X = 1200.0
