@@ -2,7 +2,10 @@
   "permissions": {
     "allow": [
       "Read(//home/yuneyoungjun/vrx_ws/src/vrx/Scripts_git/**)",
-      "Read(//mnt/c/Users/ANSL/Pictures/Screenshots/**)"
+      "Read(//mnt/c/Users/ANSL/Pictures/Screenshots/**)",
+      "Bash(git rm:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
     ],
     "deny": [],
     "ask": []

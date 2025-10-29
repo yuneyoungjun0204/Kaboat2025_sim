@@ -1,5 +1,6 @@
 # Windows Alternate Data Streams (Zone.Identifier)
 *:Zone.Identifier
+*.추적 관련 논문/
 
 # Python cache files
 __pycache__/
