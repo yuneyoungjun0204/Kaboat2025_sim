@@ -126,34 +126,50 @@ class Constants:
     # ============================================================================
     # 미션별 PID 게인 설정
     # ============================================================================
-    # PassBetweenBuoys 미션 PID 게인
+    # PassBetweenBuoys 미션 파라미터
     PASS_BETWEEN_PID_KP = 0.003
     PASS_BETWEEN_PID_KI = 0.0001
     PASS_BETWEEN_PID_KD = 0.001
-    PASS_BETWEEN_FORWARD_SPEED = 0.6
-    PASS_BETWEEN_MAX_STEERING = 0.2
+    PASS_BETWEEN_STEERING_GAIN = 0.0005  # 비례 제어 게인
+    PASS_BETWEEN_FORWARD_SPEED = 0.5  # 전진 속도
+    PASS_BETWEEN_MAX_STEERING = 0.3  # 최대 조향 값
+    PASS_BETWEEN_FALLBACK_SPEED = 0.2  # 부표 미탐지 시 속도
     PASS_BETWEEN_MAX_DEPTH_DIFF = 5.0  # 부표 간 최대 깊이 차이 (미터)
 
     # CircleBuoy 미션 PID 게인
-    CIRCLE_PID_KP = 0.5
-    CIRCLE_PID_KI = 0.000
+    CIRCLE_PID_KP = 0.8
+    CIRCLE_PID_KI = 0.001
     CIRCLE_PID_KD = 0.4
 
     # CircleBuoy 미션 속도 파라미터
-    CIRCLE_BASE_SPEED = 200.0
+    CIRCLE_BASE_SPEED = 150.0
     CIRCLE_MIN_SPEED = 50.0
-    CIRCLE_MAX_TURN_THRUST = 200.0
+    CIRCLE_MAX_TURN_THRUST = 150.0
 
-    # CircleBuoy 미션 target_x 결정식 파라미터
-    CIRCLE_TX_BASE_X = 1200.0
-    CIRCLE_TX_SLOPE = 1000.0
+    # CircleBuoy 미션 이미지 크기
+    CIRCLE_IMAGE_WIDTH = 1280
+    CIRCLE_IMAGE_HEIGHT = 720
+
+    # CircleBuoy 미션 target_x 결정식 파라미터 (시계방향)
+    CIRCLE_TX_BASE_X = 1240.0
+    CIRCLE_TX_SLOPE = 700.0
     CIRCLE_TX_MIN_X = 800.0
     CIRCLE_TX_MAX_X = 1200.0
 
-    # WaypointFollow 미션
+    # CircleBuoy 미션 반시계방향 파라미터
+    CIRCLE_CCW_SLOPE = 200.0  # Counter-clockwise slope
+    CIRCLE_CCW_MIN_X = 140.0
+    CIRCLE_CCW_MAX_X = 640.0
+
+    # CircleBuoy 완료 기준
+    CIRCLE_COMPLETION_ROTATION = 350.0  # 350도 회전 시 완료
+    CIRCLE_COMPLETION_SPEED = 0.3  # 완료 후 전진 속도
+
+    # WaypointFollow 미션 파라미터
     WAYPOINT_STEERING_GAIN = 0.01
     WAYPOINT_FORWARD_SPEED = 0.5
     WAYPOINT_MAX_STEERING = 0.5
+    WAYPOINT_MIN_DISTANCE = 1.0  # 목표 거리 최소값 (미터)
 
     # ============================================================================
     # ROS2 토픽명 설정
