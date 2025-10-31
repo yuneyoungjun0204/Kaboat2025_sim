@@ -92,6 +92,8 @@ class SensorCallbackHandler:
                 distance = ranges[i]
                 if np.isinf(distance) or np.isnan(distance) or distance >= Constants.MAX_LIDAR_DISTANCE:
                     distance = Constants.MAX_LIDAR_DISTANCE
+                else:
+                    distance = distance / Constants.LIDAR_SCALE_FACTOR
 
                 idx = int(angle_deg + 100)
                 idx = max(0, min(Constants.LIDAR_ARRAY_SIZE - 1, idx))
@@ -116,6 +118,15 @@ class SensorCallbackHandler:
         if waypoint_add_callback:
             waypoint_add_callback(msg)
 
+    def has_valid_data(self) -> bool:
+        """
+        센서 데이터가 유효한지 확인
+
+        Returns:
+            bool: GPS 데이터가 초기화되었는지 여부
+        """
+        return self.reference_point_set
+
     def get_lidar_distance_at_angle(self, angle_deg: float) -> float:
         """주어진 각도에서 LiDAR 거리 가져오기"""
         # 각도 정규화
@@ -129,3 +140,8 @@ class SensorCallbackHandler:
             idx = max(0, min(Constants.LIDAR_ARRAY_SIZE - 1, idx))
             return self.lidar_distances[idx]
         return Constants.MAX_LIDAR_DISTANCE
+
+    # Alias for compatibility
+    def get_lidar_distance_at_angle_degrees(self, angle_deg: float) -> float:
+        """주어진 각도에서 LiDAR 거리 가져오기 (호환성 유지용 alias)"""
+        return self.get_lidar_distance_at_angle(angle_deg)

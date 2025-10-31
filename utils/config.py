@@ -28,6 +28,7 @@ class Constants:
         MODELS_DIR = PROJECT_ROOT / 'models' / 'correct_IMU' / 'gpu'
 
         # ONNX 모델 파일
+        ONNX_MODEL = MODELS_DIR / 'Once_observation.onnx'
         ONNX_MODEL = MODELS_DIR / 'Ray.onnx'
         ONNX_MODEL_FALLBACK_1 = MODELS_DIR / 'Ray-9558758.onnx'
         ONNX_MODEL_FALLBACK_2 = MODELS_DIR / 'Ray-23999963.onnx'
@@ -70,6 +71,7 @@ class Constants:
     LIDAR_ARRAY_SIZE = 201
     MAX_LIDAR_DISTANCE = 100.0
     LIDAR_ANGLE_RANGE = (-100, 100)  # degrees
+    LIDAR_SCALE_FACTOR = 0.3  # LiDAR 거리값 스케일 조정 (1.0 = 변환 없음)
 
     # ============================================================================
     # 센서 데이터

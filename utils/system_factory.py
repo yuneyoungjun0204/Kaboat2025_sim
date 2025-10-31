@@ -311,6 +311,58 @@ class VRXSystemFactory:
 
         return components
 
+    def create_minimal_components(self) -> Dict[str, Any]:
+        """
+        장애물 회피에 필요한 최소 컴포넌트만 생성 (탐지/트래킹 제외)
+
+        Returns:
+            Dict[str, Any]: 생성된 컴포넌트
+                {
+                    'sensor_handler': SensorCallbackHandler,
+                    'avoidance_controller': AvoidanceController,
+                    'mission_manager': MissionManager,
+                    'waypoint_manager': WaypointManager,
+                    'mission_executor': MissionExecutor,
+                    'onnx_controller': ONNXController,
+                }
+
+        Example:
+            >>> factory = VRXSystemFactory(node, None, logger)
+            >>> components = factory.create_minimal_components()
+            >>> # 장애물 회피만 사용
+        """
+        self.logger.info("=" * 80)
+        self.logger.info("VRX 장애물 회피 시스템 초기화 (최소 구성)")
+        self.logger.info("=" * 80)
+
+        # 1. 센서 시스템
+        sensor_manager, sensor_handler = self.create_sensor_system()
+
+        # 2. 장애물 회피 컨트롤러
+        avoidance_controller = self.create_avoidance_controller()
+
+        # 3. 미션 시스템
+        mission_manager, waypoint_manager, mission_executor = \
+            self.create_mission_system(avoidance_controller)
+
+        # 4. ONNX 컨트롤러
+        onnx_controller = self.create_onnx_controller()
+
+        components = {
+            'sensor_handler': sensor_handler,
+            'avoidance_controller': avoidance_controller,
+            'mission_manager': mission_manager,
+            'waypoint_manager': waypoint_manager,
+            'mission_executor': mission_executor,
+            'onnx_controller': onnx_controller,
+        }
+
+        self.logger.info("=" * 80)
+        self.logger.info("✅ 장애물 회피 시스템 초기화 완료!")
+        self.logger.info("=" * 80)
+
+        return components
+
 
 class QuickStart:
     """

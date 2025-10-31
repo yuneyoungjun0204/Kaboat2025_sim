@@ -422,17 +422,19 @@ class AvoidanceController:
         has_obstacles, check_area_points = self.obstacle_detector.check_obstacles(
             current_pos, los_target, agent_heading, lidar_distances, get_lidar_distance_func
         )
-
-        if has_obstacles:
-            # 장애물이 있으면 ONNX 모델 사용
-            linear_velocity, angular_velocity = onnx_control_func()
-            use_direct_control = False
-        else:
-            # 장애물이 없으면 직접 제어
-            linear_velocity, angular_velocity = DirectController.calculate_control(
-                current_pos, los_target, agent_heading
-            )
-            use_direct_control = True
+        # 장애물이 있으면 ONNX 모델 사용
+        linear_velocity, angular_velocity = onnx_control_func()
+        use_direct_control = False
+        # if has_obstacles:
+        #     # 장애물이 있으면 ONNX 모델 사용
+        #     linear_velocity, angular_velocity = onnx_control_func()
+        #     use_direct_control = False
+        # else:
+        #     # 장애물이 없으면 직접 제어
+        #     linear_velocity, angular_velocity = DirectController.calculate_control(
+        #         current_pos, los_target, agent_heading
+        #     )
+        #     use_direct_control = True
 
         return use_direct_control, linear_velocity, angular_velocity, check_area_points
 
