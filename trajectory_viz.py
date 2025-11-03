@@ -80,18 +80,22 @@ class TrajectoryVizNode(Node):
         self.plot_manager.fig.canvas.mpl_connect('button_press_event', self.on_click)
 
     def on_click(self, event):
-        """마우스 클릭으로 웨이포인트 설정"""
+        """마우스 클릭으로 웨이포인트 설정 (NED plot에서)"""
         if event.inaxes == self.plot_manager.ax1 and event.button == 1:
             x, y = event.xdata, event.ydata
             if x is not None and y is not None:
-                self.waypoints.append([x, y])
-                self.current_waypoint = [x, y]
+                # matplotlib NED 좌표: x=North, y=East
+                north, east = x, y
 
-                # ROS2 발행
-                msg = Point(x=float(x), y=float(y), z=0.0)
+                # 저장: [East, North] 순서 (GPS 관례)
+                self.waypoints.append([east, north])
+                self.current_waypoint = [east, north]
+
+                # ROS2 publish: Point(x=North, y=East) (시스템 내부는 [North, East])
+                msg = Point(x=float(north), y=float(east), z=0.0)
                 self.waypoint_pub.publish(msg)
 
-                self.get_logger().info(f'🎯 웨이포인트: ({x:.1f}, {y:.1f})')
+                self.get_logger().info(f'🎯 웨이포인트 클릭: N={north:.1f}m, E={east:.1f}m')
 
     # ============================================================================
     # 콜백 함수들 (간소화됨)
@@ -103,7 +107,7 @@ class TrajectoryVizNode(Node):
         if gps_data is None:
             return
 
-        utm_x, utm_y = gps_data['utm_x'], gps_data['utm_y']
+        utm_x, utm_y = gps_data['utm_y'], gps_data['utm_x']
 
         # 축 초기화 (첫 GPS 데이터 기준)
         if not self.axis_initialized:
@@ -187,7 +191,20 @@ class TrajectoryVizNode(Node):
                     current_pos
                 )
 
-            # 5. 제어 출력값 업데이트
+            # 5. 장애물 검사 영역 업데이트 (IMU 중심)
+            if self.callback_handler.current_obstacle_check_area:
+                self.plot_manager.update_obstacle_check_area(
+                    self.callback_handler.current_obstacle_check_area,
+                    current_pos  # 로봇 위치 전달
+                )
+
+            # 6. Goal check 영역 업데이트
+            if self.callback_handler.current_goal_check_areas:
+                self.plot_manager.update_goal_check_areas(
+                    self.callback_handler.current_goal_check_areas
+                )
+
+            # 7. 제어 출력값 업데이트
             mode = self.callback_handler.get_display_mode()
             self.plot_manager.update_control_output(
                 self.callback_handler.linear_velocity,
@@ -202,7 +219,7 @@ class TrajectoryVizNode(Node):
             self.get_logger().error(f'플롯 업데이트 오류: {e}')
 
     def _update_lidar_on_trajectory(self, current_pos, current_heading):
-        """궤적 플롯에 LiDAR 데이터 추가"""
+        """궤적 플롯에 LiDAR 데이터 추가 (NED plot)"""
         if current_heading is None:
             return
 
@@ -218,12 +235,13 @@ class TrajectoryVizNode(Node):
         rotated_x = lidar_y
         rotated_y = -lidar_x
 
-        utm_x = current_pos[0] + (rotated_x * cos_h - rotated_y * sin_h)
-        utm_y = current_pos[1] + (rotated_x * sin_h + rotated_y * cos_h)
+        # current_pos = [North, East] (from GPS swap)
+        utm_east = current_pos[1] + (rotated_x * cos_h - rotated_y * sin_h)
+        utm_north = current_pos[0] + (rotated_x * sin_h + rotated_y * cos_h)
 
-        # 플롯
+        # NED plot: X=North, Y=East
         lidar_traj, = self.plot_manager.ax1.plot(
-            utm_x, utm_y, 'r.', markersize=2, alpha=0.6
+            utm_east, utm_north, 'r.', markersize=2, alpha=0.6
         )
         self.plot_manager.dynamic_elements.append(lidar_traj)
 

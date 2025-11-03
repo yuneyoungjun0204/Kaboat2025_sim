@@ -11,6 +11,56 @@ import time
 from typing import Tuple, Dict
 from sensor_msgs.msg import LaserScan, NavSatFix, Imu
 
+
+# ============================================================================
+# 각도 정규화 유틸리티 함수 (NED 좌표계 기준)
+# ============================================================================
+
+def normalize_angle_180(angle_deg: float) -> float:
+    """
+    각도를 -180~180도 범위로 정규화 (NED 좌표계 기준)
+
+    Args:
+        angle_deg: 입력 각도 (도 단위)
+
+    Returns:
+        -180~180도 범위로 정규화된 각도
+
+    Examples:
+        0° → 0°
+        90° → 90°
+        180° → 180° (or -180°)
+        270° → -90°
+        360° → 0°
+        -90° → -90°
+    """
+    # 먼저 0~360도 범위로 변환
+    angle_deg = angle_deg % 360.0
+
+    # 180도를 넘으면 음수로 변환
+    if angle_deg > 180.0:
+        angle_deg -= 360.0
+
+    return angle_deg
+
+
+def normalize_angle_360(angle_deg: float) -> float:
+    """
+    각도를 0~360도 범위로 정규화
+
+    Args:
+        angle_deg: 입력 각도 (도 단위)
+
+    Returns:
+        0~360도 범위로 정규화된 각도
+    """
+    return angle_deg % 360.0
+
+
+# ============================================================================
+# UTM 변환 함수
+# ============================================================================
+
 # UTM 변환을 위한 간단한 구현 (utm 모듈 대신)
 def simple_utm_conversion(lat, lon, ref_lat, ref_lon):
     """간단한 UTM 변환 (정확도는 떨어지지만 기본적인 변환)"""
@@ -138,29 +188,57 @@ class LiDARProcessor:
         return x, y
 
 class IMUProcessor:
-    """IMU 데이터 처리 클래스"""
-    
+    """
+    IMU 데이터 처리 클래스 (NED 좌표계)
+
+    Yaw 각도:
+        - -180~180도 범위 (NED 좌표계)
+        - 0° = North (정북)
+        - +90° = East (정동)
+        - -90° = West (정서)
+        - ±180° = South (정남)
+    """
+
     def __init__(self):
         self.imu_data = None
-    
+
     def process_imu_data(self, msg: Imu) -> Dict:
-        """IMU 데이터 처리"""
+        """
+        IMU 데이터 처리 (NED 좌표계)
+
+        Returns:
+            Dict with keys:
+                - yaw_rad: -π ~ π (rad)
+                - yaw_degrees: -180 ~ 180 (deg)
+                - angular_velocity: Vector3 (rad/s)
+                - linear_acceleration: Vector3 (m/s²)
+        """
         # Quaternion을 Euler 각도로 변환
         yaw_rad = self.quaternion_to_yaw(msg.orientation)
-        yaw_degrees = np.degrees(yaw_rad)
-        
+
+        # Yaw를 -180~180도 범위로 정규화 (arctan2는 이미 -π~π를 반환하지만 명시적으로)
+        yaw_degrees = normalize_angle_180(np.degrees(yaw_rad))
+
         self.imu_data = {
             'orientation': msg.orientation,
             'yaw_rad': yaw_rad,
-            'yaw_degrees': yaw_degrees,
-            'angular_velocity': msg.angular_velocity,
+            'yaw_degrees': yaw_degrees,  # -180~180도
+            'angular_velocity': msg.angular_velocity,  # rad/s
             'linear_acceleration': msg.linear_acceleration,
             'timestamp': time.time()
         }
         return self.imu_data
-    
+
     def quaternion_to_yaw(self, orientation) -> float:
-        """Quaternion을 Yaw 각도로 변환 (라디안)"""
+        """
+        Quaternion을 Yaw 각도로 변환 (NED 좌표계)
+
+        Args:
+            orientation: Quaternion (x, y, z, w)
+
+        Returns:
+            Yaw 각도 (라디안, -π ~ π)
+        """
         x, y, z, w = orientation.x, orientation.y, orientation.z, orientation.w
         yaw = np.arctan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z))
         return yaw

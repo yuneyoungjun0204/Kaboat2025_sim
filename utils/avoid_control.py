@@ -212,8 +212,8 @@ class ObstacleDetector:
 
             # 체크 영역 점 계산 (UTM 좌표)
             world_angle = current_psi + np.radians(lidar_angle_deg)
-            check_y = current_pos[0] + search_distance * np.sin(world_angle)
-            check_x = current_pos[1] + search_distance * np.cos(world_angle)
+            check_y = current_pos[0] + search_distance * np.cos(world_angle)
+            check_x = current_pos[1] + search_distance * np.sin(world_angle)
             check_area_points.extend([check_x, check_y])
 
             # LiDAR 거리 조회
@@ -422,19 +422,17 @@ class AvoidanceController:
         has_obstacles, check_area_points = self.obstacle_detector.check_obstacles(
             current_pos, los_target, agent_heading, lidar_distances, get_lidar_distance_func
         )
-        # 장애물이 있으면 ONNX 모델 사용
-        linear_velocity, angular_velocity = onnx_control_func()
-        use_direct_control = False
-        # if has_obstacles:
-        #     # 장애물이 있으면 ONNX 모델 사용
-        #     linear_velocity, angular_velocity = onnx_control_func()
-        #     use_direct_control = False
-        # else:
-        #     # 장애물이 없으면 직접 제어
-        #     linear_velocity, angular_velocity = DirectController.calculate_control(
-        #         current_pos, los_target, agent_heading
-        #     )
-        #     use_direct_control = True
+
+        if has_obstacles:
+            # 장애물이 있으면 ONNX 모델 사용
+            linear_velocity, angular_velocity = onnx_control_func()
+            use_direct_control = False
+        else:
+            # 장애물이 없으면 직접 제어 (LOS guidance)
+            linear_velocity, angular_velocity = DirectController.calculate_control(
+                current_pos, los_target, agent_heading
+            )
+            use_direct_control = True
 
         return use_direct_control, linear_velocity, angular_velocity, check_area_points
 

@@ -177,7 +177,7 @@ class PlotManager:
         self.ax3 = self.fig.add_subplot(gs[0, 2])  # 제어
 
         self.fig.suptitle(
-            'VRX Robot Trajectory & LiDAR (UTM)',
+            'VRX Robot Trajectory & LiDAR (NED Coordinate)',
             fontsize=16, fontweight='bold'
         )
 
@@ -193,10 +193,10 @@ class PlotManager:
         return self.fig
 
     def _setup_trajectory_plot(self):
-        """궤적 플롯 초기화"""
-        self.ax1.set_title('Robot Position Trajectory & Heading', fontsize=14)
-        self.ax1.set_xlabel('UTM X Position (m)', fontsize=12)
-        self.ax1.set_ylabel('UTM Y Position (m)', fontsize=12)
+        """궤적 플롯 초기화 (NED 좌표계)"""
+        self.ax1.set_title('Robot Position Trajectory & Heading (NED)', fontsize=14)
+        self.ax1.set_xlabel('North (m)', fontsize=12)
+        self.ax1.set_ylabel('East (m)', fontsize=12)
         self.ax1.grid(True, alpha=0.3)
         self.ax1.set_aspect('equal')
         self.ax1.set_xlim(-100, 100)
@@ -211,6 +211,7 @@ class PlotManager:
         self.ax1.plot([], [], 'r-', linewidth=3, label='IMU Heading')
         self.ax1.plot([], [], 'g-', linewidth=3, label='Target Heading')
         self.ax1.plot([], [], 'rD', markersize=8, label='LOS Target')
+        self.ax1.scatter([], [], c='orange', marker='.', s=30, alpha=0.6, label='Obstacle Check Area')
         self.ax1.fill([], [], color='purple', alpha=0.3, label='Goal Check Area')
 
         self.ax1.legend(fontsize=10)
@@ -286,28 +287,33 @@ class PlotManager:
         heading: Optional[float] = None,
         target_heading: Optional[float] = None
     ):
-        """궤적 업데이트"""
+        """궤적 업데이트 (NED: X=North, Y=East)"""
         if len(positions) < 2:
             return
 
+        # positions = [[North, East], ...] from GPS (swapped)
         pos_array = np.array(positions)
-        self.trajectory_line.set_data(pos_array[:, 0], pos_array[:, 1])
-        self.current_pos.set_data([pos_array[-1, 0]], [pos_array[-1, 1]])
 
-        # 헤딩 화살표
+        # NED plot: swap to X=North, Y=East
+        self.trajectory_line.set_data(pos_array[:, 1], pos_array[:, 0])  # X=North, Y=East
+        self.current_pos.set_data([pos_array[-1, 1]], [pos_array[-1, 0]])
+
+        # 헤딩 화살표 (NED 좌표)
         if heading is not None:
+            pos_ned = np.array([pos_array[-1, 1], pos_array[-1, 0]])  # [North, East]
             arrow_params = VizUtils.create_arrow_params(
-                pos_array[-1], heading,
+                pos_ned, heading,
                 Constants.Visualization.HEADING_ARROW_LENGTH,
                 'red'
             )
             arrow = self.ax1.arrow(**arrow_params)
             self.dynamic_elements.append(arrow)
 
-        # 목표 헤딩 화살표
+        # 목표 헤딩 화살표 (NED 좌표)
         if target_heading is not None:
+            pos_ned = np.array([pos_array[-1, 1], pos_array[-1, 0]])  # [North, East]
             arrow_params = VizUtils.create_arrow_params(
-                pos_array[-1], target_heading,
+                pos_ned, target_heading,
                 Constants.Visualization.TARGET_HEADING_ARROW_LENGTH,
                 'green'
             )
@@ -376,39 +382,82 @@ class PlotManager:
         )
 
     def update_waypoints(self, waypoints: List[List[float]], current: Optional[List[float]] = None):
-        """웨이포인트 업데이트"""
+        """웨이포인트 업데이트 (NED: X=North, Y=East)"""
         if len(waypoints) > 0:
+            # waypoints = [[East, North], ...] from click events or storage
             wp_array = np.array(waypoints)
-            self.waypoint_markers.set_data(wp_array[:, 0], wp_array[:, 1])
+            # NED plot: swap to X=North, Y=East
+            self.waypoint_markers.set_data(wp_array[:, 1], wp_array[:, 0])
 
         if current:
+            # current = [East, North]
             marker = self.ax1.plot(
-                [current[0]], [current[1]],
+                [current[1]], [current[0]],  # X=North, Y=East
                 'rs', markersize=12, markeredgecolor='black', markeredgewidth=2
             )[0]
             self.dynamic_elements.append(marker)
 
     def update_los_target(self, los_target: List[float], robot_pos: List[float]):
-        """LOS target 시각화"""
-        # 궤적 플롯
+        """LOS target 시각화 (NED: X=North, Y=East)"""
+        # 입력: los_target = [East, North], robot_pos = [East, North]
+        # NED plot을 위해 swap: matplotlib X=North, Y=East
+
+        # 궤적 플롯 (NED 좌표계)
         marker = self.ax1.scatter(
-            [los_target[0]], [los_target[1]],
+            [los_target[1]], [los_target[0]],  # X=North, Y=East
             c='red', marker='D', s=100, alpha=0.8, zorder=6
         )
         self.dynamic_elements.append(marker)
 
         line, = self.ax1.plot(
-            [robot_pos[0], los_target[0]],
-            [robot_pos[1], los_target[1]],
+            [robot_pos[1], los_target[1]],  # X=North
+            [robot_pos[0], los_target[0]],  # Y=East
             'r--', alpha=0.7, linewidth=2, zorder=5
         )
         self.dynamic_elements.append(line)
 
-        # LiDAR 플롯
-        rel_x, rel_y = los_target[0] - robot_pos[0], los_target[1] - robot_pos[1]
-        marker2 = self.ax2.scatter([rel_x], [rel_y], c='red', marker='D', s=80, alpha=0.8, zorder=6)
-        line2, = self.ax2.plot([0, rel_x], [0, rel_y], 'r--', alpha=0.7, linewidth=2, zorder=5)
+        # LiDAR 플롯 (relative)
+        rel_north = los_target[1] - robot_pos[1]  # North 차이
+        rel_east = los_target[0] - robot_pos[0]   # East 차이
+        marker2 = self.ax2.scatter([rel_north], [rel_east], c='red', marker='D', s=80, alpha=0.8, zorder=6)
+        line2, = self.ax2.plot([0, rel_north], [0, rel_east], 'r--', alpha=0.7, linewidth=2, zorder=5)
         self.dynamic_elements.extend([marker2, line2])
+
+    def update_obstacle_check_area(self, area_points: List[List[float]], robot_pos: List[float]):
+        """장애물 검사 영역 시각화 (NED: X=North, Y=East)"""
+        if not area_points or len(area_points) < 2:
+            return
+
+        # 점들을 배열로 변환 [East, North]
+        area_array = np.array(area_points)
+
+        # NED plot을 위해 swap: matplotlib X=North, Y=East
+        # 점들을 scatter로 표시
+        scatter = self.ax1.scatter(
+            area_array[:, 1], area_array[:, 0],  # X=North, Y=East
+            c='orange', marker='.', s=10, alpha=0.4, zorder=3,
+            label='Obstacle Check Area'
+        )
+        self.dynamic_elements.append(scatter)
+
+    def update_goal_check_areas(self, goal_check_areas: List[Dict]):
+        """Goal check 영역 시각화 (NED: X=North, Y=East)"""
+        for area in goal_check_areas:
+            if 'corners' in area and len(area['corners']) >= 4:
+                corners = np.array(area['corners'])  # [[East1, North1], [East2, North2], ...]
+
+                # NED plot을 위해 swap: matplotlib X=North, Y=East
+                corners_ned = np.column_stack([corners[:, 1], corners[:, 0]])  # [[North1, East1], ...]
+
+                # 폴리곤으로 표시
+                from matplotlib.patches import Polygon
+                poly = Polygon(
+                    corners_ned, closed=True,
+                    facecolor='purple', edgecolor='purple',
+                    alpha=0.3, linewidth=2, zorder=4
+                )
+                self.ax1.add_patch(poly)
+                self.dynamic_elements.append(poly)
 
     def draw(self):
         """화면 업데이트"""
@@ -478,7 +527,7 @@ class VizCallbackHandler:
             return
 
         corners = [
-            [msg.data[i], msg.data[i + 1]]
+            [msg.data[i+1], msg.data[i]]
             for i in range(1, len(msg.data) - 1, 2)
         ]
 

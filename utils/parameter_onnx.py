@@ -9,6 +9,7 @@ import time
 from sensor_msgs.msg import LaserScan, NavSatFix, Imu
 from geometry_msgs.msg import Point
 from utils import SensorDataManager
+from utils.sensor_preprocessing import normalize_angle_180
 
 
 class ONNXSensorManager:
@@ -114,17 +115,31 @@ class ONNXSensorManager:
             self.agent_position = np.array([gps_data['utm_y'], gps_data['utm_x']], dtype=np.float32)
 
     def _imu_callback(self, msg):
-        """IMU callback"""
-        imu_data = self.sensor_manager.process_imu_data(msg)
-        self.agent_heading = imu_data['yaw_degrees'] % 360.0
+        """
+        IMU callback - NED 좌표계 기준
 
+        Heading: -180~180도 (0° = North, +90° = East, -90° = West, ±180° = South)
+        Angular velocity: rad/s → deg/s, Z축 (+ = CCW, - = CW)
+        """
+        imu_data = self.sensor_manager.process_imu_data(msg)
+
+        # Yaw 각도를 -180~180도 범위로 정규화 (NED 좌표계)
+        self.agent_heading = normalize_angle_180(imu_data['yaw_degrees'])
+
+        # 각속도 처리 (Z축, rad/s → deg/s)
+        # NED 좌표계: + = 반시계방향(CCW), - = 시계방향(CW)
         current_angular_velocity = np.array([msg.angular_velocity.x,
                                              msg.angular_velocity.y,
                                              msg.angular_velocity.z])
         self.previous_angular_velocity = current_angular_velocity
         self.last_angular_velocity_update_time = time.time()
-        self.angular_velocity_y = np.clip(current_angular_velocity[2] *
-                                          self.angular_velocity_y_scale, -180, 180)
+
+        # Z축 각속도를 deg/s로 변환 후 클리핑
+        angular_velocity_z_deg = np.degrees(current_angular_velocity[2])
+        self.angular_velocity_y = np.clip(
+            angular_velocity_z_deg * self.angular_velocity_y_scale,
+            -180, 180
+        )
 
     def _lidar_callback(self, msg):
         """LiDAR callback and trigger control"""

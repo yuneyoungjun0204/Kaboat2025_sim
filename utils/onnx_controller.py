@@ -5,6 +5,7 @@ ONNX 모델 제어 모듈
 
 import numpy as np
 import onnxruntime as ort
+from collections import deque
 from typing import Tuple, List, Optional
 from utils.config import Constants
 
@@ -23,6 +24,10 @@ class ONNXController:
         self.onnx_input_name = None
         self.previous_moment_input = 0.0
         self.previous_force_input = 0.0
+
+        # Observation history for temporal stacking (동적 stack count 지원)
+        # maxlen=STACK_COUNT로 설정하여 자동으로 오래된 observation 제거
+        self.observation_history = deque(maxlen=Constants.STACK_COUNT)
 
         self._load_model(model_path)
 
@@ -65,9 +70,17 @@ class ONNXController:
                 agent_position, current_waypoint, previous_waypoint, next_waypoint
             )
 
-            stacked_input = np.concatenate([observation_array, observation_array]).reshape(
-                1, Constants.ONNX_INPUT_SIZE
-            )
+            # Observation history에 현재 observation 추가
+            self.observation_history.append(observation_array)
+
+            # Cold start 처리: history가 STACK_COUNT보다 적으면 현재 observation으로 채우기
+            # 예: STACK_COUNT=3이고 첫 프레임이면 [obs, obs, obs]로 채움
+            while len(self.observation_history) < Constants.STACK_COUNT:
+                self.observation_history.appendleft(observation_array)
+
+            # Temporal stacking: [t-n+1, t-n+2, ..., t-1, t] 순서로 concatenate
+            # 예: STACK_COUNT=2 → [t-1, t], STACK_COUNT=3 → [t-2, t-1, t]
+            stacked_input = np.concatenate(list(self.observation_history)).reshape(1, Constants.ONNX_INPUT_SIZE)
 
             outputs = self.onnx_session.run(None, {self.onnx_input_name: stacked_input})
 
@@ -81,18 +94,29 @@ class ONNXController:
                           angular_velocity_y: float, agent_position: np.ndarray,
                           current_waypoint: np.ndarray, previous_waypoint: np.ndarray,
                           next_waypoint: np.ndarray) -> np.ndarray:
-        """ONNX 모델용 관측값 구성"""
+        """
+        ONNX 모델용 단일 타임스텝 관측값 구성
+
+        Args:
+            lidar_distances: LiDAR 거리 배열 (201개, -100° ~ +100°)
+            agent_heading: 에이전트 방향 (-180~180도, NED 좌표계)
+            angular_velocity_y: Z축 각속도 (deg/s, + = CCW, - = CW)
+            agent_position: 에이전트 위치 [North, East] (미터)
+            current_waypoint: 현재 웨이포인트 [North, East]
+            previous_waypoint: 이전 웨이포인트 [North, East]
+            next_waypoint: 다음 웨이포인트 [North, East]
+
+        Returns:
+            관측값 배열 (크기: Constants.OBSERVATION_SIZE, 기본값 213)
+            최종 모델 입력은 이 배열을 STACK_COUNT번 쌓아서 생성됨
+        """
         observation_values = list(lidar_distances) + [
-            float(agent_heading),
-            float(angular_velocity_y)
+            float(agent_heading),         # -180~180도
+            float(angular_velocity_y)     # deg/s
         ]
 
-        for val in [agent_position, current_waypoint, previous_waypoint, next_waypoint]:
-            for i in range(2):
-                v = float(val[i])
-                if np.isinf(v) or np.isnan(v):
-                    v = 0.0
-                observation_values.append(v)
+        for waypoint in [agent_position, current_waypoint, previous_waypoint, next_waypoint]:
+            observation_values.extend([0.0 if np.isinf(v) or np.isnan(v) else float(v) for v in waypoint[:2]])
 
         observation_values.extend([
             float(self.previous_moment_input),
@@ -115,39 +139,18 @@ class ONNXController:
                 Constants.ONNX_ANGULAR_VELOCITY_RANGE[1]
             )
 
-            # Differential drive 물리적 제약 조건 적용
-            # Left thrust = linear + angular, Right thrust = linear - angular
-            # 각 thrust는 [-1, 1] 범위를 가져야 함
-            if linear_velocity + angular_velocity > 1.0:
-                angular_velocity = 1.0 - linear_velocity
-            elif linear_velocity + angular_velocity < -1.0:
-                angular_velocity = -linear_velocity - 1.0
-
-            if linear_velocity - angular_velocity > 1.0:
-                angular_velocity = linear_velocity - 1.0
-            elif linear_velocity - angular_velocity < -1.0:
-                angular_velocity = linear_velocity + 1.0
+            # Differential drive 제약: left=linear+angular, right=linear-angular ∈ [-1,1]
+            max_angular = min(1.0 - linear_velocity, linear_velocity + 1.0)
+            min_angular = max(-1.0 - linear_velocity, linear_velocity - 1.0)
+            angular_velocity = np.clip(angular_velocity, min_angular, max_angular)
 
         else:
             linear_velocity = 0.0
             angular_velocity = 0.0
 
-        # ⚠️ 주의: 이전 입력은 필터 적용 후에 업데이트되어야 함
-        # 여기서 업데이트하지 않고, 외부에서 update_previous_inputs() 호출
-        # (main_onnx_v5 방식과 일치)
-
         return linear_velocity, angular_velocity
 
     def update_previous_inputs(self, angular_velocity: float, linear_velocity: float) -> None:
-        """
-        이전 입력 업데이트 (필터 적용 후 호출)
-
-        Args:
-            angular_velocity: 필터 적용된 각속도
-            linear_velocity: 필터 적용된 선속도
-
-        Note:
-            main_onnx_v5와 일관성을 위해 필터 적용 후 값을 저장
-        """
+        """이전 입력 업데이트 (필터 적용 후 호출, temporal context용)"""
         self.previous_moment_input = angular_velocity
         self.previous_force_input = linear_velocity

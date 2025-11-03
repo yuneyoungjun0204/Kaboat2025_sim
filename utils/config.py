@@ -26,12 +26,14 @@ class Constants:
 
         # 모델 디렉토리
         MODELS_DIR = PROJECT_ROOT / 'models' / 'correct_IMU' / 'gpu'
+        # MODELS_DIR = PROJECT_ROOT / 'models'
 
         # ONNX 모델 파일
-        ONNX_MODEL = MODELS_DIR / 'Once_observation.onnx'
+        # ONNX_MODEL = MODELS_DIR / 'Once_observation.onnx'
         ONNX_MODEL = MODELS_DIR / 'Ray.onnx'
         ONNX_MODEL_FALLBACK_1 = MODELS_DIR / 'Ray-9558758.onnx'
         ONNX_MODEL_FALLBACK_2 = MODELS_DIR / 'Ray-23999963.onnx'
+        
 
         @classmethod
         def get_onnx_model_path(cls) -> str:
@@ -71,7 +73,7 @@ class Constants:
     LIDAR_ARRAY_SIZE = 201
     MAX_LIDAR_DISTANCE = 100.0
     LIDAR_ANGLE_RANGE = (-100, 100)  # degrees
-    LIDAR_SCALE_FACTOR = 0.3  # LiDAR 거리값 스케일 조정 (1.0 = 변환 없음)
+    LIDAR_SCALE_FACTOR = 1.2  # LiDAR 거리값 스케일 조정 (1.0 = 변환 없음)
 
     # ============================================================================
     # 센서 데이터
@@ -86,7 +88,7 @@ class Constants:
     # 미리 정의된 웨이포인트 (x, y, mission_type, radius, params)
     # mission_type: 'PASS_BETWEEN_BUOYS', 'CIRCLE_BUOY', 'WAYPOINT_FOLLOW', 'OBSTACLE_AVOID'
     PREDEFINED_WAYPOINTS = [
-        (25, 5, 'CIRCLE_BUOY', DEFAULT_WAYPOINT_RADIUS, {}),
+        (150, 9, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {}),
         (160, 0, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {}),
         (140, 42, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {'rotation_direction': 2, 'circle_radius': 15.0}),
         (80, 42, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {}),
@@ -102,16 +104,40 @@ class Constants:
         """하위 호환성을 위한 프로퍼티 (deprecated)"""
         return self.Paths.get_onnx_model_path()
 
-    ONNX_INPUT_SIZE = 426
+    # Observation 크기 및 Temporal Stacking 설정
+    # ───────────────────────────────────────────────────────────────────────────
+    # OBSERVATION_SIZE: 단일 타임스텝의 observation 크기
+    #   - LiDAR distances: 201개 (-100° ~ +100°)
+    #   - Agent heading: 1개 (-180° ~ 180°)
+    #   - Angular velocity Y: 1개 (deg/s)
+    #   - Agent position: 2개 [North, East]
+    #   - Current waypoint: 2개 [North, East]
+    #   - Previous waypoint: 2개 [North, East]
+    #   - Next waypoint: 2개 [North, East]
+    #   - Previous moment input: 1개 (이전 angular velocity 명령)
+    #   - Previous force input: 1개 (이전 linear velocity 명령)
+    #   Total: 201 + 1 + 1 + 2 + 2 + 2 + 2 + 1 + 1 = 213
+    OBSERVATION_SIZE = 213
+
+    # STACK_COUNT: 모델에 입력될 temporal stacking 횟수
+    #   - 1: 현재 프레임만 사용 (input size = 213)
+    #   - 2: 이전 + 현재 프레임 사용 (input size = 426)
+    #   - 3: 2 프레임 전 + 이전 + 현재 사용 (input size = 639)
+    #   새로운 강화학습 모델을 사용할 때 이 값만 변경하면 됩니다.
+    STACK_COUNT = 2
+
+    # ONNX_INPUT_SIZE: 자동 계산됨 (OBSERVATION_SIZE * STACK_COUNT)
+    ONNX_INPUT_SIZE = OBSERVATION_SIZE * STACK_COUNT  # 기본값: 213 * 2 = 426
+
     ONNX_V_SCALE = 1.0
     ONNX_W_SCALE = -1.0
-    ONNX_LINEAR_VELOCITY_RANGE = (0.08, 1.0)
+    ONNX_LINEAR_VELOCITY_RANGE = (0.2, 1.0)
     ONNX_ANGULAR_VELOCITY_RANGE = (-1.0, 1.0)
 
     # ============================================================================
     # 장애물 회피 설정
     # ============================================================================
-    BOAT_WIDTH = 2.1
+    BOAT_WIDTH = 3.5
     BOAT_HEIGHT = 50.0
     LOS_DELTA = 10.0
     LOS_LOOKAHEAD_MIN = 30.0
@@ -121,7 +147,7 @@ class Constants:
     # ============================================================================
     # 미션 설정
     # ============================================================================
-    DEFAULT_THRUST_SCALE = 2000.0  # 1000 → 2000 (장애물 회피 성능 향상)
+    DEFAULT_THRUST_SCALE = 3500.0  # 1000 → 2000 (장애물 회피 성능 향상)
     MAX_COAST_FRAMES = 10
     TRACKER_FPS = 20.0
 

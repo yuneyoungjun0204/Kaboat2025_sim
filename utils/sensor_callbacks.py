@@ -9,7 +9,7 @@ from geometry_msgs.msg import Point
 from cv_bridge import CvBridge, CvBridgeError
 from typing import Optional, Callable
 from utils.config import Constants
-from utils.sensor_preprocessing import SensorDataManager
+from utils.sensor_preprocessing import SensorDataManager, normalize_angle_180
 from utils.detection_system import MissionType
 
 
@@ -55,19 +55,29 @@ class SensorCallbackHandler:
                 self.reference_point_set = True
 
     def imu_callback(self, msg: Imu) -> None:
-        """IMU 콜백"""
-        imu_data = self.sensor_manager.process_imu_data(msg)
-        self.agent_heading = imu_data['yaw_degrees']
-        if self.agent_heading < 0:
-            self.agent_heading += 360.0
+        """
+        IMU 콜백 - NED 좌표계 기준
 
+        Heading: -180~180도 (0° = North, +90° = East, -90° = West, ±180° = South)
+        Angular velocity: rad/s → deg/s, Z축 (+ = CCW, - = CW)
+        """
+        imu_data = self.sensor_manager.process_imu_data(msg)
+
+        # Yaw 각도를 -180~180도 범위로 정규화 (NED 좌표계)
+        self.agent_heading = normalize_angle_180(imu_data['yaw_degrees'])
+
+        # 각속도 처리 (Z축, rad/s → deg/s)
+        # NED 좌표계: + = 반시계방향(CCW), - = 시계방향(CW)
         current_angular_velocity = np.array([
             msg.angular_velocity.x,
             msg.angular_velocity.y,
             msg.angular_velocity.z
         ])
+
+        # Z축 각속도를 deg/s로 변환 후 클리핑
+        angular_velocity_z_deg = np.degrees(current_angular_velocity[2])
         self.angular_velocity_y = np.clip(
-            current_angular_velocity[2],
+            angular_velocity_z_deg,
             Constants.ANGULAR_VELOCITY_LIMIT[0],
             Constants.ANGULAR_VELOCITY_LIMIT[1]
         )
