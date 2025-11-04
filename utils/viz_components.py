@@ -447,7 +447,7 @@ class PlotManager:
                 corners = np.array(area['corners'])  # [[East1, North1], [East2, North2], ...]
 
                 # NED plot을 위해 swap: matplotlib X=North, Y=East
-                corners_ned = np.column_stack([corners[:, 1], corners[:, 0]])  # [[North1, East1], ...]
+                corners_ned = np.column_stack([corners[:, 0], corners[:, 1]])  # [[North1, East1], ...]
 
                 # 폴리곤으로 표시
                 from matplotlib.patches import Polygon

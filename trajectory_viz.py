@@ -193,10 +193,56 @@ class TrajectoryVizNode(Node):
 
             # 5. 장애물 검사 영역 업데이트 (IMU 중심)
             if self.callback_handler.current_obstacle_check_area:
-                self.plot_manager.update_obstacle_check_area(
-                    self.callback_handler.current_obstacle_check_area,
-                    current_pos  # 로봇 위치 전달
-                )
+                # 장애물 검사 영역 시각화 개선
+                area_points = self.callback_handler.current_obstacle_check_area
+                if len(area_points) >= 3:
+                    area_array = np.array(area_points)
+
+                    # NED plot: X=North, Y=East
+                    # area_points = [[East, North], ...]
+                    from matplotlib.patches import Polygon
+                    from scipy.spatial import ConvexHull
+
+                    try:
+                        # Convex Hull로 영역 생성
+                        hull = ConvexHull(area_array)
+                        hull_points = area_array[hull.vertices]
+
+                        # matplotlib X=North, Y=East로 swap
+                        hull_ned = np.column_stack([hull_points[:, 1], hull_points[:, 0]])
+
+                        # 영역 채우기 (반투명)
+                        poly = Polygon(
+                            hull_ned, closed=True,
+                            facecolor='orange', edgecolor='darkorange',
+                            alpha=0.3, linewidth=2, zorder=3,
+                            label='Obstacle Check Area'
+                        )
+                        self.plot_manager.ax1.add_patch(poly)
+                        self.plot_manager.dynamic_elements.append(poly)
+
+                        # 외곽선 강조
+                        line, = self.plot_manager.ax1.plot(
+                            np.append(hull_ned[:, 0], hull_ned[0, 0]),
+                            np.append(hull_ned[:, 1], hull_ned[0, 1]),
+                            'orange', linewidth=2, alpha=0.8, zorder=4
+                        )
+                        self.plot_manager.dynamic_elements.append(line)
+
+                        # 점들도 표시 (작게)
+                        scatter = self.plot_manager.ax1.scatter(
+                            area_array[:, 1], area_array[:, 0],
+                            c='orange', marker='.', s=5, alpha=0.6, zorder=5
+                        )
+                        self.plot_manager.dynamic_elements.append(scatter)
+
+                    except Exception as e:
+                        # Convex Hull 실패시 점들만 표시
+                        scatter = self.plot_manager.ax1.scatter(
+                            area_array[:, 1], area_array[:, 0],
+                            c='orange', marker='.', s=30, alpha=0.6, zorder=3
+                        )
+                        self.plot_manager.dynamic_elements.append(scatter)
 
             # 6. Goal check 영역 업데이트
             if self.callback_handler.current_goal_check_areas:
