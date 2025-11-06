@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
 VRX 로봇 통합 시각화 (좌표계 완전 통일)
-- 모든 좌표계를 ENU(East-North-Up)로 통일
+- 모든 좌표계를 NED(North-East-Down)로 통일
 - 명확하고 직관적인 시각화
-- 장애물 영역 polygon 표시
+- 장애물 검사 영역 scatter 표시
 - 성능 최적화
 """
 
@@ -18,38 +18,37 @@ from typing import Optional, List, Tuple
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 from matplotlib.patches import Polygon, Circle, FancyArrow
-from scipy.spatial import ConvexHull
 
 from utils import Constants, SensorDataManager
 
 
 class CoordinateTransformer:
-    """좌표 변환 유틸리티 - 모든 좌표를 ENU로 통일"""
+    """좌표 변환 유틸리티 - 모든 좌표를 NED로 통일"""
 
     @staticmethod
-    def gps_to_enu(gps_data: dict) -> np.ndarray:
-        """GPS 데이터를 ENU 좌표로 변환
+    def gps_to_ned(gps_data: dict) -> np.ndarray:
+        """GPS 데이터를 NED 좌표로 변환
 
         Args:
             gps_data: {'utm_x': North, 'utm_y': East}
 
         Returns:
-            [East, North] 배열
+            [North, East] 배열
         """
-        return np.array([gps_data['utm_y'], gps_data['utm_x']])
+        return np.array([gps_data['utm_x'], gps_data['utm_y']])
 
     @staticmethod
-    def lidar_to_enu(lidar_x: np.ndarray, lidar_y: np.ndarray,
+    def lidar_to_ned(lidar_x: np.ndarray, lidar_y: np.ndarray,
                      robot_pos: np.ndarray, heading_deg: float) -> Tuple[np.ndarray, np.ndarray]:
-        """LiDAR 데이터를 전역 ENU 좌표로 변환
+        """LiDAR 데이터를 전역 NED 좌표로 변환
 
         Args:
             lidar_x, lidar_y: LiDAR 센서 좌표계 데이터
-            robot_pos: 로봇 위치 [East, North]
+            robot_pos: 로봇 위치 [North, East]
             heading_deg: 로봇 헤딩 (도)
 
         Returns:
-            (east_coords, north_coords): ENU 좌표
+            (north_coords, east_coords): NED 좌표
         """
         # LiDAR 좌표계를 로봇 중심으로 회전 (90도 보정 포함)
         heading_rad = np.radians(heading_deg)
@@ -59,11 +58,11 @@ class CoordinateTransformer:
         rotated_x = lidar_y
         rotated_y = -lidar_x
 
-        # Robot frame → Global ENU
-        east = robot_pos[0] + (rotated_x * cos_h - rotated_y * sin_h)
-        north = robot_pos[1] + (rotated_x * sin_h + rotated_y * cos_h)
+        # Robot frame → Global NED
+        north = robot_pos[0] + (rotated_x * cos_h - rotated_y * sin_h)
+        east = robot_pos[1] + (rotated_x * sin_h + rotated_y * cos_h)
 
-        return east, north
+        return north, east
 
     @staticmethod
     def heading_to_arrow(pos: np.ndarray, heading_deg: float,
@@ -71,7 +70,7 @@ class CoordinateTransformer:
         """헤딩을 화살표 파라미터로 변환
 
         Args:
-            pos: 위치 [East, North]
+            pos: 위치 [North, East]
             heading_deg: 헤딩 (도)
             length: 화살표 길이
 
@@ -91,7 +90,7 @@ class CoordinateTransformer:
 
 
 class UnifiedPlotManager:
-    """통합 플롯 매니저 - ENU 좌표계 사용"""
+    """통합 플롯 매니저 - NED 좌표계 사용"""
 
     def __init__(self, logger):
         self.logger = logger
@@ -132,7 +131,7 @@ class UnifiedPlotManager:
         self.ax_control = self.fig.add_subplot(gs[0, 2])  # 제어 출력
 
         self.fig.suptitle(
-            'VRX Unified Visualization (ENU Coordinate System)',
+            'VRX Unified Visualization (NED Coordinate System)',
             fontsize=18, fontweight='bold'
         )
 
@@ -147,10 +146,10 @@ class UnifiedPlotManager:
         self.logger.info("✓ 시각화 설정 완료")
 
     def _setup_main_plot(self):
-        """메인 플롯 초기화 (ENU: East=X, North=Y)"""
-        self.ax_main.set_title('Robot Trajectory & Environment (ENU)', fontsize=14, fontweight='bold')
-        self.ax_main.set_xlabel('East (m)', fontsize=12)
-        self.ax_main.set_ylabel('North (m)', fontsize=12)
+        """메인 플롯 초기화 (NED: North=X, East=Y)"""
+        self.ax_main.set_title('Robot Trajectory & Environment (NED)', fontsize=14, fontweight='bold')
+        self.ax_main.set_xlabel('North (m)', fontsize=12)
+        self.ax_main.set_ylabel('East (m)', fontsize=12)
         self.ax_main.grid(True, alpha=0.4, linestyle='--')
         self.ax_main.set_aspect('equal')
         self.ax_main.set_xlim(-100, 100)
@@ -177,16 +176,16 @@ class UnifiedPlotManager:
         self.ax_main.plot([], [], 'r-', linewidth=3, label='Current Heading')
         self.ax_main.plot([], [], 'lime', linewidth=3, label='Target Heading')
         self.ax_main.plot([], [], 'mD', markersize=10, label='LOS Target')
-        self.ax_main.fill([], [], color='orange', alpha=0.3, label='Obstacle Check Zone')
+        self.ax_main.scatter([], [], c='orange', marker='x', s=60, linewidths=2, label='Obstacle Check Points')
         self.ax_main.fill([], [], color='purple', alpha=0.3, label='Goal Check Zone')
 
         self.ax_main.legend(loc='upper right', fontsize=9, framealpha=0.9)
 
     def _setup_lidar_polar_plot(self):
-        """LiDAR 극좌표 플롯 초기화"""
-        self.ax_lidar_polar.set_title('LiDAR Polar View', fontsize=14, fontweight='bold')
-        self.ax_lidar_polar.set_theta_zero_location('N')
-        self.ax_lidar_polar.set_theta_direction(-1)
+        """LiDAR 극좌표 플롯 초기화 (NED 좌표계)"""
+        self.ax_lidar_polar.set_title('LiDAR Polar View (NED)', fontsize=14, fontweight='bold')
+        self.ax_lidar_polar.set_theta_zero_location('N')  # North = 0도
+        self.ax_lidar_polar.set_theta_direction(-1)  # 시계방향 (NED)
         self.ax_lidar_polar.set_ylim(0, Constants.Visualization.LIDAR_MAX_RANGE)
         self.ax_lidar_polar.grid(True, alpha=0.4)
 
@@ -257,7 +256,7 @@ class UnifiedPlotManager:
         """궤적 업데이트
 
         Args:
-            positions: [[East, North], ...] deque
+            positions: [[North, East], ...] deque
             current_heading: 현재 헤딩 (도)
             target_heading: 목표 헤딩 (도)
         """
@@ -266,7 +265,7 @@ class UnifiedPlotManager:
 
         pos_array = np.array(positions)
 
-        # 궤적 그리기 (ENU: X=East, Y=North)
+        # 궤적 그리기 (NED: X=North, Y=East)
         self.trajectory_line.set_data(pos_array[:, 0], pos_array[:, 1])
         self.robot_marker.set_data([pos_array[-1, 0]], [pos_array[-1, 1]])
 
@@ -290,17 +289,17 @@ class UnifiedPlotManager:
 
         Args:
             lidar_x, lidar_y: LiDAR 센서 좌표
-            robot_pos: 로봇 위치 [East, North]
+            robot_pos: 로봇 위치 [North, East]
             heading: 로봇 헤딩 (도)
         """
         if len(lidar_x) == 0:
             return
 
-        # 전역 ENU 좌표로 변환
-        east, north = self.transformer.lidar_to_enu(lidar_x, lidar_y, robot_pos, heading)
+        # 전역 NED 좌표로 변환
+        north, east = self.transformer.lidar_to_ned(lidar_x, lidar_y, robot_pos, heading)
 
         # 메인 플롯에 LiDAR 표시
-        self.lidar_scatter.set_offsets(np.column_stack([east, north]))
+        self.lidar_scatter.set_offsets(np.column_stack([north, east]))
 
         # 극좌표 플롯 업데이트
         ranges = np.sqrt(lidar_x**2 + lidar_y**2)
@@ -312,61 +311,29 @@ class UnifiedPlotManager:
         self.dynamic_elements.append(scatter)
 
     def update_obstacle_check_area(self, area_points: List[List[float]]):
-        """장애물 검사 영역 시각화 (Polygon)
+        """장애물 검사 영역 시각화 (Scatter)
 
         Args:
-            area_points: [[East, North], ...] 리스트
+            area_points: [[North, East], ...] 리스트
         """
-        if not area_points or len(area_points) < 3:
+        if not area_points or len(area_points) < 1:
             return
 
         area_array = np.array(area_points)
 
-        try:
-            # Convex Hull로 영역 생성
-            hull = ConvexHull(area_array)
-            hull_points = area_array[hull.vertices]
-
-            # Polygon 그리기
-            poly = Polygon(
-                hull_points, closed=True,
-                facecolor='orange', edgecolor='darkorange',
-                alpha=0.35, linewidth=2.5, zorder=5
-            )
-            self.ax_main.add_patch(poly)
-            self.dynamic_elements.append(poly)
-
-            # 외곽선 강조
-            line, = self.ax_main.plot(
-                np.append(hull_points[:, 0], hull_points[0, 0]),
-                np.append(hull_points[:, 1], hull_points[0, 1]),
-                'darkorange', linewidth=2, alpha=0.9, zorder=6
-            )
-            self.dynamic_elements.append(line)
-
-            # 중심점 표시
-            center = np.mean(hull_points, axis=0)
-            marker = self.ax_main.plot(
-                center[1], center[0], 'o',
-                color='darkorange', markersize=8, markeredgecolor='black', markeredgewidth=1.5,
-                zorder=7
-            )[0]
-            self.dynamic_elements.append(marker)
-
-        except Exception as e:
-            # Fallback: 점들만 표시
-            scatter = self.ax_main.scatter(
-                area_array[:, 0], area_array[:, 1],
-                c='orange', marker='o', s=40, alpha=0.6, edgecolors='darkorange', linewidths=1.5,
-                zorder=5
-            )
-            self.dynamic_elements.append(scatter)
+        # 점들만 간단하게 표시
+        scatter = self.ax_main.scatter(
+            area_array[:, 0], area_array[:, 1],
+            c='orange', marker='x', s=60, alpha=0.7, linewidths=2,
+            zorder=5
+        )
+        self.dynamic_elements.append(scatter)
 
     def update_goal_check_areas(self, goal_areas: List[dict]):
         """Goal 체크 영역 시각화
 
         Args:
-            goal_areas: [{'corners': [[East, North], ...]}, ...]
+            goal_areas: [{'corners': [[North, East], ...]}, ...]
         """
         for area in goal_areas:
             if 'corners' in area and len(area['corners']) >= 4:
@@ -384,8 +351,8 @@ class UnifiedPlotManager:
         """LOS target 시각화
 
         Args:
-            los_target: [East, North]
-            robot_pos: [East, North]
+            los_target: [North, East]
+            robot_pos: [North, East]
         """
         # 마커
         marker = self.ax_main.scatter(
@@ -407,8 +374,8 @@ class UnifiedPlotManager:
         """웨이포인트 업데이트
 
         Args:
-            waypoints: [[East, North], ...]
-            current: 현재 타겟 웨이포인트 [East, North]
+            waypoints: [[North, East], ...]
+            current: 현재 타겟 웨이포인트 [North, East]
         """
         if len(waypoints) > 0:
             wp_array = np.array(waypoints)
@@ -471,7 +438,7 @@ class UnifiedVizNode(Node):
         self.plot_manager = UnifiedPlotManager(self.get_logger())
         self.transformer = CoordinateTransformer()
 
-        # 데이터 히스토리 (ENU 좌표)
+        # 데이터 히스토리 (NED 좌표)
         self.position_history = deque(maxlen=Constants.Visualization.POSITION_HISTORY_MAXLEN)
         self.heading_history = deque(maxlen=Constants.Visualization.HEADING_HISTORY_MAXLEN)
 
@@ -525,17 +492,17 @@ class UnifiedVizNode(Node):
     def on_click(self, event):
         """마우스 클릭으로 웨이포인트 설정"""
         if event.inaxes == self.plot_manager.ax_main and event.button == 1:
-            east, north = event.xdata, event.ydata
-            if east is not None and north is not None:
-                # 저장: [East, North]
-                self.waypoints.append([east, north])
-                self.current_waypoint = [east, north]
+            north, east = event.xdata, event.ydata
+            if north is not None and east is not None:
+                # 저장: [North, East]
+                self.waypoints.append([north, east])
+                self.current_waypoint = [north, east]
 
                 # ROS2 publish: Point(x=North, y=East)
                 msg = Point(x=float(north), y=float(east), z=0.0)
                 self.waypoint_pub.publish(msg)
 
-                self.get_logger().info(f'🎯 웨이포인트: E={east:.1f}m, N={north:.1f}m')
+                self.get_logger().info(f'🎯 웨이포인트: N={north:.1f}m, E={east:.1f}m')
 
     # ============================================================================
     # 콜백 함수들
@@ -547,8 +514,8 @@ class UnifiedVizNode(Node):
         if gps_data is None:
             return
 
-        # ENU 좌표로 변환
-        position = self.transformer.gps_to_enu(gps_data)
+        # NED 좌표로 변환
+        position = self.transformer.gps_to_ned(gps_data)
         self.current_position = position
         self.position_history.append(position)
 
@@ -559,7 +526,7 @@ class UnifiedVizNode(Node):
             margin_y = Constants.Visualization.AXIS_MARGIN_Y
             self.plot_manager.ax_main.set_xlim(-margin_x, margin_x)
             self.plot_manager.ax_main.set_ylim(-margin_y, margin_y)
-            self.get_logger().info(f'📐 축 범위: E=±{margin_x}m, N=±{margin_y}m')
+            self.get_logger().info(f'📐 축 범위: N=±{margin_x}m, E=±{margin_y}m')
 
     def imu_callback(self, msg):
         """IMU 데이터 콜백"""
@@ -584,14 +551,14 @@ class UnifiedVizNode(Node):
     def los_callback(self, msg):
         """LOS target 콜백"""
         if len(msg.data) >= 2:
-            self.los_target = [msg.data[0], msg.data[1]]  # [East, North]
+            self.los_target = [msg.data[1], msg.data[0]]  # [North, East]
         else:
             self.los_target = None
 
     def obstacle_callback(self, msg):
         """장애물 체크 영역 콜백"""
         self.obstacle_check_area = [
-            [msg.data[i], msg.data[i + 1]]  # [East, North]
+            [msg.data[i + 1], msg.data[i]]  # [North, East]
             for i in range(0, len(msg.data) - 1, 2)
         ]
 
@@ -602,7 +569,7 @@ class UnifiedVizNode(Node):
             return
 
         corners = [
-            [msg.data[i+1], msg.data[i]]  # [East, North]
+            [msg.data[i], msg.data[i+1]]  # [North, East]
             for i in range(1, len(msg.data) - 1, 2)
         ]
 
