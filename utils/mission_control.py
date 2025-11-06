@@ -293,7 +293,7 @@ class MissionLoopExecutor:
         self.logger = logger
 
         self.loop_counter = 0
-        self.param_update_interval = 10
+        self.param_update_interval = 30  # 30 루프마다 업데이트 (Jetson 최적화: 10 -> 30)
         self.detected_objects = []
         self.raw_detections = []
 
@@ -380,7 +380,8 @@ class MissionLoopExecutor:
 
         self.detected_objects = self.tracker.get_tracked_objects()
 
-        if len(self.raw_detections) > 0 or len(self.detected_objects) > 0:
+        # 로깅 빈도 감소 (Jetson 최적화: 매번 -> 100 루프마다)
+        if (len(self.raw_detections) > 0 or len(self.detected_objects) > 0) and self.loop_counter % 100 == 0:
             self.logger.info(
                 f"Detection: raw={len(self.raw_detections)}, tracked={len(self.detected_objects)}"
             )
@@ -489,21 +490,13 @@ class MissionLoopExecutor:
         if self.sensor_handler.current_image is None:
             return
 
-        import cv2
-        from .depth_estimation import MiDaSHybridDepthEstimator
-
-        # 깊이 맵
-        if hasattr(self, 'depth_estimator'):
-            depth_map = self.depth_estimator.estimate_depth(self.sensor_handler.current_image)
-            if depth_map is not None:
-                self.visualization.visualize_depth_map(depth_map, mission_type.name)
-
-        # 탐지 결과
+        # 탐지 결과만 시각화 (깊이 맵 시각화 제거로 성능 향상)
+        # ROS 이미지 발행 비활성화로 CPU 사용량 감소 (Jetson Nano Orin 최적화)
         self.visualization.visualize_detections(
             self.sensor_handler.current_image, self.detected_objects,
             mission_type.name, self.waypoint_manager.get_waypoint_index(),
             self.waypoint_manager.get_total_waypoints(),
             raw_detections=self.raw_detections,
-            bridge=self.sensor_handler.bridge if hasattr(self.sensor_handler, 'bridge') else None,
-            viz_image_pub=self.ros_comm.publishers.get('viz_image')
+            bridge=None,  # ROS 이미지 발행 비활성화
+            viz_image_pub=None  # ROS 이미지 발행 비활성화
         )

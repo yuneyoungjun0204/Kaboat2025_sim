@@ -88,7 +88,7 @@ class Constants:
     # 미리 정의된 웨이포인트 (x, y, mission_type, radius, params)
     # mission_type: 'PASS_BETWEEN_BUOYS', 'CIRCLE_BUOY', 'WAYPOINT_FOLLOW', 'OBSTACLE_AVOID'
     PREDEFINED_WAYPOINTS = [
-        (150, 9, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {}),
+        (150, 9, 'PASS_BETWEEN_BUOYS', DEFAULT_WAYPOINT_RADIUS, {}),
         (160, 0, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {}),
         (140, 42, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {'rotation_direction': 2, 'circle_radius': 15.0}),
         (80, 42, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {}),

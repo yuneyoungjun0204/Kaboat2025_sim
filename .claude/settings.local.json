@@ -10,7 +10,8 @@
       "Bash(python3 -m py_compile:*)",
       "Bash(python3:*)",
       "Bash(find:*)",
-      "Read(//c/Users/ANSL/Downloads/**)"
+      "Read(//c/Users/ANSL/Downloads/**)",
+      "Bash(git restore:*)"
     ],
     "deny": [],
     "ask": []

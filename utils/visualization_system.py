@@ -180,26 +180,8 @@ class VisualizationSystem:
             'force_obstacle_avoid': bool(force_mission_mode == 1)
         }
 
-    def visualize_depth_map(self, depth_map: np.ndarray, mission_name: str):
-        """깊이 맵 시각화"""
-        # 깊이 맵을 컬러맵으로 변환
-        depth_normalized = cv2.normalize(depth_map, None, 0, 255, cv2.NORM_MINMAX)
-        depth_colored = cv2.applyColorMap(depth_normalized.astype(np.uint8), cv2.COLORMAP_JET)
-
-        # 정보 표시
-        info_text = [
-            f"Mission: {mission_name}",
-            f"Max Depth: {self.max_depth_threshold:.1f}m",
-            f"Min Depth: {self.min_depth_threshold:.1f}m"
-        ]
-
-        y_offset = 30
-        for text in info_text:
-            cv2.putText(depth_colored, text, (10, y_offset),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
-            y_offset += 30
-
-        cv2.imshow('Depth Map', depth_colored)
+    # visualize_depth_map 메서드 제거 (성능 최적화)
+    # 깊이 맵 시각화는 사용되지 않으므로 제거됨
 
     def visualize_detections(self, image: np.ndarray, detections: List[Dict],
                             mission_name: str, waypoint_index: int, total_waypoints: int,
@@ -293,10 +275,8 @@ class VisualizationSystem:
             f"Gate Threshold: {self.gate_threshold / 10.0:.2f}"
         ]
 
-        # 반투명 배경
-        overlay = vis_image.copy()
-        cv2.rectangle(overlay, (0, 0), (vis_image.shape[1], 250), (0, 0, 0), -1)
-        cv2.addWeighted(overlay, 0.6, vis_image, 0.4, 0, vis_image)
+        # 배경 (Jetson 최적화: addWeighted 대신 단순 사각형)
+        cv2.rectangle(vis_image, (0, 0), (vis_image.shape[1], 250), (0, 0, 0), -1)
 
         # 정보 텍스트
         y_offset = 25
@@ -316,9 +296,9 @@ class VisualizationSystem:
         cv2.putText(vis_image, "Dashed box + small dot = Raw detection", (15, legend_y),
                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (100, 100, 100), 1)
 
-        # 화면 표시
+        # 화면 표시 (Jetson 최적화: waitKey를 최소화)
         cv2.imshow('VRX Mission Control', vis_image)
-        cv2.waitKey(1)
+        cv2.waitKey(1)  # 1ms 유지 (필수 - 윈도우 업데이트용)
 
         # ROS 메시지로 발행 (선택)
         if bridge and viz_image_pub:

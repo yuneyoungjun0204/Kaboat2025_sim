@@ -56,7 +56,7 @@ class VRXMissionController(Node):
 
     def _assign_components(self, components: dict):
         """컴포넌트 할당"""
-        self.depth_estimator = components['depth_estimator']
+        # depth_estimator는 detection_system 내부에서만 사용되므로 별도 보관 불필요 (성능 최적화)
         self.detection_system = components['detection_system']
         self.sensor_handler = components['sensor_handler']
         self.avoidance_controller = components['avoidance_controller']
@@ -125,8 +125,7 @@ class VRXMissionController(Node):
             self.get_logger()
         )
 
-        # depth_estimator를 loop_executor에 전달 (시각화용)
-        self.loop_executor.depth_estimator = self.depth_estimator
+        # depth_estimator는 시각화에 사용하지 않으므로 전달 불필요 (성능 최적화)
         self.sensor_handler.bridge = self.bridge
 
     def _waypoint_callback_wrapper(self, msg: Point):
