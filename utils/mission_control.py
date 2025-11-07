@@ -293,10 +293,35 @@ class MissionLoopExecutor:
         self.logger = logger
 
         self.loop_counter = 0
-        self.param_update_interval = 30  # 30 루프마다 업데이트 (Jetson 최적화: 10 -> 30)
+        self.param_update_interval = 1000  # 거의 업데이트 안함 (Jetson 최적화)
         self.ros_publish_skip_frames = 5  # ROS 발행 빈도 감소 (Jetson 최적화)
         self.detected_objects = []
         self.raw_detections = []
+
+        # Jetson 최적화: 초기 파라미터 한번만 설정
+        self._initialize_parameters_once()
+
+    def _initialize_parameters_once(self):
+        """파라미터를 한 번만 초기화 (Jetson 최적화)"""
+        # 탐지 시스템 파라미터
+        detection_params = self.param_manager.get_detection_parameters()
+        if detection_params:
+            self.detection_system.update_parameters(
+                **{k: v for k, v in detection_params.items() if v is not None}
+            )
+
+        # 트래커 파라미터
+        tracker_params = self.param_manager.get_tracker_parameters()
+        if tracker_params:
+            if tracker_params.get('max_coast_frames'):
+                self.tracker.max_coast_frames = tracker_params['max_coast_frames']
+            if tracker_params.get('gate_threshold'):
+                self.tracker.gate_threshold = tracker_params['gate_threshold']
+
+        # 스러스트 스케일
+        thrust_scale = self.param_manager.get_thrust_scale()
+        if thrust_scale:
+            self.mission_manager.update_thrust_scale(thrust_scale)
 
     def execute_loop(self) -> None:
         """제어 루프 실행 (메인 엔트리 포인트)"""
@@ -309,9 +334,9 @@ class MissionLoopExecutor:
                 self.ros_comm.publish_thrust_commands(0.0, 0.0)
                 return
 
-            # 2. 파라미터 업데이트 (주기적)
-            if self.loop_counter % self.param_update_interval == 0:
-                self._update_parameters(mission_type)
+            # 2. 파라미터 업데이트 (거의 안함 - Jetson 최적화)
+            # if self.loop_counter % self.param_update_interval == 0:
+            #     self._update_parameters(mission_type)
 
             # 3. 웨이포인트 전환 확인
             mission_completed = self.waypoint_transition_handler.check_and_transition(

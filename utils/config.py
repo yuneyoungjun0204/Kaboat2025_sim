@@ -155,7 +155,7 @@ class Constants:
     # 미션별 PID 게인 설정
     # ============================================================================
     # PassBetweenBuoys 미션 파라미터
-    PASS_BETWEEN_PID_KP = 0.003
+    PASS_BETWEEN_PID_KP = 0.0025
     PASS_BETWEEN_PID_KI = 0.0001
     PASS_BETWEEN_PID_KD = 0.001
     PASS_BETWEEN_STEERING_GAIN = 0.0005  # 비례 제어 게인
