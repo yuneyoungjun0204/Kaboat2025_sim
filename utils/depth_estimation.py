@@ -25,16 +25,16 @@ class MiDaSHybridDepthEstimator:
         if torch.cuda.is_available():
             torch.backends.cudnn.benchmark = True  # 자동 최적화
             torch.backends.cuda.matmul.allow_tf32 = True  # TF32 사용
-        
+
         # Jetson 최적화: 해상도 축소 (384 -> 256)로 처리 속도 약 2배 향상
         self.transform_hybrid = transforms.Compose([
             transforms.Resize((256, 256)),
             transforms.ToTensor(),
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
         ])
-        
+
         print("MiDaS Hybrid 모델 로드 완료!")
-    
+
     def estimate_depth(self, image):
         """이미지에서 깊이 맵 추정 (Jetson 최적화)"""
         try:
