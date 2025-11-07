@@ -294,6 +294,7 @@ class MissionLoopExecutor:
 
         self.loop_counter = 0
         self.param_update_interval = 30  # 30 루프마다 업데이트 (Jetson 최적화: 10 -> 30)
+        self.detection_skip_frames = 2  # 2 프레임마다 탐지 (Jetson 최적화: 성능 향상)
         self.detected_objects = []
         self.raw_detections = []
 
@@ -320,9 +321,10 @@ class MissionLoopExecutor:
                 self.ros_comm.publish_thrust_commands(0.0, 0.0)
                 return
 
-            # 4. 객체 탐지 및 추적 (부표 미션만)
+            # 4. 객체 탐지 및 추적 (부표 미션만, Jetson 최적화: 프레임 스킵)
             if mission_type in [MissionType.PASS_BETWEEN_BUOYS, MissionType.CIRCLE_BUOY]:
-                self._perform_detection_and_tracking(mission_type)
+                if self.loop_counter % self.detection_skip_frames == 0:
+                    self._perform_detection_and_tracking(mission_type)
 
             # 5. 미션 실행
             left_thrust, right_thrust = self._execute_mission(mission_type)
@@ -330,9 +332,10 @@ class MissionLoopExecutor:
             # 6. 제어 명령 발행
             self._publish_commands(left_thrust, right_thrust, mission_type)
 
-            # 7. 시각화 (부표 미션만)
+            # 7. 시각화 (부표 미션만, Jetson 최적화: 프레임 스킵과 동기화)
             if mission_type in [MissionType.PASS_BETWEEN_BUOYS, MissionType.CIRCLE_BUOY]:
-                self._visualize(mission_type)
+                if self.loop_counter % self.detection_skip_frames == 0:
+                    self._visualize(mission_type)
 
         except Exception as e:
             self.logger.error(f"제어 루프 오류: {e}")

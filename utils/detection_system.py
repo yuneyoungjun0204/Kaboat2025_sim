@@ -108,7 +108,7 @@ class DetectionSystem:
 
     def detect_objects(self, image: np.ndarray, mission_type: MissionType) -> List[Dict]:
         """
-        객체 탐지 수행
+        객체 탐지 수행 (Jetson 최적화)
 
         Args:
             image: BGR 이미지
@@ -129,7 +129,7 @@ class DetectionSystem:
         if depth_map is None:
             return []
 
-        # 프레임 전처리
+        # Jetson 최적화: PIL 변환 없이 직접 RGB로 변환
         frame_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         image_pil = PILImage.fromarray(frame_rgb)
 

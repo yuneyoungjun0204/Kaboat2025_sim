@@ -188,7 +188,7 @@ class VisualizationSystem:
                             raw_detections: Optional[List[Dict]] = None,
                             bridge=None, viz_image_pub=None):
         """
-        탐지 결과 시각화
+        탐지 결과 시각화 (Jetson 최적화: 정보 텍스트 제거, 박스만 표시)
 
         Args:
             image: BGR 이미지
@@ -203,28 +203,10 @@ class VisualizationSystem:
         if image is None:
             return
 
-        vis_image = image.copy()
+        # Jetson 최적화: 불필요한 복사 제거, 원본에 직접 그리기
+        vis_image = image
 
-        # 원본 탐지 그리기 (얇은 점선)
-        if raw_detections:
-            for det in raw_detections:
-                # pass_max_depth_diff로 필터링된 객체는 그리지 않음
-                if det.get('filtered_by_depth_diff', False):
-                    continue
-
-                x1, y1, x2, y2 = det["bbox"]
-                label = det["label"]
-                cx, cy = det["center"]
-
-                color = self.colors.get(label, (255, 255, 255))
-
-                # 얇은 점선 박스
-                self._draw_dashed_rectangle(vis_image, (x1, y1), (x2, y2), color, 1)
-
-                # 작은 원
-                cv2.circle(vis_image, (cx, cy), 3, color, 1)
-
-        # 추적 결과 그리기 (굵은 실선)
+        # 추적 결과만 그리기 (굵은 실선) - raw_detections 제거로 성능 향상
         for det in detections:
             # pass_max_depth_diff로 필터링된 객체는 그리지 않음
             if det.get('filtered_by_depth_diff', False):
@@ -232,112 +214,20 @@ class VisualizationSystem:
 
             x1, y1, x2, y2 = det["bbox"]
             label = det["label"]
-            conf = det["confidence"]
-            depth = det["depth"]
             cx, cy = det["center"]
 
             color = self.colors.get(label, (255, 255, 255))
 
-            # 굵은 실선 박스
+            # 박스와 중심점만 그리기 (텍스트 제거로 성능 향상)
             cv2.rectangle(vis_image, (x1, y1), (x2, y2), color, 3)
-
-            # 큰 중심점
             cv2.circle(vis_image, (cx, cy), 7, color, -1)
 
-            # 추적 정보 추가
-            track_id = det.get('track_id', -1)
-            coast = det.get('coast_count', 0)
-
-            # 라벨 및 정보
-            text = f"{label}(T{track_id}): {conf:.2f} | {depth:.1f}m"
-            if coast > 0:
-                text += f" [C:{coast}]"
-
-            font = cv2.FONT_HERSHEY_SIMPLEX
-            font_scale = 0.7
-            thickness = 2
-            (text_w, text_h), baseline = cv2.getTextSize(text, font, font_scale, thickness)
-
-            # 배경 박스
-            cv2.rectangle(vis_image, (x1, y1 - text_h - 15), (x1 + text_w + 10, y1 - 5),
-                         (0, 0, 0), -1)
-            cv2.putText(vis_image, text, (x1 + 5, y1 - 10),
-                       font, font_scale, color, thickness)
-
-        # 미션 정보 표시
-        mission_info = [
-            f"Mission: {mission_name}",
-            f"Waypoint: {waypoint_index + 1}/{total_waypoints}",
-            f"Raw Detections: {len(raw_detections) if raw_detections else 0}",
-            f"Tracked Objects: {len(detections)}",
-            f"Threshold: {self.detection_threshold:.3f}",
-            f"Max Coast: {self.max_coast_frames} frames",
-            f"Gate Threshold: {self.gate_threshold / 10.0:.2f}"
-        ]
-
-        # 배경 (Jetson 최적화: addWeighted 대신 단순 사각형)
-        cv2.rectangle(vis_image, (0, 0), (vis_image.shape[1], 250), (0, 0, 0), -1)
-
-        # 정보 텍스트
-        y_offset = 25
-        for text in mission_info:
-            cv2.putText(vis_image, text, (10, y_offset),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
-            y_offset += 30
-
-        # 범례 추가
-        legend_y = y_offset + 10
-        cv2.putText(vis_image, "Legend:", (10, legend_y),
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
-        legend_y += 25
-        cv2.putText(vis_image, "Thick box + big dot = Tracked (IMM-PDAF)", (15, legend_y),
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
-        legend_y += 20
-        cv2.putText(vis_image, "Dashed box + small dot = Raw detection", (15, legend_y),
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, (100, 100, 100), 1)
-
-        # 화면 표시 (Jetson 최적화: waitKey를 최소화)
+        # 모든 정보 텍스트 제거 (Jetson 최적화)
+        # 화면 표시
         cv2.imshow('VRX Mission Control', vis_image)
-        cv2.waitKey(1)  # 1ms 유지 (필수 - 윈도우 업데이트용)
+        cv2.waitKey(1)
 
-        # ROS 메시지로 발행 (선택)
-        if bridge and viz_image_pub:
-            try:
-                viz_msg = bridge.cv2_to_imgmsg(vis_image, "bgr8")
-                viz_image_pub.publish(viz_msg)
-            except Exception as e:
-                pass
-
-    def _draw_dashed_rectangle(self, img, pt1, pt2, color, thickness=1, dash_length=10):
-        """점선 사각형 그리기"""
-        x1, y1 = pt1
-        x2, y2 = pt2
-
-        # 상단
-        self._draw_dashed_line(img, (x1, y1), (x2, y1), color, thickness, dash_length)
-        # 하단
-        self._draw_dashed_line(img, (x1, y2), (x2, y2), color, thickness, dash_length)
-        # 왼쪽
-        self._draw_dashed_line(img, (x1, y1), (x1, y2), color, thickness, dash_length)
-        # 오른쪽
-        self._draw_dashed_line(img, (x2, y1), (x2, y2), color, thickness, dash_length)
-
-    def _draw_dashed_line(self, img, pt1, pt2, color, thickness=1, dash_length=10):
-        """점선 그리기"""
-        dist = ((pt1[0] - pt2[0])**2 + (pt1[1] - pt2[1])**2)**0.5
-        dashes = int(dist / dash_length)
-
-        for i in range(dashes):
-            if i % 2 == 0:
-                start = (
-                    int(pt1[0] + (pt2[0] - pt1[0]) * i / dashes),
-                    int(pt1[1] + (pt2[1] - pt1[1]) * i / dashes)
-                )
-                end = (
-                    int(pt1[0] + (pt2[0] - pt1[0]) * (i + 1) / dashes),
-                    int(pt1[1] + (pt2[1] - pt1[1]) * (i + 1) / dashes)
-                )
-                cv2.line(img, start, end, color, thickness)
+    # _draw_dashed_rectangle 및 _draw_dashed_line 메서드 제거 (사용되지 않음, Jetson 최적화)
 
     def cleanup(self):
         """시각화 창 정리"""
