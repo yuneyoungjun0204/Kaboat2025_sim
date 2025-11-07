@@ -155,11 +155,11 @@ class Constants:
     # 미션별 PID 게인 설정
     # ============================================================================
     # PassBetweenBuoys 미션 파라미터
-    PASS_BETWEEN_PID_KP = 0.0025
+    PASS_BETWEEN_PID_KP = 0.0024
     PASS_BETWEEN_PID_KI = 0.0001
     PASS_BETWEEN_PID_KD = 0.001
-    PASS_BETWEEN_STEERING_GAIN = 0.0005  # 비례 제어 게인
-    PASS_BETWEEN_FORWARD_SPEED = 0.5  # 전진 속도
+    PASS_BETWEEN_STEERING_GAIN = 0.0001  # 비례 제어 게인
+    PASS_BETWEEN_FORWARD_SPEED = 0.4  # 전진 속도
     PASS_BETWEEN_MAX_STEERING = 0.3  # 최대 조향 값
     PASS_BETWEEN_FALLBACK_SPEED = 0.2  # 부표 미탐지 시 속도
     PASS_BETWEEN_MAX_DEPTH_DIFF = 5.0  # 부표 간 최대 깊이 차이 (미터)

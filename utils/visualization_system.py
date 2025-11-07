@@ -27,11 +27,11 @@ class VisualizationSystem:
             thrust_scale: 스러스터 스케일
         """
         # Jetson 최적화: 고정된 파라미터 (트랙바 제거)
-        self.detection_threshold = 0.026
-        self.min_box_area = 500
+        self.detection_threshold = 0.025  # 원래 값으로 복구
+        self.min_box_area = 250
         self.max_box_area = 80000
-        self.min_depth_threshold = 0.0
-        self.max_depth_threshold = 50.0
+        self.min_depth_threshold = 2.0    # 원래 값으로 복구 (가까운 부표도 탐지)
+        self.max_depth_threshold = 50.0   # 원래 값으로 복구 (먼 부표도 탐지)
         self.thrust_scale = 700.0
 
         # IMM-PDAF 파라미터 (고정)
@@ -75,7 +75,7 @@ class VisualizationSystem:
             'circle_tx_slope': 700.0,
             'circle_tx_min_x': 800.0,
             'circle_tx_max_x': 1200.0,
-            'pass_max_depth_diff': 1.0,
+            'pass_max_depth_diff': 0.2,
             'force_mission_mode': 0,  # 일반 모드 고정
             'force_obstacle_avoid': False
         }
