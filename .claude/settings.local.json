@@ -11,7 +11,8 @@
       "Bash(python3:*)",
       "Bash(find:*)",
       "Read(//c/Users/ANSL/Downloads/**)",
-      "Bash(git restore:*)"
+      "Bash(git restore:*)",
+      "Bash(chmod:*)"
     ],
     "deny": [],
     "ask": []
