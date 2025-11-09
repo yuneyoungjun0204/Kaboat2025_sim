@@ -21,3 +21,9 @@ ENV/
 # OS files
 .DS_Store
 Thumbs.db
+
+
+# ROS Bag Files (Database)
+*.db3
+rosbag2_*rosbag2_*/
+*.db3
