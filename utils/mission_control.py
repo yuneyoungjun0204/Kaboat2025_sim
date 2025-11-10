@@ -334,9 +334,7 @@ class MissionLoopExecutor:
                 self.ros_comm.publish_thrust_commands(0.0, 0.0)
                 return
 
-            # 2. 파라미터 업데이트 (거의 안함 - Jetson 최적화)
-            # if self.loop_counter % self.param_update_interval == 0:
-            #     self._update_parameters(mission_type)
+            # 2. 파라미터 업데이트는 초기화 시 한 번만 수행 (Jetson 최적화)
 
             # 3. 웨이포인트 전환 확인
             mission_completed = self.waypoint_transition_handler.check_and_transition(
@@ -347,8 +345,11 @@ class MissionLoopExecutor:
                 return
 
             # 4. 객체 탐지 및 추적 (부표 미션만)
+            # Jetson 최적화: 탐지 주파수 감소 (config.DETECTION_FREQUENCY_DIVISOR)
             if mission_type in [MissionType.PASS_BETWEEN_BUOYS, MissionType.CIRCLE_BUOY]:
-                self._perform_detection_and_tracking(mission_type)
+                from .config import Constants
+                if self.loop_counter % Constants.DETECTION_FREQUENCY_DIVISOR == 0:
+                    self._perform_detection_and_tracking(mission_type)
 
             # 5. 미션 실행
             left_thrust, right_thrust = self._execute_mission(mission_type)

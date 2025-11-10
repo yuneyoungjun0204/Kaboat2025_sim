@@ -56,8 +56,12 @@ try:
     # System Factory
     from .system_factory import VRXSystemFactory, QuickStart
 
-    # Visualization Components
-    from .viz_components import PlotManager, VizCallbackHandler, VizUtils
+    # Geometry utilities (newly added)
+    from .geometry import (
+        normalize_angle_180, normalize_angle_360, normalize_angle_rad,
+        calculate_distance, calculate_heading,
+        polar_to_cartesian, cartesian_to_polar
+    )
 
     # Mission Control Components
     from .mission_control import (
@@ -121,10 +125,14 @@ try:
         'VRXSystemFactory',
         'QuickStart',
 
-        # Visualization Components
-        'PlotManager',
-        'VizCallbackHandler',
-        'VizUtils',
+        # Geometry utilities
+        'normalize_angle_180',
+        'normalize_angle_360',
+        'normalize_angle_rad',
+        'calculate_distance',
+        'calculate_heading',
+        'polar_to_cartesian',
+        'cartesian_to_polar',
 
         # Mission Control Components
         'MissionLoopExecutor',

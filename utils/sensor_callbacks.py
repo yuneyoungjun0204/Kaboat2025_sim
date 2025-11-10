@@ -9,7 +9,8 @@ from geometry_msgs.msg import Point
 from cv_bridge import CvBridge, CvBridgeError
 from typing import Optional, Callable
 from utils.config import Constants
-from utils.sensor_preprocessing import SensorDataManager, normalize_angle_180
+from utils.sensor_preprocessing import SensorDataManager
+from utils.geometry import normalize_angle_180  # 통합된 유틸리티 사용
 from utils.detection_system import MissionType
 
 
@@ -34,6 +35,10 @@ class SensorCallbackHandler:
         self.lidar_distances = np.zeros(Constants.LIDAR_ARRAY_SIZE, dtype=np.float32)
         self.current_image = None
         self.reference_point_set = False
+
+        # LiDAR 직교좌표 (sensor_preprocessing.py에서 가공된 데이터)
+        self.lidar_cartesian_x = np.array([])
+        self.lidar_cartesian_y = np.array([])
 
         # 수동 목표 위치
         self.manual_target_x = None
@@ -83,33 +88,43 @@ class SensorCallbackHandler:
         )
 
     def lidar_callback(self, msg: LaserScan) -> None:
-        """LiDAR 콜백"""
-        ranges = np.array(msg.ranges, dtype=np.float32)
-        angle_min = msg.angle_min
-        angle_increment = msg.angle_increment
+        """
+        LiDAR 콜백 - sensor_preprocessing.py의 LiDARProcessor 사용
 
+        전처리 과정:
+        1. LiDARProcessor로 유효 범위 필터링 및 노이즈 제거
+        2. 가공된 데이터를 기존 배열 형식으로 변환
+        3. 직교좌표도 함께 저장
+        """
+        # sensor_preprocessing.py의 LiDARProcessor 사용
+        lidar_data = self.sensor_manager.process_lidar_data(msg)
+
+        # 가공된 데이터를 기존 배열 형식으로 변환
         raw_ranges = np.full(
             Constants.LIDAR_ARRAY_SIZE,
             Constants.MAX_LIDAR_DISTANCE,
             dtype=np.float32
         )
 
-        for i in range(len(ranges)):
-            angle_rad = angle_min + i * angle_increment
-            angle_deg = np.degrees(angle_rad)
+        # 필터링된 ranges와 angles를 배열에 매핑
+        # 주의: 스케일 팩터는 이미 sensor_preprocessing.py에서 적용됨
+        if len(lidar_data['ranges']) > 0:
+            for distance, angle_rad in zip(lidar_data['ranges'], lidar_data['angles']):
+                angle_deg = np.degrees(angle_rad)
 
-            if Constants.LIDAR_ANGLE_RANGE[0] <= angle_deg <= Constants.LIDAR_ANGLE_RANGE[1]:
-                distance = ranges[i]
-                if np.isinf(distance) or np.isnan(distance) or distance >= Constants.MAX_LIDAR_DISTANCE:
-                    distance = Constants.MAX_LIDAR_DISTANCE
-                else:
-                    distance = distance / Constants.LIDAR_SCALE_FACTOR
+                if Constants.LIDAR_ANGLE_RANGE[0] <= angle_deg <= Constants.LIDAR_ANGLE_RANGE[1]:
+                    # 최대 거리 제한
+                    if distance >= Constants.MAX_LIDAR_DISTANCE:
+                        distance = Constants.MAX_LIDAR_DISTANCE
 
-                idx = int(angle_deg + 100)
-                idx = max(0, min(Constants.LIDAR_ARRAY_SIZE - 1, idx))
-                raw_ranges[idx] = distance
+                    idx = int(angle_deg + 100)
+                    idx = max(0, min(Constants.LIDAR_ARRAY_SIZE - 1, idx))
+                    raw_ranges[idx] = distance
 
         self.lidar_distances = raw_ranges.astype(np.float32)
+
+        # 직교좌표도 저장 (필요시 사용)
+        self.lidar_cartesian_x, self.lidar_cartesian_y = self.sensor_manager.get_lidar_cartesian()
 
     def waypoint_callback(self, msg: Point, waypoint_add_callback: Optional[Callable] = None) -> None:
         """

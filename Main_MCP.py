@@ -187,6 +187,3 @@ def main(args=None):
 
 if __name__ == '__main__':
     main()
-
-
-"커밋확인"

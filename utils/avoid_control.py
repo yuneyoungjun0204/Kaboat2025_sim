@@ -13,7 +13,8 @@
 
 import numpy as np
 import math
-from typing import Tuple, Optional, List
+from typing import Tuple, Optional, List, Callable
+from .geometry import normalize_angle_rad  # 통합된 유틸리티 사용
 
 
 class LOSGuidance:
@@ -125,14 +126,6 @@ class ObstacleDetector:
         self.boat_height = boat_height
         self.max_lidar_distance = max_lidar_distance
 
-    @staticmethod
-    def normalize_angle(angle: float) -> float:
-        """각도를 -π ~ π 범위로 정규화"""
-        while angle > np.pi:
-            angle -= 2 * np.pi
-        while angle < -np.pi:
-            angle += 2 * np.pi
-        return angle
 
     def calculate_goal_psi(self, current_pos: np.ndarray, target_pos: np.ndarray) -> float:
         """
@@ -184,7 +177,7 @@ class ObstacleDetector:
 
         # LiDAR 각도로 변환 (로봇 정면 기준)
         relative_angle = goal_psi - current_psi
-        relative_angle = self.normalize_angle(relative_angle)
+        relative_angle = normalize_angle_rad(relative_angle)  # 통합된 유틸리티 사용
 
         range_theta = self.calculate_range_theta(L)
 
@@ -310,7 +303,7 @@ class DirectController:
                                  (los_target[1] - current_pos[1])**2)
 
         # 각속도: 헤딩 차이에 비례 (-0.7 ~ 0.7)
-        angular_velocity = np.clip(heading_diff_rad / np.pi, -0.7, 0.7)
+        angular_velocity = np.clip(2.5*heading_diff_rad / np.pi, -0.8, 0.8)
 
         # 선속도: 거리에 따라 조절
         if distance_to_los > 20.0:

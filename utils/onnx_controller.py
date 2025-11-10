@@ -32,12 +32,28 @@ class ONNXController:
         self._load_model(model_path)
 
     def _load_model(self, model_path: str) -> None:
-        """ONNX 모델 로딩"""
+        """
+        ONNX 모델 로딩 (Jetson 최적화: TensorRT 우선)
+
+        Execution Providers 우선순위:
+        1. TensorrtExecutionProvider (3x speedup)
+        2. CUDAExecutionProvider (fallback)
+        3. CPUExecutionProvider (fallback)
+        """
         self.logger.info("ONNX 모델 로딩 중...")
         try:
-            self.onnx_session = ort.InferenceSession(model_path)
+            # Jetson 최적화: TensorRT 우선, CUDA fallback
+            providers = [
+                'TensorrtExecutionProvider',
+                'CUDAExecutionProvider',
+                'CPUExecutionProvider'
+            ]
+            self.onnx_session = ort.InferenceSession(model_path, providers=providers)
             self.onnx_input_name = self.onnx_session.get_inputs()[0].name
-            self.logger.info("✓ ONNX 모델 로딩 완료")
+
+            # 실제 사용된 provider 로깅
+            used_provider = self.onnx_session.get_providers()[0]
+            self.logger.info(f"✓ ONNX 모델 로딩 완료 (Provider: {used_provider})")
         except Exception as e:
             self.logger.error(f"ONNX 모델 로딩 실패: {e}")
             self.onnx_session = None

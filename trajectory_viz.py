@@ -153,7 +153,7 @@ class UnifiedPlotManager:
         self.ax_main.grid(True, alpha=0.4, linestyle='--')
         self.ax_main.set_aspect('equal')
         self.ax_main.set_xlim(-100, 100)
-        self.ax_main.set_ylim(-100, 100)
+        self.ax_main.set_ylim(0, 130)
 
         # 배경색
         self.ax_main.set_facecolor('#f0f0f0')

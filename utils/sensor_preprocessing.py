@@ -10,51 +10,8 @@ import numpy as np
 import time
 from typing import Tuple, Dict
 from sensor_msgs.msg import LaserScan, NavSatFix, Imu
-
-
-# ============================================================================
-# 각도 정규화 유틸리티 함수 (NED 좌표계 기준)
-# ============================================================================
-
-def normalize_angle_180(angle_deg: float) -> float:
-    """
-    각도를 -180~180도 범위로 정규화 (NED 좌표계 기준)
-
-    Args:
-        angle_deg: 입력 각도 (도 단위)
-
-    Returns:
-        -180~180도 범위로 정규화된 각도
-
-    Examples:
-        0° → 0°
-        90° → 90°
-        180° → 180° (or -180°)
-        270° → -90°
-        360° → 0°
-        -90° → -90°
-    """
-    # 먼저 0~360도 범위로 변환
-    angle_deg = angle_deg % 360.0
-
-    # 180도를 넘으면 음수로 변환
-    if angle_deg > 180.0:
-        angle_deg -= 360.0
-
-    return angle_deg
-
-
-def normalize_angle_360(angle_deg: float) -> float:
-    """
-    각도를 0~360도 범위로 정규화
-
-    Args:
-        angle_deg: 입력 각도 (도 단위)
-
-    Returns:
-        0~360도 범위로 정규화된 각도
-    """
-    return angle_deg % 360.0
+from .config import Constants
+from .geometry import normalize_angle_180, normalize_angle_360  # 통합된 유틸리티 사용
 
 
 # ============================================================================
@@ -122,26 +79,35 @@ class LiDARProcessor:
         self.lidar_data = {'ranges': np.array([]), 'angles': np.array([])}
     
     def process_lidar_data(self, msg: LaserScan) -> Dict:
-        """LiDAR 데이터 전처리"""
+        """
+        LiDAR 데이터 전처리
+
+        처리 과정:
+        1. 유효 범위 필터링
+        2. 스케일 팩터 적용 (거리 * LIDAR_SCALE_FACTOR)
+        3. 노이즈 필터링 (옵션)
+        """
         ranges = np.array(msg.ranges)
-        
+
         # 유효한 범위만 필터링 (더 관대한 조건)
-        valid_mask = (np.isfinite(ranges) & 
-                     (ranges >= self.min_range) & 
+        valid_mask = (np.isfinite(ranges) &
+                     (ranges >= self.min_range) &
                      (ranges <= self.max_range) &
                      (ranges > 0.0))  # 0보다 큰 값만
-        
+
         valid_ranges = ranges[valid_mask]
         valid_angles = np.linspace(msg.angle_min, msg.angle_max, len(ranges))[valid_mask]
-        
-        # 노이즈 필터링 비활성화 (안정성을 위해)
-        # filtered_ranges, filtered_angles = self._filter_noise(valid_ranges, valid_angles)
-        filtered_ranges, filtered_angles = valid_ranges, valid_angles
-        
+
+        # 스케일 팩터 적용 (거리 조정)
+        scaled_ranges = valid_ranges * Constants.LIDAR_SCALE_FACTOR
+
+        # 노이즈 필터링은 안정성을 위해 현재 비활성화됨
+        filtered_ranges, filtered_angles = scaled_ranges, valid_angles
+
         # 디버깅 정보 추가
         if len(filtered_ranges) < len(ranges) * 0.3:  # 30% 미만이면 경고
             print(f"⚠️ LiDAR 필터링 경고: {len(filtered_ranges)}/{len(ranges)} 포인트만 유효 ({len(filtered_ranges)/len(ranges)*100:.1f}%)")
-        
+
         self.lidar_data = {
             'ranges': filtered_ranges,
             'angles': filtered_angles,

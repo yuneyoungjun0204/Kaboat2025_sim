@@ -55,11 +55,17 @@ class Constants:
     # ROS2 통신 설정
     # ============================================================================
     class QueueSizes:
-        """ROS2 퍼블리셔/서브스크라이버 큐 크기"""
+        """
+        ROS2 퍼블리셔/서브스크라이버 큐 크기
+
+        Jetson 최적화: 센서 큐 크기를 1로 감소하여 지연 시간 최소화
+        - queue_size=1: 최신 데이터만 사용 (낮은 지연 시간)
+        - BEST_EFFORT QoS와 함께 사용 권장
+        """
         DEFAULT = 10
-        SENSOR = 10
+        SENSOR = 1  # Jetson 최적화: 10 → 1 (지연 시간 감소)
         CONTROL = 10
-        STATUS = 10
+        STATUS = 5  # Jetson 최적화: 10 → 5 (약간 감소)
 
     # ============================================================================
     # 타이머 주기
@@ -67,13 +73,24 @@ class Constants:
     MAIN_LOOP_HZ = 100  # 100Hz
     MAIN_LOOP_PERIOD = 1.0 / MAIN_LOOP_HZ
 
+    # Jetson 최적화: 탐지/추론 주파수 설정
+    # Detection frequency = MAIN_LOOP_HZ / DETECTION_FREQUENCY_DIVISOR
+    DETECTION_FREQUENCY_DIVISOR = 3  # 20Hz (100/5)
+    # 권장값:
+    #   3  = 33Hz (안정성 우선, 빠른 추적)
+    #   5  = 20Hz (균형, 권장)
+    #   10 = 10Hz (성능 우선, 추적 지연 가능)
+
+    # Depth estimation cache frames (detection과 동일 주파수 권장)
+    DEPTH_CACHE_FRAMES = 5  # 20Hz (100/5)
+
     # ============================================================================
     # LiDAR 설정
     # ============================================================================
     LIDAR_ARRAY_SIZE = 201
     MAX_LIDAR_DISTANCE = 100.0
     LIDAR_ANGLE_RANGE = (-100, 100)  # degrees
-    LIDAR_SCALE_FACTOR = 1.2  # LiDAR 거리값 스케일 조정 (1.0 = 변환 없음)
+    LIDAR_SCALE_FACTOR = 1.5  # LiDAR 거리값 스케일 조정 (1.0 = 변환 없음)
 
     # ============================================================================
     # 센서 데이터
@@ -88,7 +105,7 @@ class Constants:
     # 미리 정의된 웨이포인트 (x, y, mission_type, radius, params)
     # mission_type: 'PASS_BETWEEN_BUOYS', 'CIRCLE_BUOY', 'WAYPOINT_FOLLOW', 'OBSTACLE_AVOID'
     PREDEFINED_WAYPOINTS = [
-        (150, 9, 'PASS_BETWEEN_BUOYS', DEFAULT_WAYPOINT_RADIUS, {}),
+        (150, 9, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {}),
         (160, 0, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {}),
         (140, 42, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {'rotation_direction': 2, 'circle_radius': 15.0}),
         (80, 42, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {}),

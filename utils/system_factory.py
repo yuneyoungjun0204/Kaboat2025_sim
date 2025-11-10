@@ -58,8 +58,8 @@ class VRXSystemFactory:
             MiDaSHybridDepthEstimator: 깊이 추정기 인스턴스
         """
         self.logger.info("깊이 추정기 초기화 중...")
-        estimator = MiDaSHybridDepthEstimator()
-        self.logger.info("✓ 깊이 추정기 초기화 완료")
+        estimator = MiDaSHybridDepthEstimator(cache_frames=Constants.DEPTH_CACHE_FRAMES)
+        self.logger.info(f"✓ 깊이 추정기 초기화 완료 (캐시: {Constants.DEPTH_CACHE_FRAMES} frames)")
         return estimator
 
     def create_detection_system(
