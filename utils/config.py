@@ -75,7 +75,7 @@ class Constants:
 
     # Jetson 최적화: 탐지/추론 주파수 설정
     # Detection frequency = MAIN_LOOP_HZ / DETECTION_FREQUENCY_DIVISOR
-    DETECTION_FREQUENCY_DIVISOR = 3  # 20Hz (100/5)
+    DETECTION_FREQUENCY_DIVISOR = 4  # 20Hz (100/5)
     # 권장값:
     #   3  = 33Hz (안정성 우선, 빠른 추적)
     #   5  = 20Hz (균형, 권장)

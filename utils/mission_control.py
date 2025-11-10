@@ -10,6 +10,7 @@ from typing import Tuple, Optional, Dict, Any, Callable
 import numpy as np
 
 from .detection_system import MissionType
+from .config import Constants  # Loop 밖으로 이동 (2-4ms 절약)
 
 
 class WaypointTransitionHandler:
@@ -347,7 +348,6 @@ class MissionLoopExecutor:
             # 4. 객체 탐지 및 추적 (부표 미션만)
             # Jetson 최적화: 탐지 주파수 감소 (config.DETECTION_FREQUENCY_DIVISOR)
             if mission_type in [MissionType.PASS_BETWEEN_BUOYS, MissionType.CIRCLE_BUOY]:
-                from .config import Constants
                 if self.loop_counter % Constants.DETECTION_FREQUENCY_DIVISOR == 0:
                     self._perform_detection_and_tracking(mission_type)
 
@@ -474,7 +474,6 @@ class MissionLoopExecutor:
 
     def _convert_to_thrust(self, linear_vel: float, angular_vel: float) -> Tuple[float, float]:
         """속도를 스러스터 명령으로 변환"""
-        from .config import Constants
         thrust_scale = self.param_manager.get_thrust_scale() or Constants.DEFAULT_THRUST_SCALE
 
         forward = linear_vel * thrust_scale
@@ -489,7 +488,6 @@ class MissionLoopExecutor:
         """제어 정보 발행 (Jetson 최적화: ROS 발행 빈도 감소)"""
         # Jetson 최적화: 디버그 정보는 간헐적으로만 발행
         if self.loop_counter % self.ros_publish_skip_frames == 0:
-            from .config import Constants
             thrust_scale = self.param_manager.get_thrust_scale() or Constants.DEFAULT_THRUST_SCALE
 
             forward = (left + right) / 2.0

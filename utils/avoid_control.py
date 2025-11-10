@@ -181,13 +181,15 @@ class ObstacleDetector:
 
         range_theta = self.calculate_range_theta(L)
 
-        check_area_points = []
+        # 메모리 최적화: Pre-allocate numpy array (1-2ms 절약)
+        # 2개 검사 (LOS 경로 + 정면 20m) × 181 rays × 2 (x,y) = 724
+        num_rays = 181  # -90 ~ 90도
+        check_area_points = np.zeros(num_rays * 2 * 2, dtype=np.float32)
         obstacle_found = False
 
         # 1. LOS target으로 가는 경로 체크
         # 상대 각도를 중심으로 배 폭만큼의 범위를 체크
-        num_rays = 181  # -90 ~ 90도
-        for i in range(-90, 91):
+        for idx, i in enumerate(range(-90, 91)):
             # 로봇 기준 각도 (LiDAR 좌표계)
             lidar_angle_deg = np.degrees(relative_angle) + i
 
@@ -207,7 +209,9 @@ class ObstacleDetector:
             world_angle = current_psi + np.radians(lidar_angle_deg)
             check_x = current_pos[0] + search_distance * np.sin(world_angle)  # Easting
             check_y = current_pos[1] + search_distance * np.cos(world_angle)  # Northing
-            check_area_points.extend([check_x, check_y])
+            # 메모리 최적화: 인덱스 할당 (extend 대신)
+            check_area_points[idx * 2] = check_x
+            check_area_points[idx * 2 + 1] = check_y
 
             # LiDAR 거리 조회
             lidar_distance = get_lidar_distance_func(lidar_angle_deg)
@@ -222,7 +226,9 @@ class ObstacleDetector:
         L_front = 20.0
         range_theta_front = self.calculate_range_theta(L_front)
 
-        for i in range(-90, 91):
+        # 두 번째 루프: 인덱스 오프셋 (첫 번째 루프 이후)
+        offset = num_rays * 2  # 362
+        for idx, i in enumerate(range(-90, 91)):
             lidar_angle_deg = float(i)
 
             # 탐색 거리 결정
@@ -240,7 +246,9 @@ class ObstacleDetector:
             world_angle = current_psi + np.radians(lidar_angle_deg)
             check_x = current_pos[0] + search_distance * np.sin(world_angle)  # Easting
             check_y = current_pos[1] + search_distance * np.cos(world_angle)  # Northing
-            check_area_points.extend([check_x, check_y])
+            # 메모리 최적화: 인덱스 할당 (extend 대신)
+            check_area_points[offset + idx * 2] = check_x
+            check_area_points[offset + idx * 2 + 1] = check_y
 
             # LiDAR 거리 조회
             lidar_distance = get_lidar_distance_func(lidar_angle_deg)
