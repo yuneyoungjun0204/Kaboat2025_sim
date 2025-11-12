@@ -70,8 +70,8 @@ class DetectionSystem:
         self.detection_queries = {
             MissionType.PASS_BETWEEN_BUOYS: {
                 'queries': [
-                    "a red cone buoy", "a red conical marker", "a cone-shaped red buoy",
-                    "a green cone buoy", "a green conical marker", "a cone-shaped green buoy"
+                    "a red circle", "a red circle", "a red circle",
+                    "a green circle", "a green circle", "a green circle"
                 ],
                 'label_mapping': {
                     0: "red_cone", 1: "red_cone", 2: "red_cone",

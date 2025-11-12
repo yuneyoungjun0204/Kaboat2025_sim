@@ -20,6 +20,8 @@ from matplotlib.figure import Figure
 from matplotlib.patches import Polygon, Circle, FancyArrow
 
 from utils import Constants, SensorDataManager
+# rclpy.node 임포트 근처에 아래 3개를 추가하세요.
+from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 
 
 class CoordinateTransformer:
@@ -472,11 +474,22 @@ class UnifiedVizNode(Node):
         self.get_logger().info('📍 클릭하여 웨이포인트 설정!')
 
     def _setup_ros(self):
+        # 고주파 센서 데이터용 QoS 프로파일 (Best Effort, 최신 1개만 유지)
+        qos_sensor_data = QoSProfile(
+            reliability=ReliabilityPolicy.BEST_EFFORT,
+            history=HistoryPolicy.KEEP_LAST,
+            depth=1
+        )
         """ROS2 구독자 및 퍼블리셔 설정"""
         # 서브스크라이버
         self.create_subscription(NavSatFix, Constants.Topics.GPS_FIX, self.gps_callback, 10)
         self.create_subscription(Imu, Constants.Topics.IMU_DATA, self.imu_callback, 10)
-        self.create_subscription(LaserScan, Constants.Topics.LIDAR_SCAN, self.lidar_callback, 10)
+        self.create_subscription(
+            LaserScan,
+            Constants.Topics.LIDAR_SCAN,
+            self.lidar_callback,
+            qos_sensor_data  # 10 대신 BEST_EFFORT QoS 프로파일을 전달
+        )
         self.create_subscription(Float64MultiArray, Constants.Topics.CONTROL_OUTPUT, self.control_callback, 10)
         self.create_subscription(String, Constants.Topics.CONTROL_MODE, self.mode_callback, 10)
         self.create_subscription(Float64MultiArray, Constants.Topics.LOS_TARGET, self.los_callback, 10)

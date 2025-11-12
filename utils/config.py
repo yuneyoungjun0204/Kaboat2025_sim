@@ -22,7 +22,7 @@ class Constants:
         PROJECT_ROOT = Path(__file__).parent.parent.absolute()
 
         # NanoOWL 경로
-        NANOOWL_DIR = Path('/home/yuneyoungjun/vrx_ws/src/vrx/vrx_env/nanoowl')
+        NANOOWL_DIR = Path('nanoowl')
 
         # 모델 디렉토리
         MODELS_DIR = PROJECT_ROOT / 'models' / 'correct_IMU' / 'gpu'
@@ -90,7 +90,7 @@ class Constants:
     LIDAR_ARRAY_SIZE = 201
     MAX_LIDAR_DISTANCE = 100.0
     LIDAR_ANGLE_RANGE = (-100, 100)  # degrees
-    LIDAR_SCALE_FACTOR = 1.5  # LiDAR 거리값 스케일 조정 (1.0 = 변환 없음)
+    LIDAR_SCALE_FACTOR = 51.5  # LiDAR 거리값 스케일 조정 (1.0 = 변환 없음)
 
     # ============================================================================
     # 센서 데이터
@@ -223,8 +223,9 @@ class Constants:
         """ROS2 토픽명 관리"""
 
         # 센서 입력 토픽
-        CAMERA_IMAGE = '/wamv/sensors/cameras/front_left_camera_sensor/image_raw'
-        LIDAR_SCAN = '/wamv/sensors/lidars/lidar_wamv_sensor/scan'
+        CAMERA_TOPIC='/camera1/image_raw'
+        CAMERA_IMAGE = '/camera1/image_raw'
+        LIDAR_SCAN = '/scanner/scan'
         GPS_FIX = '/wamv/sensors/gps/gps/fix'
         IMU_DATA = '/wamv/sensors/imu/imu/data'
 

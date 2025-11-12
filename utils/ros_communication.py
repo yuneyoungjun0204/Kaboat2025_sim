@@ -10,6 +10,9 @@ from sensor_msgs.msg import Image, LaserScan, NavSatFix, Imu
 from geometry_msgs.msg import Point
 from std_msgs.msg import Float64, Float64MultiArray, String
 from .config import Constants
+from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
+from sensor_msgs.msg import LaserScan
+
 
 
 class ROSCommunicationManager:
@@ -51,13 +54,21 @@ class ROSCommunicationManager:
                 Constants.QueueSizes.SENSOR
             )
 
-        # LiDAR 구독
+        # 1. 고주파 센서 데이터용 QoS 프로파일 정의
+        # (신뢰성: Best Effort, 히스토리: 최신 1개만 유지)
+        qos_sensor_data = QoSProfile(
+            reliability=ReliabilityPolicy.BEST_EFFORT,
+            history=HistoryPolicy.KEEP_LAST,
+            depth=1  # Constants.QueueSizes.SENSOR 대신 1 또는 5 정도의 낮은 값을 권장
+        )
+
+        # 2. 기존 구독 코드 수정
         if 'lidar' in callbacks:
             self.subscribers['lidar'] = self.node.create_subscription(
                 LaserScan,
                 Constants.Topics.LIDAR_SCAN,
                 callbacks['lidar'],
-                Constants.QueueSizes.SENSOR
+                qos_sensor_data  # 10 (또는 Constants.QueueSizes.SENSOR) 대신 QoS 프로파일 객체를 전달
             )
 
         # GPS 구독
