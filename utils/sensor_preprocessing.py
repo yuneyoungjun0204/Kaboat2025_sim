@@ -10,6 +10,13 @@ import numpy as np
 import time
 from typing import Tuple, Dict
 from sensor_msgs.msg import LaserScan, NavSatFix, Imu
+from .config import Constants
+from .geometry import normalize_angle_180, normalize_angle_360  # 통합된 유틸리티 사용
+
+
+# ============================================================================
+# UTM 변환 함수
+# ============================================================================
 
 # UTM 변환을 위한 간단한 구현 (utm 모듈 대신)
 def simple_utm_conversion(lat, lon, ref_lat, ref_lon):
@@ -72,26 +79,35 @@ class LiDARProcessor:
         self.lidar_data = {'ranges': np.array([]), 'angles': np.array([])}
     
     def process_lidar_data(self, msg: LaserScan) -> Dict:
-        """LiDAR 데이터 전처리"""
+        """
+        LiDAR 데이터 전처리
+
+        처리 과정:
+        1. 유효 범위 필터링
+        2. 스케일 팩터 적용 (거리 * LIDAR_SCALE_FACTOR)
+        3. 노이즈 필터링 (옵션)
+        """
         ranges = np.array(msg.ranges)
-        
+
         # 유효한 범위만 필터링 (더 관대한 조건)
-        valid_mask = (np.isfinite(ranges) & 
-                     (ranges >= self.min_range) & 
+        valid_mask = (np.isfinite(ranges) &
+                     (ranges >= self.min_range) &
                      (ranges <= self.max_range) &
                      (ranges > 0.0))  # 0보다 큰 값만
-        
+
         valid_ranges = ranges[valid_mask]
         valid_angles = np.linspace(msg.angle_min, msg.angle_max, len(ranges))[valid_mask]
-        
-        # 노이즈 필터링 비활성화 (안정성을 위해)
-        # filtered_ranges, filtered_angles = self._filter_noise(valid_ranges, valid_angles)
-        filtered_ranges, filtered_angles = valid_ranges, valid_angles
-        
+
+        # 스케일 팩터 적용 (거리 조정)
+        scaled_ranges = valid_ranges * Constants.LIDAR_SCALE_FACTOR
+
+        # 노이즈 필터링은 안정성을 위해 현재 비활성화됨
+        filtered_ranges, filtered_angles = scaled_ranges, valid_angles
+
         # 디버깅 정보 추가
         if len(filtered_ranges) < len(ranges) * 0.3:  # 30% 미만이면 경고
             print(f"⚠️ LiDAR 필터링 경고: {len(filtered_ranges)}/{len(ranges)} 포인트만 유효 ({len(filtered_ranges)/len(ranges)*100:.1f}%)")
-        
+
         self.lidar_data = {
             'ranges': filtered_ranges,
             'angles': filtered_angles,
@@ -138,29 +154,57 @@ class LiDARProcessor:
         return x, y
 
 class IMUProcessor:
-    """IMU 데이터 처리 클래스"""
-    
+    """
+    IMU 데이터 처리 클래스 (NED 좌표계)
+
+    Yaw 각도:
+        - -180~180도 범위 (NED 좌표계)
+        - 0° = North (정북)
+        - +90° = East (정동)
+        - -90° = West (정서)
+        - ±180° = South (정남)
+    """
+
     def __init__(self):
         self.imu_data = None
-    
+
     def process_imu_data(self, msg: Imu) -> Dict:
-        """IMU 데이터 처리"""
+        """
+        IMU 데이터 처리 (NED 좌표계)
+
+        Returns:
+            Dict with keys:
+                - yaw_rad: -π ~ π (rad)
+                - yaw_degrees: -180 ~ 180 (deg)
+                - angular_velocity: Vector3 (rad/s)
+                - linear_acceleration: Vector3 (m/s²)
+        """
         # Quaternion을 Euler 각도로 변환
         yaw_rad = self.quaternion_to_yaw(msg.orientation)
-        yaw_degrees = np.degrees(yaw_rad)
-        
+
+        # Yaw를 -180~180도 범위로 정규화 (arctan2는 이미 -π~π를 반환하지만 명시적으로)
+        yaw_degrees = normalize_angle_180(np.degrees(yaw_rad))
+
         self.imu_data = {
             'orientation': msg.orientation,
             'yaw_rad': yaw_rad,
-            'yaw_degrees': yaw_degrees,
-            'angular_velocity': msg.angular_velocity,
+            'yaw_degrees': yaw_degrees,  # -180~180도
+            'angular_velocity': msg.angular_velocity,  # rad/s
             'linear_acceleration': msg.linear_acceleration,
             'timestamp': time.time()
         }
         return self.imu_data
-    
+
     def quaternion_to_yaw(self, orientation) -> float:
-        """Quaternion을 Yaw 각도로 변환 (라디안)"""
+        """
+        Quaternion을 Yaw 각도로 변환 (NED 좌표계)
+
+        Args:
+            orientation: Quaternion (x, y, z, w)
+
+        Returns:
+            Yaw 각도 (라디안, -π ~ π)
+        """
         x, y, z, w = orientation.x, orientation.y, orientation.z, orientation.w
         yaw = np.arctan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z))
         return yaw
