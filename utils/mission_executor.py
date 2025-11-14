@@ -23,8 +23,8 @@ class MissionExecutor:
         self.waypoint_manager = waypoint_manager
 
     def execute_pass_between_buoys(self, detected_objects: list, current_image,
-                                   raw_detections: list, mission_params: Dict[str, Any],
-                                   logger) -> Tuple[float, float]:
+                                  raw_detections: list, mission_params: Dict[str, Any],
+                                  logger) -> Tuple[float, float]:
         """부표 사이 지나가기 미션 실행"""
         return self.mission_manager.execute_mission(
             MissionType.PASS_BETWEEN_BUOYS,
@@ -36,8 +36,8 @@ class MissionExecutor:
         )
 
     def execute_circle_buoy(self, detected_objects: list, current_image,
-                           agent_heading: float, mission_params: Dict[str, Any],
-                           raw_detections: list, logger) -> Tuple[float, float]:
+                            agent_heading: float, mission_params: Dict[str, Any],
+                            raw_detections: list, logger) -> Tuple[float, float]:
         """부표 회전 미션 실행"""
         return self.mission_manager.execute_mission(
             MissionType.CIRCLE_BUOY,
@@ -49,14 +49,43 @@ class MissionExecutor:
             logger=logger
         )
 
+    def execute_dock_mission(self, detected_objects: list, current_image,
+                             agent_heading: float,  # <--- 여기 추가되었습니다
+                             raw_detections: list, mission_params: Dict[str, Any],
+                             logger) -> Tuple[float, float, Optional[float], Optional[float], Optional[float]]:
+        """
+        도킹 미션 실행
+
+        Args:
+            detected_objects: 추적된 객체
+            current_image: 현재 이미지
+            agent_heading: 로봇 헤딩 (도, -180~180)  <--- 여기 추가되었습니다
+            raw_detections: 원본 탐지 결과
+            mission_params: 미션 파라미터
+            logger: ROS2 logger
+
+        Returns:
+            Tuple[float, float, Optional[float], Optional[float], Optional[float]]:
+                (left_thrust, right_thrust, left_pos, right_pos, target_depth)
+        """
+        return self.mission_manager.execute_mission(
+            MissionType.DOCK_MODE,
+            detected_objects=detected_objects,
+            current_image=current_image,
+            agent_heading=agent_heading,  # <--- 여기 추가되었습니다
+            raw_detections=raw_detections,
+            mission_params=mission_params,
+            logger=logger
+        )
+
     def execute_obstacle_avoid(self, agent_position: np.ndarray, agent_heading: float,
-                              lidar_distances: np.ndarray,
-                              get_lidar_distance_func: Callable,
-                              get_onnx_control_func: Callable,
-                              force_obstacle_avoid: bool,
-                              manual_target_x: Optional[float],
-                              manual_target_y: Optional[float],
-                              logger) -> Tuple[float, float]:
+                               lidar_distances: np.ndarray,
+                               get_lidar_distance_func: Callable,
+                               get_onnx_control_func: Callable,
+                               force_obstacle_avoid: bool,
+                               manual_target_x: Optional[float],
+                               manual_target_y: Optional[float],
+                               logger) -> Tuple[float, float]:
         """
         장애물 회피 미션 실행
 

@@ -26,13 +26,14 @@ class MissionType(Enum):
     PASS_BETWEEN_BUOYS = 1
     CIRCLE_BUOY = 2
     WAYPOINT_FOLLOW = 3
-    OBSTACLE_AVOID = 4
+    OBSTACLE_AVOID = 3
+    DOCK_MODE = 4
 
 
 class DetectionSystem:
     """NanoOWL + MiDaS 통합 탐지 시스템"""
 
-    def __init__(self, depth_estimator, device="cuda", detection_threshold=0.03,
+    def __init__(self, depth_estimator, device="cuda", detection_threshold=0.005,
                  min_box_area=500, max_box_area=80000, min_depth=0.0, max_depth=50.0):
         """
         Args:
@@ -85,6 +86,22 @@ class DetectionSystem:
                 'label_mapping': {
                     0: "blue_buoy"
                 }
+            },
+            MissionType.DOCK_MODE: {
+                'queries': [
+                    "a red square"
+                    # "a red circle", "a red square", "a red triangle",
+                    # "a green circle", "a green square", "a green triangle",
+                    # "a blue circle", "a blue square", "a blue triangle",
+                    # "a yellow circle", "a yellow square", "a yellow triangle"
+                ],
+                'label_mapping': {
+                    0: "red_square"
+                    # 0: "red_circle", 1: "red_square", 2: "red_triangle",
+                    # 3: "green_circle", 4: "green_square", 5: "green_triangle",
+                    # 6: "blue_circle", 7: "blue_square", 8: "blue_triangle",
+                    # 9: "yellow_circle", 10: "yellow_square", 11: "yellow_triangle"
+                }
             }
         }
 
@@ -121,7 +138,7 @@ class DetectionSystem:
             return []
 
         # 탐지가 필요 없는 미션은 스킵
-        if mission_type not in [MissionType.PASS_BETWEEN_BUOYS, MissionType.CIRCLE_BUOY]:
+        if mission_type not in [MissionType.PASS_BETWEEN_BUOYS, MissionType.CIRCLE_BUOY, MissionType.DOCK_MODE]:
             return []
 
         # 깊이 맵 추정
@@ -171,6 +188,7 @@ class DetectionSystem:
                 continue
 
             label = query_info['label_mapping'].get(label_idx, "unknown")
+
             detections.append({
                 "label": label,
                 "confidence": score,

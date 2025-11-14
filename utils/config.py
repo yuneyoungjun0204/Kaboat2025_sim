@@ -86,8 +86,9 @@ class Constants:
     DEFAULT_WAYPOINT_RADIUS = 20.0
 
     # 미리 정의된 웨이포인트 (x, y, mission_type, radius, params)
-    # mission_type: 'PASS_BETWEEN_BUOYS', 'CIRCLE_BUOY', 'WAYPOINT_FOLLOW', 'OBSTACLE_AVOID'
+    # mission_type: 'PASS_BETWEEN_BUOYS', 'CIRCLE_BUOY', 'WAYPOINT_FOLLOW', 'OBSTACLE_AVOID', 'DOCK_MODE'
     PREDEFINED_WAYPOINTS = [
+        (100, 10, 'DOCK_MODE', DEFAULT_WAYPOINT_RADIUS, {}),
         (150, 9, 'PASS_BETWEEN_BUOYS', DEFAULT_WAYPOINT_RADIUS, {}),
         (160, 0, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {}),
         (140, 42, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {'rotation_direction': 2, 'circle_radius': 15.0}),
@@ -199,6 +200,34 @@ class Constants:
     WAYPOINT_MAX_STEERING = 0.5
     WAYPOINT_MIN_DISTANCE = 1.0  # 목표 거리 최소값 (미터)
 
+    # # Dock_mode 미션 파라미터
+    # DOCK_SWAY_GAIN = 0.0025  # Sway motion 비례 게인 (픽셀 오차 -> 추력)
+    # DOCK_YAW_GAIN = 0.00008  # Yaw 회전 비례 게인
+    # DOCK_MAX_SWAY_THRUST = 800.0  # 최대 횡방향 추력
+    # DOCK_MAX_YAW_THRUST = 300.0  # 최대 회전 추력
+    # DOCK_BASE_SURGE = 0.1  # 기본 전진 속도 (0-1)
+    # DOCK_DEPTH_THRESHOLD = 0.5  # Depth 임계값 (가까움, 0-1 스케일)
+    # DOCK_APPROACH_TIME = 1.0  # 직진 접근 시간 (초)
+    # DOCK_REVERSE_TIME = 10.0  # 후진 시간 (초)
+    # DOCK_APPROACH_SPEED = 0.2  # 최종 접근 속도
+    # DOCK_REVERSE_SPEED = -0.3  # 후진 속도
+
+
+
+    # Dock_mode 미션 파라미터
+    DOCK_SWAY_GAIN = 1.670915  # Sway motion 비례 게인 (픽셀 오차 -> 추력)
+    DOCK_YAW_GAIN = 0.548  # Yaw 회전 비례 게인
+    DOCK_MAX_SWAY_THRUST = 400.0  # 최대 횡방향 추력
+    DOCK_MAX_YAW_THRUST = 200.0  # 최대 회전 추력
+    DOCK_BASE_SURGE = 0.01  # 기본 전진 속도 (0-1)
+    DOCK_DEPTH_THRESHOLD = 0.6  # Depth 임계값 (가까움, 0-1 스케일)
+    DOCK_APPROACH_TIME = 1.0  # 직진 접근 시간 (초)
+    DOCK_REVERSE_TIME = 10.0  # 후진 시간 (초)
+    DOCK_APPROACH_SPEED = 0.4  # 최종 접근 속도
+    DOCK_REVERSE_SPEED = -0.3  # 후진 속도
+    DOCK_CENTER_TOLERANCE = 600.0  # 이미지 중앙 허용 오차 (픽셀, ± 범위)
+    DOCK_SWAY_STRENGTH = 0.5  # SWAY 제어 강도 (0-1)
+
     # ============================================================================
     # ROS2 토픽명 설정
     # ============================================================================
@@ -217,6 +246,8 @@ class Constants:
         # 제어 출력 토픽
         LEFT_THRUST = '/wamv/thrusters/left/thrust'
         RIGHT_THRUST = '/wamv/thrusters/right/thrust'
+        LEFT_POS = '/wamv/thrusters/left/pos'
+        RIGHT_POS = '/wamv/thrusters/right/pos'
 
         # 시스템 상태 토픽
         MISSION_STATUS = '/vrx/mission_status'
@@ -226,6 +257,7 @@ class Constants:
         CONTROL_MODE = '/vrx/control_mode'
         OBSTACLE_CHECK_AREA = '/vrx/obstacle_check_area'
         LOS_TARGET = '/vrx/los_target'
+        TARGET_DEPTH = '/vrx/target_depth'  # Dock_mode 목표 객체 깊이
 
         # trajectory_viz용 추가 토픽
         CURRENT_MODE = '/vrx/current_mode'
@@ -273,3 +305,4 @@ class Constants:
         OBSTACLE_AVOID = 1  # 강제 장애물 회피 모드
         PASS_BETWEEN_BUOYS = 2  # 강제 부표 사이 지나기 미션
         CIRCLE_BUOY = 3  # 강제 부표 한바퀴 돌기 미션
+        DOCK_MODE = 4  # 강제 도킹 미션

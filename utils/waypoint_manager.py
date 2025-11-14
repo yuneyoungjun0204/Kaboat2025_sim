@@ -46,7 +46,8 @@ class WaypointManager:
             'PASS_BETWEEN_BUOYS': MissionType.PASS_BETWEEN_BUOYS,
             'CIRCLE_BUOY': MissionType.CIRCLE_BUOY,
             'WAYPOINT_FOLLOW': MissionType.WAYPOINT_FOLLOW,
-            'OBSTACLE_AVOID': MissionType.OBSTACLE_AVOID
+            'OBSTACLE_AVOID': MissionType.OBSTACLE_AVOID,
+            'DOCK_MODE': MissionType.DOCK_MODE
         }
 
         for x, y, mission_type_str, radius, params in Constants.PREDEFINED_WAYPOINTS:

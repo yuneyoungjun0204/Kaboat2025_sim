@@ -107,6 +107,12 @@ class ROSCommunicationManager:
         self.publishers['right_thrust'] = self.node.create_publisher(
             Float64, Constants.Topics.RIGHT_THRUST, Constants.QueueSizes.CONTROL
         )
+        self.publishers['left_pos'] = self.node.create_publisher(
+            Float64, Constants.Topics.LEFT_POS, Constants.QueueSizes.CONTROL
+        )
+        self.publishers['right_pos'] = self.node.create_publisher(
+            Float64, Constants.Topics.RIGHT_POS, Constants.QueueSizes.CONTROL
+        )
         self.publishers['mission_status'] = self.node.create_publisher(
             String, Constants.Topics.MISSION_STATUS, Constants.QueueSizes.STATUS
         )
@@ -128,6 +134,9 @@ class ROSCommunicationManager:
         )
         self.publishers['los_target'] = self.node.create_publisher(
             Float64MultiArray, Constants.Topics.LOS_TARGET, Constants.QueueSizes.STATUS
+        )
+        self.publishers['target_depth'] = self.node.create_publisher(
+            Float64, Constants.Topics.TARGET_DEPTH, Constants.QueueSizes.STATUS
         )
 
     def publish_thrust_commands(self, left_thrust: float, right_thrust: float) -> None:
@@ -245,3 +254,30 @@ class ROSCommunicationManager:
         msg = Float64MultiArray()
         msg.data = [float(target_x), float(target_y)]
         self.publishers['los_target'].publish(msg)
+
+    def publish_thruster_positions(self, left_pos: float, right_pos: float) -> None:
+        """
+        스러스터 각도 명령 발행
+
+        Args:
+            left_pos: 좌측 스러스터 각도 (라디안, -π/2 ~ π/2)
+            right_pos: 우측 스러스터 각도 (라디안, -π/2 ~ π/2)
+        """
+        left_msg = Float64()
+        left_msg.data = float(left_pos)
+        self.publishers['left_pos'].publish(left_msg)
+
+        right_msg = Float64()
+        right_msg.data = float(right_pos)
+        self.publishers['right_pos'].publish(right_msg)
+
+    def publish_target_depth(self, depth: float) -> None:
+        """
+        목표 객체의 깊이 값 발행 (Dock_mode용)
+
+        Args:
+            depth: 목표 객체까지의 깊이 (0-1 스케일, 1=가까움, 0=멀리)
+        """
+        msg = Float64()
+        msg.data = float(depth)
+        self.publishers['target_depth'].publish(msg)

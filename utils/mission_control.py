@@ -298,6 +298,10 @@ class MissionLoopExecutor:
         self.detected_objects = []
         self.raw_detections = []
 
+        # DOCK_MODE용 추가 상태 변수
+        self.thruster_positions = (None, None)  # (left_pos, right_pos)
+        self.target_depth = None  # 목표 객체 depth
+
         # Jetson 최적화: 초기 파라미터 한번만 설정
         self._initialize_parameters_once()
 
@@ -346,8 +350,8 @@ class MissionLoopExecutor:
                 self.ros_comm.publish_thrust_commands(0.0, 0.0)
                 return
 
-            # 4. 객체 탐지 및 추적 (부표 미션만)
-            if mission_type in [MissionType.PASS_BETWEEN_BUOYS, MissionType.CIRCLE_BUOY]:
+            # 4. 객체 탐지 및 추적 (부표 미션 및 도킹 미션)
+            if mission_type in [MissionType.PASS_BETWEEN_BUOYS, MissionType.CIRCLE_BUOY, MissionType.DOCK_MODE]:
                 self._perform_detection_and_tracking(mission_type)
 
             # 5. 미션 실행
@@ -356,8 +360,8 @@ class MissionLoopExecutor:
             # 6. 제어 명령 발행
             self._publish_commands(left_thrust, right_thrust, mission_type)
 
-            # 7. 시각화 (부표 미션만)
-            if mission_type in [MissionType.PASS_BETWEEN_BUOYS, MissionType.CIRCLE_BUOY]:
+            # 7. 시각화 (부표 미션 및 도킹 미션)
+            if mission_type in [MissionType.PASS_BETWEEN_BUOYS, MissionType.CIRCLE_BUOY, MissionType.DOCK_MODE]:
                 self._visualize(mission_type)
 
         except Exception as e:
@@ -381,8 +385,8 @@ class MissionLoopExecutor:
         if thrust_scale:
             self.mission_manager.update_thrust_scale(thrust_scale)
 
-        # 부표 미션만 추가 파라미터 업데이트
-        if mission_type not in [MissionType.OBSTACLE_AVOID, MissionType.WAYPOINT_FOLLOW]:
+        # 부표 미션 및 도킹 미션만 추가 파라미터 업데이트
+        if mission_type in [MissionType.PASS_BETWEEN_BUOYS, MissionType.CIRCLE_BUOY, MissionType.DOCK_MODE]:
             detection_params = self.param_manager.get_detection_parameters()
             self.detection_system.update_parameters(
                 **{k: v for k, v in detection_params.items() if v is not None}
@@ -401,7 +405,7 @@ class MissionLoopExecutor:
         )
 
         self.tracker.predict_tracks()
-        self.tracker.update_tracks(self.raw_detections)
+        self.tracker.update_tracks(self.raw_detections)  # <--- 수정된 부분
         self.tracker.prune_tracks()
 
         self.detected_objects = self.tracker.get_tracked_objects()
@@ -422,6 +426,9 @@ class MissionLoopExecutor:
 
         elif mission_type == MissionType.OBSTACLE_AVOID:
             return self._execute_obstacle_avoid()
+
+        elif mission_type == MissionType.DOCK_MODE:
+            return self._execute_dock_mission()
 
         return 0.0, 0.0
 
@@ -471,6 +478,37 @@ class MissionLoopExecutor:
 
         return self._convert_to_thrust(linear_vel, angular_vel)
 
+    def _execute_dock_mission(self) -> Tuple[float, float]:
+        """
+        도킹 미션 실행
+
+        Returns:
+            Tuple[float, float]: (left_thrust, right_thrust)
+
+        Note:
+            thruster positions와 target_depth는 self.thruster_positions와
+            self.target_depth에 저장됨
+        """
+        params = self.param_manager.get_mission_parameters(MissionType.DOCK_MODE)
+        result = self.mission_executor.execute_dock_mission(
+            self.detected_objects,
+            self.sensor_handler.current_image,
+            self.sensor_handler.agent_heading,
+            self.raw_detections,
+            params,
+            self.logger
+        )
+
+        # 5개 값 언패킹: (left_thrust, right_thrust, left_pos, right_pos, target_depth)
+        left_thrust, right_thrust, left_pos, right_pos, target_depth = result
+
+        # thruster positions 및 target_depth 저장
+        self.thruster_positions = (left_pos, right_pos)
+        self.target_depth = target_depth
+
+        self._publish_control_info(left_thrust, right_thrust, "DOCK_MISSION")
+        return left_thrust, right_thrust
+
     def _convert_to_thrust(self, linear_vel: float, angular_vel: float) -> Tuple[float, float]:
         """속도를 스러스터 명령으로 변환"""
         from .config import Constants
@@ -505,6 +543,16 @@ class MissionLoopExecutor:
         # 스러스트 명령은 매번 발행 (중요)
         self.ros_comm.publish_thrust_commands(left, right)
 
+        # DOCK_MODE: thruster position 발행
+        if mission_type == MissionType.DOCK_MODE:
+            left_pos, right_pos = self.thruster_positions
+            if left_pos is not None and right_pos is not None:
+                self.ros_comm.publish_thruster_positions(left_pos, right_pos)
+
+            # target_depth 발행
+            if self.target_depth is not None:
+                self.ros_comm.publish_target_depth(self.target_depth)
+
         # 상태 메시지는 간헐적으로 발행 (Jetson 최적화)
         if self.loop_counter % self.ros_publish_skip_frames == 0:
             self.ros_comm.publish_mission_status(
@@ -513,8 +561,8 @@ class MissionLoopExecutor:
                 self.waypoint_manager.get_total_waypoints()
             )
 
-            # 부표 미션은 탐지 정보도 발행
-            if mission_type in [MissionType.PASS_BETWEEN_BUOYS, MissionType.CIRCLE_BUOY]:
+            # 부표 미션 및 도킹 미션은 탐지 정보도 발행
+            if mission_type in [MissionType.PASS_BETWEEN_BUOYS, MissionType.CIRCLE_BUOY, MissionType.DOCK_MODE]:
                 self.ros_comm.publish_detections(self.detected_objects)
 
     def _visualize(self, mission_type: MissionType):
@@ -524,11 +572,17 @@ class MissionLoopExecutor:
 
         # 탐지 결과만 시각화 (깊이 맵 시각화 제거로 성능 향상)
         # ROS 이미지 발행 비활성화로 CPU 사용량 감소 (Jetson Nano Orin 최적화)
+        # 도킹 미션인 경우 누적 각도 전달
+        accumulated_angle = None
+        if mission_type.name == "DOCK_MODE":
+            accumulated_angle = self.mission_manager.get_dock_accumulated_angle()
+
         self.visualization.visualize_detections(
             self.sensor_handler.current_image, self.detected_objects,
             mission_type.name, self.waypoint_manager.get_waypoint_index(),
             self.waypoint_manager.get_total_waypoints(),
             raw_detections=self.raw_detections,
             bridge=None,  # ROS 이미지 발행 비활성화
-            viz_image_pub=None  # ROS 이미지 발행 비활성화
+            viz_image_pub=None,  # ROS 이미지 발행 비활성화
+            accumulated_angle=accumulated_angle
         )

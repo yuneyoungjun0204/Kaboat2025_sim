@@ -135,7 +135,7 @@ class VRXMissionController(Node):
     def _add_waypoint_from_click(self, msg: Point):
         """클릭한 위치에서 웨이포인트 추가"""
         mission_sequence = [
-            MissionType.OBSTACLE_AVOID,
+            MissionType.DOCK_MODE,
             MissionType.OBSTACLE_AVOID,
             MissionType.PASS_BETWEEN_BUOYS,
             MissionType.OBSTACLE_AVOID

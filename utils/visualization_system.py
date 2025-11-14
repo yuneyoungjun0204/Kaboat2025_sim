@@ -27,10 +27,10 @@ class VisualizationSystem:
             thrust_scale: 스러스터 스케일
         """
         # Jetson 최적화: 고정된 파라미터 (트랙바 제거)
-        self.detection_threshold = 0.025  # 원래 값으로 복구
-        self.min_box_area = 250
-        self.max_box_area = 80000
-        self.min_depth_threshold = 2.0    # 원래 값으로 복구 (가까운 부표도 탐지)
+        self.detection_threshold = 0  # 원래 값으로 복구
+        self.min_box_area = 2
+        self.max_box_area = 800000
+        self.min_depth_threshold = 0.0    # 원래 값으로 복구 (가까운 부표도 탐지)
         self.max_depth_threshold = 50.0   # 원래 값으로 복구 (먼 부표도 탐지)
         self.thrust_scale = 700.0
 
@@ -86,7 +86,8 @@ class VisualizationSystem:
     def visualize_detections(self, image: np.ndarray, detections: List[Dict],
                             mission_name: str, waypoint_index: int, total_waypoints: int,
                             raw_detections: Optional[List[Dict]] = None,
-                            bridge=None, viz_image_pub=None):
+                            bridge=None, viz_image_pub=None,
+                            accumulated_angle: Optional[float] = None):
         """
         탐지 결과 시각화 (Jetson 최적화: 정보 텍스트 제거, 박스만 표시)
 
@@ -99,6 +100,7 @@ class VisualizationSystem:
             raw_detections: 원본 탐지 결과 (NanoOWL 직접 출력)
             bridge: CvBridge 인스턴스 (선택)
             viz_image_pub: 시각화 이미지 퍼블리셔 (선택)
+            accumulated_angle: 도킹 미션 누적 각도 (선택)
         """
         if image is None:
             return
@@ -122,7 +124,13 @@ class VisualizationSystem:
             cv2.rectangle(vis_image, (x1, y1), (x2, y2), color, 3)
             cv2.circle(vis_image, (cx, cy), 7, color, -1)
 
-        # 모든 정보 텍스트 제거 (Jetson 최적화)
+        # 도킹 미션일 경우 누적 각도 표시
+        if mission_name == "DOCK_MODE" and accumulated_angle is not None:
+            # 화면 상단에 누적 각도 표시
+            text = f"Accumulated Angle: {accumulated_angle:.1f} deg"
+            cv2.putText(vis_image, text, (10, 30),
+                       cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 255), 2)
+
         # 화면 표시
         cv2.imshow('VRX Mission Control', vis_image)
         cv2.waitKey(1)
