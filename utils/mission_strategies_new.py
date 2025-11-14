@@ -11,90 +11,8 @@ from typing import Tuple, List, Dict, Optional, Callable, Union
 
 from .detection_system import MissionType
 from .config import Constants
-
-
-# ============================================================================
-# 헬퍼 함수 (유틸리티)
-# ============================================================================
-
-def normalize_heading(heading: float) -> float:
-    """
-    헤딩을 0~360 범위로 정규화
-
-    Args:
-        heading: 헤딩 (도)
-
-    Returns:
-        float: 정규화된 헤딩 (0~360)
-    """
-    normalized = heading % 360
-    if normalized < 0:
-        normalized += 360
-    return normalized
-
-
-def calculate_heading_error(target_heading: float, current_heading: float) -> float:
-    """
-    목표 헤딩과 현재 헤딩의 최단 거리 오차 계산
-
-    Args:
-        target_heading: 목표 헤딩 (도, -180~180 또는 0~360)
-        current_heading: 현재 헤딩 (도, -180~180 또는 0~360)
-
-    Returns:
-        float: 헤딩 오차 (-180~180)
-    """
-    # 0~360 범위로 정규화
-    target = normalize_heading(target_heading)
-    current = normalize_heading(current_heading)
-
-    # 오차 계산
-    error = target - current
-
-    # -180 ~ 180 범위로 정규화
-    if error > 180:
-        error -= 360
-    elif error < -180:
-        error += 360
-
-    return error
-
-
-def find_buoy_with_fallback(
-    label: str,
-    detected_objects: List[Dict],
-    raw_detections: Optional[List[Dict]] = None,
-    logger=None
-) -> Tuple[Optional[Dict], str]:
-    """
-    부표 탐지: 추적값 우선, 없으면 원본 측정값 사용
-
-    Args:
-        label: 찾을 부표 라벨 ('red_cone', 'green_cone', 'blue_buoy' 등)
-        detected_objects: 추적된 객체 리스트 (IMM-PDAF 출력)
-        raw_detections: 원본 탐지 결과 (NanoOWL 직접 출력)
-        logger: 로거
-
-    Returns:
-        Tuple[Optional[Dict], str]: (부표 딕셔너리, 데이터 소스)
-            데이터 소스는 'TRACKED' 또는 'RAW'
-    """
-    # 1. 추적값에서 먼저 찾기
-    if detected_objects:
-        for det in detected_objects:
-            if det['label'] == label:
-                return det, "TRACKED"
-
-    # 2. 원본 측정값에서 찾기
-    if raw_detections:
-        for det in raw_detections:
-            if det['label'] == label:
-                if logger:
-                    logger.info(f"⚠️ {label}: 추정값 없음 → 측정값 사용")
-                return det, "RAW"
-
-    # 3. 둘 다 없으면 None
-    return None, "NONE"
+from .thruster_allocation import body_forces_to_thruster_commands
+from .helpers import normalize_heading, calculate_heading_error, find_buoy_with_fallback
 
 
 # ============================================================================
@@ -165,19 +83,44 @@ class PIDController:
 # ============================================================================
 
 class BaseMissionStrategy:
-    """미션 전략 베이스 클래스"""
+    """미션 전략 베이스 클래스 (점진적 마이그레이션: 두 인터페이스 모두 지원)"""
 
-    def __init__(self, thrust_scale: float = 1000.0):
+    def __init__(self, thrust_scale: float = Constants.DEFAULT_THRUST_SCALE):
         self.thrust_scale = thrust_scale
 
-    def execute(self, **kwargs) -> Tuple[float, float]:
+    def execute_body_forces(self, **kwargs) -> Tuple[float, float, float]:
         """
-        미션 실행
+        미션 실행 (새 인터페이스: 통일된 body force 명령 반환)
 
         Returns:
-            Tuple[float, float]: (left_thrust, right_thrust)
+            Tuple[float, float, float]: (desired_speed, desired_yaw, desired_force_y)
+                - desired_speed: 전진 속도 (-1~1)
+                - desired_yaw: 회전 모멘트 (-1~1)
+                - desired_force_y: 횡방향 힘 (-1~1)
         """
-        raise NotImplementedError
+        raise NotImplementedError("Subclass must implement execute_body_forces()")
+
+    def execute(self, **kwargs):
+        """
+        미션 실행 (기존 인터페이스: 하위 호환성 유지)
+
+        이 메서드는 각 미션에서 오버라이드하거나,
+        execute_body_forces()를 구현하면 자동으로 작동합니다.
+
+        Returns:
+            미션에 따라 다름:
+            - 대부분: Tuple[float, float] (left_thrust, right_thrust)
+            - CircleBuoy/Dock: Tuple[float, float, float, float] (left_thrust, right_thrust, left_pos, right_pos)
+        """
+        # 기본 구현: body forces → thruster allocation
+        desired_speed, desired_yaw, desired_force_y = self.execute_body_forces(**kwargs)
+        left_thrust, right_thrust, left_pos, right_pos = body_forces_to_thruster_commands(
+            desired_speed, desired_yaw, desired_force_y, self.thrust_scale
+        )
+
+        # 하위 호환성: 대부분의 미션은 (left_thrust, right_thrust)만 반환
+        # CircleBuoy/Dock은 이 메서드를 오버라이드하여 4개 값 반환
+        return left_thrust, right_thrust
 
     def reset(self):
         """미션 상태 초기화"""
@@ -185,9 +128,9 @@ class BaseMissionStrategy:
 
 
 class PassBetweenBuoysMission(BaseMissionStrategy):
-    """미션 1: 부표 사이 지나가기"""
+    """미션 1: 부표 사이 지나가기 (리팩토링: body force 반환)"""
 
-    def __init__(self, thrust_scale: float = 1000.0):
+    def __init__(self, thrust_scale: float = Constants.DEFAULT_THRUST_SCALE):
         super().__init__(thrust_scale)
         # PID 제어기 (사용하지 않지만 하위 호환성 유지)
         self.pid_controller = PIDController(
@@ -200,14 +143,14 @@ class PassBetweenBuoysMission(BaseMissionStrategy):
         """미션 상태 초기화"""
         self.pid_controller.reset()
 
-    def execute(
+    def execute_body_forces(
         self,
         detected_objects: List[Dict],
         current_image: np.ndarray,
         logger=None,
         raw_detections: Optional[List[Dict]] = None,
         **kwargs
-    ) -> Tuple[float, float]:
+    ) -> Tuple[float, float, float]:
         """
         빨간색/초록색 고깔 부표 사이로 지나가기
 
@@ -218,7 +161,7 @@ class PassBetweenBuoysMission(BaseMissionStrategy):
             raw_detections: 원본 탐지 결과 (NanoOWL 직접 출력, 측정값)
 
         Returns:
-            Tuple[float, float]: (left_thrust, right_thrust)
+            Tuple[float, float, float]: (desired_speed, desired_yaw, desired_force_y)
         """
         # 빨간색/초록색 부표 찾기 (헬퍼 함수 사용)
         red_buoy, red_source = find_buoy_with_fallback(
@@ -273,9 +216,10 @@ class PassBetweenBuoysMission(BaseMissionStrategy):
             steering = np.clip(steering, -Constants.PASS_BETWEEN_MAX_STEERING,
                              Constants.PASS_BETWEEN_MAX_STEERING)
 
-            # 스러스터 명령 계산
-            left_thrust = (Constants.PASS_BETWEEN_FORWARD_SPEED + steering) * self.thrust_scale
-            right_thrust = (Constants.PASS_BETWEEN_FORWARD_SPEED - steering) * self.thrust_scale
+            # Body force 명령 계산
+            desired_speed = Constants.PASS_BETWEEN_FORWARD_SPEED
+            desired_yaw = steering
+            desired_force_y = 0.0
 
             if logger:
                 data_source = f"R:{red_source}/G:{green_source}"
@@ -285,18 +229,19 @@ class PassBetweenBuoysMission(BaseMissionStrategy):
                 )
         else:
             # 부표 미탐지 시 천천히 전진
-            left_thrust = Constants.PASS_BETWEEN_FALLBACK_SPEED * self.thrust_scale
-            right_thrust = Constants.PASS_BETWEEN_FALLBACK_SPEED * self.thrust_scale
+            desired_speed = Constants.PASS_BETWEEN_FALLBACK_SPEED
+            desired_yaw = 0.0
+            desired_force_y = 0.0
             if logger:
                 logger.warn("부표 미탐지: 천천히 전진")
 
-        return left_thrust, right_thrust
+        return desired_speed, desired_yaw, desired_force_y
 
 
 class CircleBuoyMission(BaseMissionStrategy):
-    """미션 2: 부표 주변 회전"""
+    """미션 2: 부표 주변 회전 (리팩토링: body force 반환)"""
 
-    def __init__(self, thrust_scale: float = 1000.0):
+    def __init__(self, thrust_scale: float = Constants.DEFAULT_THRUST_SCALE):
         super().__init__(thrust_scale)
         self.circle_start_time: Optional[float] = None
         self.circle_initial_heading: Optional[float] = None
@@ -698,16 +643,16 @@ class CircleBuoyMission(BaseMissionStrategy):
 
 
 class WaypointFollowMission(BaseMissionStrategy):
-    """미션 3: 웨이포인트 추종"""
+    """미션 3: 웨이포인트 추종 (리팩토링: body force 반환)"""
 
-    def execute(
+    def execute_body_forces(
         self,
         agent_position: np.ndarray,
         agent_heading: float,
         target_waypoint: Dict,
         logger=None,
         **kwargs
-    ) -> Tuple[float, float]:
+    ) -> Tuple[float, float, float]:
         """
         단순 웨이포인트 추종
 
@@ -718,7 +663,7 @@ class WaypointFollowMission(BaseMissionStrategy):
             logger: 로거
 
         Returns:
-            Tuple[float, float]: (left_thrust, right_thrust)
+            Tuple[float, float, float]: (desired_speed, desired_yaw, desired_force_y)
         """
         # 목표 웨이포인트
         target_pos = np.array([target_waypoint['x'], target_waypoint['y']], dtype=np.float32)
@@ -728,7 +673,7 @@ class WaypointFollowMission(BaseMissionStrategy):
         distance = np.linalg.norm(delta)
 
         if distance < Constants.WAYPOINT_MIN_DISTANCE:
-            return 0.0, 0.0
+            return 0.0, 0.0, 0.0
 
         # 목표 방향 계산
         target_heading = np.degrees(np.arctan2(delta[0], delta[1]))
@@ -749,22 +694,23 @@ class WaypointFollowMission(BaseMissionStrategy):
         steering = np.clip(steering, -Constants.WAYPOINT_MAX_STEERING,
                          Constants.WAYPOINT_MAX_STEERING)
 
-        # 스러스터 명령
-        left_thrust = (Constants.WAYPOINT_FORWARD_SPEED + steering) * self.thrust_scale
-        right_thrust = (Constants.WAYPOINT_FORWARD_SPEED - steering) * self.thrust_scale
+        # Body force 명령
+        desired_speed = Constants.WAYPOINT_FORWARD_SPEED
+        desired_yaw = steering
+        desired_force_y = 0.0
 
         if logger:
             logger.info(
                 f"Waypoint Follow: dist={distance:.1f}m, heading_err={heading_error:.1f}°"
             )
 
-        return left_thrust, right_thrust
+        return desired_speed, desired_yaw, desired_force_y
 
 
 class ObstacleAvoidMission(BaseMissionStrategy):
-    """미션 4: 장애물 회피"""
+    """미션 4: 장애물 회피 (리팩토링: body force 반환)"""
 
-    def __init__(self, thrust_scale: float = 1000.0, avoidance_controller=None):
+    def __init__(self, thrust_scale: float = Constants.DEFAULT_THRUST_SCALE, avoidance_controller=None):
         super().__init__(thrust_scale)
         self.avoidance_controller = avoidance_controller
         self.previous_moment_input = 0.0
@@ -775,7 +721,7 @@ class ObstacleAvoidMission(BaseMissionStrategy):
         self.previous_moment_input = 0.0
         self.previous_force_input = 0.0
 
-    def execute(
+    def execute_body_forces(
         self,
         agent_position: np.ndarray,
         agent_heading: float,
@@ -786,7 +732,7 @@ class ObstacleAvoidMission(BaseMissionStrategy):
         get_onnx_control_func: Callable,
         logger=None,
         **kwargs
-    ) -> Tuple[float, float]:
+    ) -> Tuple[float, float, float]:
         """
         ONNX 모델 + 알고리즘 하이브리드 장애물 회피
 
@@ -801,10 +747,10 @@ class ObstacleAvoidMission(BaseMissionStrategy):
             logger: 로거
 
         Returns:
-            Tuple[float, float]: (left_thrust, right_thrust)
+            Tuple[float, float, float]: (desired_speed, desired_yaw, desired_force_y)
         """
         if not waypoints or current_waypoint_index >= len(waypoints):
-            return 0.0, 0.0
+            return 0.0, 0.0, 0.0
 
         # LOS target 계산
         waypoint_list = [[wp['x'], wp['y']] for wp in waypoints]
@@ -829,16 +775,6 @@ class ObstacleAvoidMission(BaseMissionStrategy):
         self.previous_moment_input = filtered_angular
         self.previous_force_input = filtered_linear
 
-        # 스러스터 계산
-        left_thrust, right_thrust = self._calculate_thruster_commands(
-            filtered_linear, filtered_angular
-        )
-
-        # 스러스터 필터 적용
-        left_thrust, right_thrust = self.avoidance_controller.apply_thrust_filters(
-            left_thrust, right_thrust
-        )
-
         mode = "DIRECT" if use_direct_control else "ONNX"
         if logger:
             logger.info(
@@ -846,28 +782,8 @@ class ObstacleAvoidMission(BaseMissionStrategy):
                 f"angular={filtered_angular:.3f}"
             )
 
-        return left_thrust, right_thrust
-
-    def _calculate_thruster_commands(
-        self, linear_velocity: float, angular_velocity: float
-    ) -> Tuple[float, float]:
-        """
-        스러스터 명령 계산
-
-        Args:
-            linear_velocity: 선속도
-            angular_velocity: 각속도
-
-        Returns:
-            Tuple[float, float]: (left_thrust, right_thrust)
-        """
-        forward_thrust = linear_velocity * self.thrust_scale
-        turn_thrust = angular_velocity * self.thrust_scale
-        left_thrust = forward_thrust + turn_thrust
-        right_thrust = forward_thrust - turn_thrust
-        left_thrust = np.clip(left_thrust, -self.thrust_scale, self.thrust_scale)
-        right_thrust = np.clip(right_thrust, -self.thrust_scale, self.thrust_scale)
-        return left_thrust, right_thrust
+        # Body force 반환 (sway는 사용하지 않음)
+        return filtered_linear, filtered_angular, 0.0
 
 
 class DockMission(BaseMissionStrategy):
@@ -1289,9 +1205,9 @@ class DockMission(BaseMissionStrategy):
 
 
 class RotationMission(BaseMissionStrategy):
-    """미션 6: 제자리 선회"""
+    """미션 6: 제자리 선회 (리팩토링: body force 반환)"""
 
-    def __init__(self, thrust_scale: float = 1000.0):
+    def __init__(self, thrust_scale: float = Constants.DEFAULT_THRUST_SCALE):
         super().__init__(thrust_scale)
         self.target_angle: Optional[float] = None
         self.is_completed: bool = False
@@ -1302,22 +1218,25 @@ class RotationMission(BaseMissionStrategy):
         self.is_completed = False
         self.stable_frames = 0
 
-    def execute(
+    def execute_body_forces(
         self,
         agent_heading: Optional[float],
         mission_params: Optional[Dict],
         logger=None,
         **kwargs
-    ) -> Tuple[float, float]:
+    ) -> Tuple[float, float, float]:
         """
         제자리에서 목표 각도까지 선회
 
         Args:
             agent_heading: 현재 헤딩 (deg)
             mission_params: {'desired_angle': float, ...}
+
+        Returns:
+            Tuple[float, float, float]: (desired_speed, desired_yaw, desired_force_y)
         """
         if agent_heading is None or mission_params is None:
-            return 0.0, 0.0
+            return 0.0, 0.0, 0.0
 
         desired_angle = mission_params.get('desired_angle', Constants.ROTATION_DEFAULT_TARGET)
         if self.target_angle is None or self.target_angle != desired_angle:
@@ -1345,11 +1264,9 @@ class RotationMission(BaseMissionStrategy):
                     f"Rotation 완료: 목표={self.target_angle:.1f}°, 현재={agent_heading:.1f}°"
                 )
             self.is_completed = True
-            return 0.0, 0.0
+            return 0.0, 0.0, 0.0
 
         rotation_cmd = np.clip(error * gain, -max_thrust, max_thrust)
-        left_thrust = -rotation_cmd * self.thrust_scale
-        right_thrust = rotation_cmd * self.thrust_scale
 
         if logger:
             logger.info(
@@ -1357,7 +1274,12 @@ class RotationMission(BaseMissionStrategy):
                 f"명령={rotation_cmd:.3f}"
             )
 
-        return left_thrust, right_thrust
+        # Body force 반환 (전진 없이 제자리 회전)
+        desired_speed = 0.0
+        desired_yaw = rotation_cmd
+        desired_force_y = 0.0
+
+        return desired_speed, desired_yaw, desired_force_y
 
 
 # ============================================================================

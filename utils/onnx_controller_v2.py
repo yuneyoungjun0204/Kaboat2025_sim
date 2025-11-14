@@ -1,0 +1,183 @@
+#!/usr/bin/env python3
+"""
+ONNX 모델 제어 모듈 v2
+- Unity ML-Agent 스타일의 observation 구조 지원
+- 단순화된 observation: LiDAR + rotation + angular_vel + pos_diff + prev_actions
+"""
+
+import numpy as np
+import onnxruntime as ort
+from collections import deque
+from typing import Tuple, List, Optional
+from utils.config import Constants
+
+
+class ONNXControllerV2:
+    """ONNX 모델 기반 제어 클래스 v2 (Unity ML-Agent 스타일)"""
+
+    def __init__(self, model_path: str, logger, stack_count: int = 2):
+        """
+        Args:
+            model_path: ONNX 모델 경로
+            logger: ROS2 logger
+            stack_count: Temporal stacking 횟수 (기본값: 2)
+        """
+        self.logger = logger
+        self.onnx_session = None
+        self.onnx_input_name = None
+        self.previous_moment_input = 0.0
+        self.previous_force_input = 0.0
+        self.stack_count = stack_count
+
+        # Observation 크기
+        # LiDAR(201) + rotation_y(1) + angular_vel_y(1) + pos_diff(2) + prev_actions(2) = 207
+        self.observation_size = 207
+        self.input_size = self.observation_size * self.stack_count
+
+        # Observation history for temporal stacking
+        self.observation_history = deque(maxlen=self.stack_count)
+
+        self._load_model(model_path)
+
+    def _load_model(self, model_path: str) -> None:
+        """ONNX 모델 로딩"""
+        self.logger.info(f"ONNX v2 모델 로딩 중... (observation_size={self.observation_size}, stack={self.stack_count})")
+        try:
+            self.onnx_session = ort.InferenceSession(model_path)
+            self.onnx_input_name = self.onnx_session.get_inputs()[0].name
+            self.logger.info("✓ ONNX v2 모델 로딩 완료")
+        except Exception as e:
+            self.logger.error(f"ONNX v2 모델 로딩 실패: {e}")
+            self.onnx_session = None
+
+    def get_control(
+        self,
+        lidar_distances: np.ndarray,
+        agent_heading: float,
+        angular_velocity_y: float,
+        agent_position: np.ndarray,
+        current_waypoint: np.ndarray
+    ) -> Tuple[float, float]:
+        """
+        ONNX 모델 기반 제어 명령 생성
+
+        Args:
+            lidar_distances: LiDAR 거리 배열 (201개, -100° ~ +100°)
+            agent_heading: 에이전트 방향 (-180~180도, NED 좌표계)
+            angular_velocity_y: 각속도 (deg/s)
+            agent_position: 에이전트 위치 [North, East] (미터)
+            current_waypoint: 현재 웨이포인트 [North, East]
+
+        Returns:
+            (linear_velocity, angular_velocity) 튜플
+        """
+        if self.onnx_session is None:
+            return 0.0, 0.0
+
+        try:
+            observation_array = self._build_observation(
+                lidar_distances, agent_heading, angular_velocity_y,
+                agent_position, current_waypoint
+            )
+
+            # Observation history에 현재 observation 추가
+            self.observation_history.append(observation_array)
+
+            # Cold start 처리: history가 stack_count보다 적으면 현재 observation으로 채우기
+            while len(self.observation_history) < self.stack_count:
+                self.observation_history.appendleft(observation_array)
+
+            # Temporal stacking: [t-n+1, t-n+2, ..., t-1, t] 순서로 concatenate
+            stacked_input = np.concatenate(list(self.observation_history)).reshape(1, self.input_size)
+
+            outputs = self.onnx_session.run(None, {self.onnx_input_name: stacked_input})
+
+            return self._parse_output(outputs)
+
+        except Exception as e:
+            self.logger.error(f"ONNX v2 추론 오류: {e}")
+            return 0.0, 0.0
+
+    def _build_observation(
+        self,
+        lidar_distances: np.ndarray,
+        agent_heading: float,
+        angular_velocity_y: float,
+        agent_position: np.ndarray,
+        current_waypoint: np.ndarray
+    ) -> np.ndarray:
+        """
+        ONNX v2 모델용 단일 타임스텝 관측값 구성 (Unity ML-Agent 스타일)
+
+        Observation 구조:
+        1. LiDAR distances (201개, -100° ~ +100°)
+        2. Agent rotation Y (1개, -180~180도)
+        3. IMU Angular velocity Y (1개, deg/s)
+        4. Position difference (current_waypoint - agent_position) (2개, [North, East])
+        5. Previous actions (2개, [moment_input, force_input])
+
+        Total: 207개
+
+        Args:
+            lidar_distances: LiDAR 거리 배열 (201개)
+            agent_heading: 에이전트 방향 (-180~180도)
+            angular_velocity_y: 각속도 (deg/s)
+            agent_position: 에이전트 위치 [North, East]
+            current_waypoint: 현재 웨이포인트 [North, East]
+
+        Returns:
+            관측값 배열 (크기: 207)
+        """
+        observation_values = []
+
+        # 1. LiDAR distances (201)
+        observation_values.extend(list(lidar_distances))
+
+        # 2. Agent rotation Y (1)
+        observation_values.append(float(agent_heading))
+
+        # 3. IMU Angular velocity Y (1)
+        observation_values.append(float(angular_velocity_y))
+
+        # 4. Position difference (2): current_waypoint - agent_position
+        pos_diff = current_waypoint[:2] - agent_position[:2]
+        pos_diff_x = 0.0 if np.isinf(pos_diff[0]) or np.isnan(pos_diff[0]) else float(pos_diff[0])
+        pos_diff_z = 0.0 if np.isinf(pos_diff[1]) or np.isnan(pos_diff[1]) else float(pos_diff[1])
+        observation_values.append(pos_diff_x)
+        observation_values.append(pos_diff_z)
+
+        # 5. Previous actions (2): [moment_input, force_input]
+        observation_values.append(float(self.previous_moment_input))
+        observation_values.append(float(self.previous_force_input))
+
+        return np.array(observation_values, dtype=np.float32)
+
+    def _parse_output(self, outputs: List) -> Tuple[float, float]:
+        """ONNX 모델 출력 파싱 (differential drive 제약 조건 포함)"""
+        if len(outputs) > 2 and outputs[2] is not None:
+            linear_velocity = np.clip(
+                outputs[2][0][1] * Constants.ONNX_V_SCALE,
+                Constants.ONNX_LINEAR_VELOCITY_RANGE[0],
+                Constants.ONNX_LINEAR_VELOCITY_RANGE[1]
+            )
+            angular_velocity = np.clip(
+                outputs[2][0][0] * Constants.ONNX_W_SCALE,
+                Constants.ONNX_ANGULAR_VELOCITY_RANGE[0],
+                Constants.ONNX_ANGULAR_VELOCITY_RANGE[1]
+            )
+
+            # Differential drive 제약: left=linear+angular, right=linear-angular ∈ [-1,1]
+            max_angular = min(1.0 - linear_velocity, linear_velocity + 1.0)
+            min_angular = max(-1.0 - linear_velocity, linear_velocity - 1.0)
+            angular_velocity = np.clip(angular_velocity, min_angular, max_angular)
+
+        else:
+            linear_velocity = 0.0
+            angular_velocity = 0.0
+
+        return linear_velocity, angular_velocity
+
+    def update_previous_inputs(self, angular_velocity: float, linear_velocity: float) -> None:
+        """이전 입력 업데이트 (필터 적용 후 호출, temporal context용)"""
+        self.previous_moment_input = angular_velocity
+        self.previous_force_input = linear_velocity

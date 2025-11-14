@@ -102,13 +102,16 @@ class Constants:
     # ============================================================================
     # ONNX 모델 설정
     # ============================================================================
+    # ONNX 버전 선택: 1 = 기존 v1 (213 obs), 2 = v2 Unity ML-Agent 스타일 (207 obs)
+    ONNX_VERSION = 1  # 1 또는 2
+
     # ONNX_MODEL_PATH는 이제 Paths.get_onnx_model_path()를 사용하세요
     @property
     def ONNX_MODEL_PATH(self) -> str:
         """하위 호환성을 위한 프로퍼티 (deprecated)"""
         return self.Paths.get_onnx_model_path()
 
-    # Observation 크기 및 Temporal Stacking 설정
+    # Observation 크기 및 Temporal Stacking 설정 (v1용)
     # ───────────────────────────────────────────────────────────────────────────
     # OBSERVATION_SIZE: 단일 타임스텝의 observation 크기
     #   - LiDAR distances: 201개 (-100° ~ +100°)
