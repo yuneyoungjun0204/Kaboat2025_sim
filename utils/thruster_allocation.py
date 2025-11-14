@@ -3,6 +3,14 @@
 Thruster Allocation Module
 - 통일된 body force 명령을 thruster 명령으로 변환
 - 2-Motor Vectored Thruster Control Allocation
+
+Example:
+    >>> from utils.thruster_allocation import body_forces_to_thruster_commands
+    >>> left, right, left_pos, right_pos = body_forces_to_thruster_commands(
+    ...     desired_speed=0.5,
+    ...     desired_yaw=0.2,
+    ...     desired_force_y=0.0
+    ... )
 """
 
 import numpy as np

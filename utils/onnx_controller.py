@@ -32,15 +32,42 @@ class ONNXController:
         self._load_model(model_path)
 
     def _load_model(self, model_path: str) -> None:
-        """ONNX 모델 로딩"""
-        self.logger.info("ONNX 모델 로딩 중...")
+        """
+        ONNX 모델 로딩
+
+        Args:
+            model_path: ONNX 모델 파일 경로
+
+        Raises:
+            FileNotFoundError: 모델 파일이 존재하지 않을 때
+            RuntimeError: ONNX 런타임 초기화 실패 시
+        """
+        self.logger.info(f"ONNX 모델 로딩 중: {model_path}")
         try:
+            from pathlib import Path
+            if not Path(model_path).exists():
+                raise FileNotFoundError(f"ONNX 모델 파일을 찾을 수 없습니다: {model_path}")
+
             self.onnx_session = ort.InferenceSession(model_path)
             self.onnx_input_name = self.onnx_session.get_inputs()[0].name
+
+            # 모델 입력 크기 검증
+            expected_size = Constants.ONNX_INPUT_SIZE
+            actual_size = self.onnx_session.get_inputs()[0].shape[1]
+            if actual_size != expected_size:
+                self.logger.warn(
+                    f"⚠️ 모델 입력 크기 불일치: 예상={expected_size}, 실제={actual_size}"
+                )
+
             self.logger.info("✓ ONNX 모델 로딩 완료")
-        except Exception as e:
-            self.logger.error(f"ONNX 모델 로딩 실패: {e}")
+        except FileNotFoundError as e:
+            self.logger.error(f"❌ {e}")
             self.onnx_session = None
+            raise
+        except Exception as e:
+            self.logger.error(f"❌ ONNX 모델 로딩 실패: {type(e).__name__}: {e}")
+            self.onnx_session = None
+            raise RuntimeError(f"ONNX 모델 로딩 실패: {e}") from e
 
     def get_control(self, lidar_distances: np.ndarray, agent_heading: float,
                    angular_velocity_y: float, agent_position: np.ndarray,

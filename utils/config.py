@@ -3,10 +3,16 @@
 VRX 시스템 설정 상수
 - 모든 시스템 파라미터를 중앙 관리
 - ROS 토픽명, PID 게인, 웨이포인트, 미션 파라미터, 파일 경로 등
+
+Version: 2.0 (Refactored 2025-01-15)
+- 통일된 명령 인터페이스 추가
+- ONNX v2 지원
+- Thruster allocation 모듈화
 """
 
 import os
 from pathlib import Path
+from typing import Dict, Any
 
 
 class Constants:
@@ -381,3 +387,66 @@ class Constants:
         PASS_BETWEEN_BUOYS = 2  # 강제 부표 사이 지나기 미션
         CIRCLE_BUOY = 3  # 강제 부표 한바퀴 돌기 미션
         DOCK_MODE = 4  # 강제 도킹 미션
+
+    # ============================================================================
+    # 유틸리티 메서드
+    # ============================================================================
+    @classmethod
+    def validate_config(cls) -> Dict[str, Any]:
+        """
+        설정 검증 및 진단 정보 반환
+
+        Returns:
+            Dict: 설정 상태 정보
+                - 'valid': 설정이 유효한지
+                - 'warnings': 경고 메시지 리스트
+                - 'info': 정보 메시지 딕셔너리
+        """
+        warnings = []
+        info = {}
+
+        # ONNX 버전 확인
+        if cls.ONNX_VERSION not in [1, 2]:
+            warnings.append(f"잘못된 ONNX_VERSION: {cls.ONNX_VERSION} (1 또는 2만 가능)")
+
+        info['onnx_version'] = cls.ONNX_VERSION
+        info['onnx_input_size'] = cls.ONNX_INPUT_SIZE if cls.ONNX_VERSION == 1 else 207 * cls.STACK_COUNT
+        info['thrust_scale'] = cls.DEFAULT_THRUST_SCALE
+        info['lidar_size'] = cls.LIDAR_ARRAY_SIZE
+        info['total_waypoints'] = len(cls.PREDEFINED_WAYPOINTS)
+
+        # 경로 검증
+        try:
+            model_path = cls.Paths.get_onnx_model_path()
+            info['onnx_model'] = str(model_path)
+        except FileNotFoundError as e:
+            warnings.append(f"ONNX 모델 파일 없음: {e}")
+            info['onnx_model'] = None
+
+        return {
+            'valid': len(warnings) == 0,
+            'warnings': warnings,
+            'info': info
+        }
+
+    @classmethod
+    def print_config_summary(cls) -> None:
+        """설정 요약 출력 (디버깅용)"""
+        print("=" * 70)
+        print("VRX System Configuration Summary")
+        print("=" * 70)
+
+        validation = cls.validate_config()
+
+        print(f"\n📊 기본 정보:")
+        for key, value in validation['info'].items():
+            print(f"  - {key}: {value}")
+
+        if validation['warnings']:
+            print(f"\n⚠️ 경고 ({len(validation['warnings'])}개):")
+            for warning in validation['warnings']:
+                print(f"  - {warning}")
+        else:
+            print(f"\n✅ 설정 검증 통과")
+
+        print("=" * 70)

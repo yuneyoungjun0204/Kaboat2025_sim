@@ -88,29 +88,15 @@ class BaseMissionStrategy:
     def __init__(self, thrust_scale: float = Constants.DEFAULT_THRUST_SCALE):
         self.thrust_scale = thrust_scale
 
-    def _update_params(self, mission_params: Dict, **attr_mapping):
-        """
-        파라미터 업데이트 헬퍼 (반복 코드 제거)
-
-        Args:
-            mission_params: 미션 파라미터 딕셔너리
-            **attr_mapping: attr_name='param_key' 형태의 매핑
-
-        Example:
-            self._update_params(mission_params,
-                base_speed='circle_base_speed',
-                min_speed='circle_min_speed')
-        """
-        for attr_name, param_key in attr_mapping.items():
-            if param_key in mission_params:
-                setattr(self, attr_name, mission_params[param_key])
-
     def execute_body_forces(self, **kwargs) -> Tuple[float, float, float]:
         """
         미션 실행 (새 인터페이스: 통일된 body force 명령 반환)
 
         Returns:
             Tuple[float, float, float]: (desired_speed, desired_yaw, desired_force_y)
+                - desired_speed: 전진 속도 (-1~1)
+                - desired_yaw: 회전 모멘트 (-1~1)
+                - desired_force_y: 횡방향 힘 (-1~1)
         """
         raise NotImplementedError("Subclass must implement execute_body_forces()")
 
@@ -118,14 +104,22 @@ class BaseMissionStrategy:
         """
         미션 실행 (기존 인터페이스: 하위 호환성 유지)
 
+        이 메서드는 각 미션에서 오버라이드하거나,
+        execute_body_forces()를 구현하면 자동으로 작동합니다.
+
         Returns:
+            미션에 따라 다름:
             - 대부분: Tuple[float, float] (left_thrust, right_thrust)
-            - CircleBuoy/Dock: Tuple[float, float, float, float] (left, right, left_pos, right_pos)
+            - CircleBuoy/Dock: Tuple[float, float, float, float] (left_thrust, right_thrust, left_pos, right_pos)
         """
+        # 기본 구현: body forces → thruster allocation
         desired_speed, desired_yaw, desired_force_y = self.execute_body_forces(**kwargs)
         left_thrust, right_thrust, left_pos, right_pos = body_forces_to_thruster_commands(
             desired_speed, desired_yaw, desired_force_y, self.thrust_scale
         )
+
+        # 하위 호환성: 대부분의 미션은 (left_thrust, right_thrust)만 반환
+        # CircleBuoy/Dock은 이 메서드를 오버라이드하여 4개 값 반환
         return left_thrust, right_thrust
 
     def reset(self):
@@ -245,40 +239,76 @@ class PassBetweenBuoysMission(BaseMissionStrategy):
 
 
 class CircleBuoyMission(BaseMissionStrategy):
-    """미션 2: 부표 주변 회전"""
+    """미션 2: 부표 주변 회전 (리팩토링: body force 반환)"""
 
     def __init__(self, thrust_scale: float = Constants.DEFAULT_THRUST_SCALE):
         super().__init__(thrust_scale)
-        # 상태 변수
         self.circle_start_time: Optional[float] = None
         self.circle_initial_heading: Optional[float] = None
         self.total_rotation = 0.0
         self.previous_heading: Optional[float] = None
-        self.is_completed = False
-        self.target_x: Optional[float] = None
+        self.circling_started = False
+        self.is_completed = False  # 360도 회전 완료 플래그
 
-        # 이미지 크기 (calculate_steering_command에서 사용)
-        self.image_width = Constants.CIRCLE_IMAGE_WIDTH
-
-        # PID 제어기
+        # PID 제어기 초기화
         self.pid_controller = PIDController(
-            kp=Constants.CIRCLE_PID_KP, ki=Constants.CIRCLE_PID_KI, kd=Constants.CIRCLE_PID_KD
+            kp=Constants.CIRCLE_PID_KP,
+            ki=Constants.CIRCLE_PID_KI,
+            kd=Constants.CIRCLE_PID_KD
         )
 
-        # 동적 파라미터 (트랙바로 변경 가능)
+        # 제어 파라미터
+        self.image_width = Constants.CIRCLE_IMAGE_WIDTH
+        self.image_height = Constants.CIRCLE_IMAGE_HEIGHT
+        self.target_center_x = self.image_width / 2
+
+        # 속도 제어 파라미터
         self.base_speed = Constants.CIRCLE_BASE_SPEED
         self.min_speed = Constants.CIRCLE_MIN_SPEED
         self.max_turn_thrust = Constants.CIRCLE_MAX_TURN_THRUST
+
+        # target_x 결정식 파라미터 (시계방향)
         self.tx_base_x = Constants.CIRCLE_TX_BASE_X
         self.tx_slope = Constants.CIRCLE_TX_SLOPE
         self.tx_min_x = Constants.CIRCLE_TX_MIN_X
         self.tx_max_x = Constants.CIRCLE_TX_MAX_X
+
+        # 목표 X 위치 저장 (시각화용)
+        self.target_x: Optional[float] = None
+
+        # 마지막으로 성공한 스러스터 명령 저장 (부표 미탐지 시 사용)
+        # 주의: thrust_scale로 변환된 실제 값 저장 (예: 500.0)
+        self.last_known_left_cmd = 0.0
+        self.last_known_right_cmd = 0.0
+
+        # 거리 기반 명령 고정 (부표에 가까워지면 명령 고정)
+        self.distance_locked = False  # 거리 임계값 도달 플래그
+        # 주의: thrust_scale로 변환된 실제 값 저장 (예: 500.0)
+        self.locked_left_cmd = 0.0  # 고정된 왼쪽 명령
+        self.locked_right_cmd = 0.0  # 고정된 오른쪽 명령
+        self.locked_left_pos = 0.0  # 고정된 왼쪽 각도
+        self.locked_right_pos = 0.0  # 고정된 오른쪽 각도
         self.lock_distance_threshold = Constants.CIRCLE_LOCK_DISTANCE_THRESHOLD
+
+        # SWAY 제어 파라미터 (부드러운 원 그리기)
         self.sway_strength = Constants.CIRCLE_SWAY_STRENGTH
         self.sway_max_angle = Constants.CIRCLE_SWAY_MAX_ANGLE
-        self.filter_alpha = Constants.CIRCLE_FILTER_ALPHA
 
-        # 명령 저장 (부표 미탐지 시 사용)
+        # 1차 저주파 필터 (명령값 튀기 방지)
+        self.filter_alpha = Constants.CIRCLE_FILTER_ALPHA
+        self.filtered_left_thrust = 0.0  # 필터링된 왼쪽 명령
+        self.filtered_right_thrust = 0.0  # 필터링된 오른쪽 명령
+
+    def reset(self):
+        """미션 상태 초기화"""
+        self.circle_start_time = None
+        self.circle_initial_heading = None
+        self.total_rotation = 0.0
+        self.previous_heading = None
+        self.circling_started = False
+        self.is_completed = False
+        self.pid_controller.reset()
+        self.target_x = None
         self.last_known_left_cmd = 0.0
         self.last_known_right_cmd = 0.0
         self.distance_locked = False
@@ -288,16 +318,6 @@ class CircleBuoyMission(BaseMissionStrategy):
         self.locked_right_pos = 0.0
         self.filtered_left_thrust = 0.0
         self.filtered_right_thrust = 0.0
-
-    def reset(self):
-        """미션 상태 초기화"""
-        self.circle_start_time = self.circle_initial_heading = self.previous_heading = self.target_x = None
-        self.total_rotation = 0.0
-        self.is_completed = self.distance_locked = False
-        self.pid_controller.reset()
-        self.last_known_left_cmd = self.last_known_right_cmd = 0.0
-        self.locked_left_cmd = self.locked_right_cmd = self.locked_left_pos = self.locked_right_pos = 0.0
-        self.filtered_left_thrust = self.filtered_right_thrust = 0.0
 
     def calculate_rotation_target(self, rotation_direction: int, object_depth: float) -> float:
         """
@@ -378,6 +398,53 @@ class CircleBuoyMission(BaseMissionStrategy):
 
         return self.filtered_left_thrust, self.filtered_right_thrust
 
+    def calculate_thruster_allocation(
+        self, sway_force: float, yaw_moment: float, surge_velocity: float
+    ) -> Tuple[float, float, float, float]:
+        """
+        2-Motor Vectored Thruster Control Allocation (Circle 미션용)
+
+        Args:
+            sway_force: 횡방향 힘 (좌우 이동, -1~1)
+            yaw_moment: 회전 모멘트 (-1~1)
+            surge_velocity: 전진 속도 (0~1)
+
+        Returns:
+            Tuple[float, float, float, float]: (left_pos, left_thrust, right_pos, right_thrust)
+                pos는 라디안 단위 각도
+                thrust는 추력 크기
+        """
+        # 1. SWAY를 위한 기본 각도 (양쪽 동일)
+        sway_angle = sway_force * np.radians(self.sway_max_angle)
+
+        # 2. YAW를 위한 각도 차이 (양쪽 반대)
+        yaw_angle_diff = yaw_moment * (np.pi / 6)  # 최대 ±30도
+
+        # 3. 최종 각도 = SWAY 각도 ± YAW 각도 차이
+        left_angle = sway_angle + yaw_angle_diff
+        right_angle = sway_angle - yaw_angle_diff
+
+        # 각도 제한
+        left_angle = np.clip(left_angle, -np.pi / 2, np.pi / 2)
+        right_angle = np.clip(right_angle, -np.pi / 2, np.pi / 2)
+
+        # 4. Base thrust 계산 (surge_velocity 기반)
+        base_thrust = surge_velocity * self.thrust_scale
+
+        # 5. 추력 차이로 Yaw moment 추가 생성
+        yaw_thrust_diff = yaw_moment * self.thrust_scale * 0.3
+
+        # 6. 최종 추력 계산
+        left_thrust = base_thrust + yaw_thrust_diff
+        right_thrust = base_thrust - yaw_thrust_diff
+
+        # 추력 제한
+        max_thrust = self.thrust_scale * 1.5
+        left_thrust = np.clip(left_thrust, -max_thrust, max_thrust)
+        right_thrust = np.clip(right_thrust, -max_thrust, max_thrust)
+
+        return left_angle, left_thrust, right_angle, right_thrust
+
     def execute(
         self,
         detected_objects: List[Dict],
@@ -402,20 +469,27 @@ class CircleBuoyMission(BaseMissionStrategy):
         Returns:
             Tuple[float, float, float, float]: (left_thrust, right_thrust, left_pos, right_pos)
         """
-        # 동적 파라미터 업데이트
-        self._update_params(mission_params,
-            base_speed='circle_base_speed', min_speed='circle_min_speed',
-            max_turn_thrust='circle_max_turn', lock_distance_threshold='circle_lock_distance',
-            sway_strength='circle_sway_strength', sway_max_angle='circle_sway_max_angle',
-            filter_alpha='circle_filter_alpha', tx_base_x='circle_tx_base_x',
-            tx_slope='circle_tx_slope', tx_min_x='circle_tx_min_x', tx_max_x='circle_tx_max_x')
+        # 트랙바 파라미터 업데이트 (동적 조정)
+        self.base_speed = mission_params.get('circle_base_speed', self.base_speed)
+        self.min_speed = mission_params.get('circle_min_speed', self.min_speed)
+        self.max_turn_thrust = mission_params.get('circle_max_turn', self.max_turn_thrust)
+        self.lock_distance_threshold = mission_params.get('circle_lock_distance', self.lock_distance_threshold)
+        self.sway_strength = mission_params.get('circle_sway_strength', self.sway_strength)
+        self.sway_max_angle = mission_params.get('circle_sway_max_angle', self.sway_max_angle)
+        self.filter_alpha = mission_params.get('circle_filter_alpha', self.filter_alpha)
 
-        if 'circle_pid_kp' in mission_params:
-            self.pid_controller.kp = mission_params['circle_pid_kp']
+        circle_pid_kp = mission_params.get('circle_pid_kp', self.pid_controller.kp)
+        if circle_pid_kp != self.pid_controller.kp:
+            self.pid_controller.kp = circle_pid_kp
 
+        # target_x 결정식 파라미터 업데이트
+        self.tx_base_x = mission_params.get('circle_tx_base_x', self.tx_base_x)
+        self.tx_slope = mission_params.get('circle_tx_slope', self.tx_slope)
+        tx_min_x = mission_params.get('circle_tx_min_x', self.tx_min_x)
+        tx_max_x = mission_params.get('circle_tx_max_x', self.tx_max_x)
         # min/max 순서 보장
-        if self.tx_min_x >= self.tx_max_x:
-            self.tx_min_x, self.tx_max_x = self.tx_max_x - 1.0, self.tx_min_x + 1.0
+        self.tx_min_x = min(tx_min_x, tx_max_x - 1.0)
+        self.tx_max_x = max(tx_max_x, self.tx_min_x + 1.0)
 
         # 파란색 부표 찾기 (헬퍼 함수 사용)
         blue_buoy, data_source = find_buoy_with_fallback(
@@ -717,41 +791,52 @@ class DockMission(BaseMissionStrategy):
 
     def __init__(self, thrust_scale: float = 1000.0):
         super().__init__(thrust_scale)
-        # 상태 변수
-        self.docking_phase = "TRACKING"
+        # 도킹 상태 관리
+        self.docking_phase = "TRACKING"  # TRACKING, APPROACHING, REVERSING
         self.phase_start_time: Optional[float] = None
-        self.target_shape_label: Optional[str] = None
-        self.initial_heading: Optional[float] = None
-        self.initial_imu_heading: Optional[float] = None
-        self.accumulated_angle = 0.0
-        self.previous_heading: Optional[float] = None
-        self.rotation_direction = 1
-        self.is_completed = False
+        self.target_shape_label: Optional[str] = None  # 추적할 도형 라벨
 
-        # 동적 파라미터 (트랙바로 변경 가능)
+        # 누적 각도 추적 (도킹 미션 시작부터의 총 각도 변화)
+        self.initial_heading: Optional[float] = None  # 누적 각도 기준 (항상 0으로 고정)
+        self.initial_imu_heading: Optional[float] = None  # 처음 IMU 헤딩 값 (보정 기준)
+        self.accumulated_angle: float = 0.0  # 누적 각도 변화량 (부호 반대: 왼쪽=음수, 오른쪽=양수)
+        self.previous_heading: Optional[float] = None  # 이전 헤딩 (각도 변화 계산용)
+        self.rotation_direction: int = 1  # 현재 회전 방향 (0=왼쪽, 1=오른쪽)
+        self.is_completed: bool = False
+
+        # 제어 파라미터
         self.sway_gain = Constants.DOCK_SWAY_GAIN
         self.yaw_gain = Constants.DOCK_YAW_GAIN
         self.max_sway_thrust = Constants.DOCK_MAX_SWAY_THRUST
         self.max_yaw_thrust = Constants.DOCK_MAX_YAW_THRUST
         self.base_surge = Constants.DOCK_BASE_SURGE
         self.depth_threshold = Constants.DOCK_DEPTH_THRESHOLD
-        self.sway_to_yaw_threshold = 0.5
+        self.sway_to_yaw_threshold = 0.5  # SWAY에서 YAW로 전환하는 depth 임계값
         self.approach_time = Constants.DOCK_APPROACH_TIME
         self.reverse_time = Constants.DOCK_REVERSE_TIME
         self.approach_speed = Constants.DOCK_APPROACH_SPEED
         self.reverse_speed = Constants.DOCK_REVERSE_SPEED
-        self.center_tolerance = Constants.DOCK_CENTER_TOLERANCE
-        self.sway_strength = Constants.DOCK_SWAY_STRENGTH
 
-        # Body-force 명령 저장 (ROS 퍼블리시용)
-        self.last_sway_force = self.last_yaw_moment = self.last_surge_velocity = 0.0
+        # X 좌표 기반 SWAY 제어 파라미터
+        self.center_tolerance = Constants.DOCK_CENTER_TOLERANCE  # 이미지 중앙 허용 오차 (픽셀)
+        self.sway_strength = Constants.DOCK_SWAY_STRENGTH  # SWAY 강도 (0-1)
+
+        # 최근 body-force 명령 (ROS 퍼블리시용)
+        self.last_sway_force = 0.0
+        self.last_yaw_moment = 0.0
+        self.last_surge_velocity = 0.0
 
     def reset(self):
         """미션 상태 초기화"""
         self.docking_phase = "TRACKING"
-        self.phase_start_time = self.target_shape_label = None
-        self.initial_heading = self.initial_imu_heading = self.previous_heading = None
+        self.phase_start_time = None
+        self.target_shape_label = None
+
+        # 누적 각도 추적 초기화
+        self.initial_heading = None
+        self.initial_imu_heading = None
         self.accumulated_angle = 0.0
+        self.previous_heading = None
         self.rotation_direction = 1
         self.is_completed = False
 
@@ -774,6 +859,66 @@ class DockMission(BaseMissionStrategy):
         self.last_sway_force = float(np.clip(sway_force, -1.0, 1.0))
         self.last_yaw_moment = float(np.clip(yaw_moment, -1.0, 1.0))
         self.last_surge_velocity = float(np.clip(surge_velocity, -1.0, 1.0))
+
+    def calculate_thruster_allocation(
+        self, sway_force: float, yaw_moment: float, surge_velocity: float
+    ) -> Tuple[float, float, float, float]:
+        """
+        2-Motor Vectored Thruster Control Allocation (역할 분리 방식)
+        - 각도: Sway motion 생성 (횡방향 이동)
+        - 추력 차이: Yaw moment 생성 (회전)
+        → 충돌 최소화, 조화로운 제어
+
+        Args:
+            sway_force: 횡방향 힘 (좌우 이동, -1~1)
+            yaw_moment: 회전 모멘트 (-1~1)
+            surge_velocity: 전진 속도 (0~1)
+
+        Returns:
+            Tuple[float, float, float, float]: (left_pos, left_thrust, right_pos, right_pos)
+                pos는 라디안 단위 각도
+                thrust는 추력 크기
+        """
+        # === 각도와 추력 차이 동시 사용 제어 ===
+        # 각도: SWAY + YAW 복합 제어
+        # 추력 차이: YAW 추가 강화
+
+        # 1. SWAY를 위한 기본 각도 (양쪽 동일)
+        sway_angle = sway_force * (np.pi / 3)  # 최대 ±60도
+
+        # 2. YAW를 위한 각도 차이 (양쪽 반대)
+        yaw_angle_diff = yaw_moment * (np.pi / 6)  # 최대 ±30도
+
+        # 3. 최종 각도 = SWAY 각도 ± YAW 각도 차이
+        left_angle = sway_angle + yaw_angle_diff
+        right_angle = sway_angle - yaw_angle_diff
+
+        # 각도 제한
+        left_angle = np.clip(left_angle, -np.pi / 2, np.pi / 2)
+        right_angle = np.clip(right_angle, -np.pi / 2, np.pi / 2)
+
+        # 2. Base thrust 계산 (surge_velocity는 이미 sway_force를 고려하여 계산됨)
+        base_thrust = surge_velocity * self.thrust_scale
+
+        # 3. Sway 전용 추가 추력 (surge가 거의 0이고 sway가 있을 때만)
+        # Sway는 주로 각도로 제어하되, 필요시 최소 추가 추력 제공
+        additional_thrust = 0.0
+        if abs(sway_force) > 0.01 and abs(surge_velocity) < 0.01:
+            # SWAY_ONLY 모드: 횡방향 이동을 위한 최소 추가 추력
+            additional_thrust = abs(sway_force) * self.thrust_scale * 0.2
+        # 4. 추력 차이로 Yaw moment 추가 생성
+        yaw_thrust_diff = yaw_moment * self.thrust_scale * 0.5
+
+        # 5. 최종 추력 계산 (base_thrust는 surge_velocity에 직접 비례, 추가 추력 포함)
+        left_thrust = base_thrust + additional_thrust + yaw_thrust_diff
+        right_thrust = base_thrust + additional_thrust - yaw_thrust_diff
+
+        # 추력 제한 (음수 허용: 후진 가능)
+        max_thrust = self.thrust_scale * 1.5
+        left_thrust = np.clip(left_thrust, -max_thrust, max_thrust)
+        right_thrust = np.clip(right_thrust, -max_thrust, max_thrust)
+
+        return left_angle, left_thrust, right_angle, right_thrust
 
     def execute(
         self,
@@ -936,22 +1081,20 @@ class DockMission(BaseMissionStrategy):
 
         # === SWAY와 Moment(YAW) 동시 제어 ===
 
-        # 1. SWAY 제어: X 좌표 기반 횡방향 이동 (오차 크기에 비례)
+        # 1. SWAY 제어: X 좌표 기반 횡방향 이동 (중앙 허용 범위 적용)
         if effective_error_x != 0.0:
-            # 오차 크기에 비례하도록 개선 (너무 강하지 않게)
-            error_ratio = abs(effective_error_x) / (current_image.shape[1] / 2)
-            sway_force = sway_direction * self.sway_strength * min(1.0, error_ratio * 2.0)
+            sway_force = sway_direction * self.sway_strength
             sway_force = np.clip(sway_force, -1.0, 1.0)
         else:
             sway_force = 0.0
 
-        # Accumulated angle 피드백 추가 (게인 감소로 안정성 향상)
+        # Accumulated angle 피드백 추가
         # accumulated_angle < 0 (음수, 왼쪽 회전 누적) → SWAY를 오른쪽으로 (+)
         # accumulated_angle > 0 (양수, 오른쪽 회전 누적) → SWAY를 왼쪽으로 (-)
-        angle_feedback_gain = 0.02  # 게인 감소 (0.04 → 0.02)
+        angle_feedback_gain = 0.04  # 게인 (조정 가능)
         angle_feedback = self.accumulated_angle * angle_feedback_gain
         sway_force += angle_feedback
-        sway_force = np.clip(sway_force, -0.8, 0.8)  # SWAY 최대값 제한 (과도한 횡이동 방지)
+        sway_force = np.clip(sway_force, -1.0, 1.0)
 
         # 2. Moment(YAW) 제어: error_x 기반 회전 (객체 x좌표를 이미지 중심으로)
         # error_x > 0: 객체가 오른쪽에 있음 → 오른쪽으로 회전 (양수 moment)
@@ -959,18 +1102,15 @@ class DockMission(BaseMissionStrategy):
         yaw_moment = normalized_error_x * self.yaw_gain
         yaw_moment = np.clip(yaw_moment, -1.0, 1.0)
 
-        # 3. SURGE: 전진 속도 (SWAY 사용 시에도 최소 속도 보장)
-        # SWAY와 SURGE를 동시에 사용 가능하도록 개선
-        surge_reduction_factor = 1.5  # 계수 감소 (4 → 1.5)
-        min_surge_ratio = 0.3  # 최소 30% 전진 속도 보장
-        surge_velocity = self.base_surge * max(min_surge_ratio, 1.0 - surge_reduction_factor * abs(sway_force))
-        surge_velocity = max(0.0, surge_velocity)
+        # 3. SURGE: 전진 속도 (에러가 작을수록 빠르게 전진)
+        surge_velocity = self.base_surge * (1.0 - 4*abs(sway_force))
+        surge_velocity = max(-0.0000, surge_velocity)
 
         control_mode = "SWAY_YAW_CONTROL"
 
-        # 2-Motor Vectored Thruster Allocation (통합 모듈 사용)
-        left_thrust, right_thrust, left_pos, right_pos = body_forces_to_thruster_commands(
-            surge_velocity, yaw_moment, sway_force, self.thrust_scale, use_vectored_thrusters=True
+        # 2-Motor Vectored Thruster Allocation
+        left_pos, left_thrust, right_pos, right_thrust = self.calculate_thruster_allocation(
+            sway_force, yaw_moment, surge_velocity
         )
         self._set_body_forces(sway_force, yaw_moment, surge_velocity)
 
@@ -1136,7 +1276,7 @@ class RotationMission(BaseMissionStrategy):
 
         # Body force 반환 (전진 없이 제자리 회전)
         desired_speed = 0.0
-        desired_yaw = -rotation_cmd
+        desired_yaw = rotation_cmd
         desired_force_y = 0.0
 
         return desired_speed, desired_yaw, desired_force_y

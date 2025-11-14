@@ -2,10 +2,20 @@
 """
 공통 헬퍼 함수 모듈
 - 중복 제거를 위한 유틸리티 함수들
+- 모든 미션에서 공통적으로 사용되는 헬퍼 함수 제공
+
+Functions:
+    - normalize_heading: 헤딩 0~360 정규화
+    - calculate_heading_error: 최단 거리 헤딩 오차 계산
+    - find_buoy_with_fallback: 부표 탐지 (추적값 우선)
+    - clip_value: 값 범위 제한
+    - safe_divide: 0으로 나누기 방지
+    - sanitize_value: NaN/Inf 제거
+    - interpolate_linear: 선형 보간
 """
 
 import numpy as np
-from typing import Tuple, List, Dict, Optional
+from typing import Tuple, List, Dict, Optional, Any
 
 
 def normalize_heading(heading: float) -> float:
@@ -122,7 +132,7 @@ def safe_divide(numerator: float, denominator: float, default: float = 0.0) -> f
 
 def sanitize_value(value: float, default: float = 0.0) -> float:
     """
-    NaN 및 Inf 값을 안전한 값으로 변환
+    NaN 및 Inf 값을 안전한 값으로 변환 (성능 최적화 버전)
 
     Args:
         value: 입력 값
@@ -130,10 +140,11 @@ def sanitize_value(value: float, default: float = 0.0) -> float:
 
     Returns:
         float: 정상 값 또는 기본값
+
+    Note:
+        numpy.isfinite()가 isnan() + isinf()보다 빠름
     """
-    if np.isnan(value) or np.isinf(value):
-        return default
-    return float(value)
+    return default if not np.isfinite(value) else float(value)
 
 
 def interpolate_linear(x: float, x0: float, y0: float, x1: float, y1: float) -> float:
