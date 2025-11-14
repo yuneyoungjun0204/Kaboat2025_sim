@@ -349,6 +349,11 @@ class CircleBuoyMission(BaseMissionStrategy):
         self.sway_strength = Constants.CIRCLE_SWAY_STRENGTH
         self.sway_max_angle = Constants.CIRCLE_SWAY_MAX_ANGLE
 
+        # 1차 저주파 필터 (명령값 튀기 방지)
+        self.filter_alpha = Constants.CIRCLE_FILTER_ALPHA
+        self.filtered_left_thrust = 0.0  # 필터링된 왼쪽 명령
+        self.filtered_right_thrust = 0.0  # 필터링된 오른쪽 명령
+
     def reset(self):
         """미션 상태 초기화"""
         self.circle_start_time = None
@@ -366,6 +371,8 @@ class CircleBuoyMission(BaseMissionStrategy):
         self.locked_right_cmd = 0.0
         self.locked_left_pos = 0.0
         self.locked_right_pos = 0.0
+        self.filtered_left_thrust = 0.0
+        self.filtered_right_thrust = 0.0
 
     def calculate_rotation_target(self, rotation_direction: int, object_depth: float) -> float:
         """
@@ -424,6 +431,27 @@ class CircleBuoyMission(BaseMissionStrategy):
             speed_ratio = 1.0 - (abs_angle / 90.0)
             adaptive_speed = self.min_speed + (self.base_speed - self.min_speed) * speed_ratio
             return max(self.min_speed, adaptive_speed)
+
+    def apply_low_pass_filter(self, new_left: float, new_right: float) -> Tuple[float, float]:
+        """
+        1차 저주파 필터 적용 (지수 가중 이동 평균)
+
+        Args:
+            new_left: 새로 계산된 왼쪽 명령
+            new_right: 새로 계산된 오른쪽 명령
+
+        Returns:
+            Tuple[float, float]: (필터링된 왼쪽, 필터링된 오른쪽)
+
+        공식: filtered = alpha * new + (1 - alpha) * previous
+        alpha가 작을수록 더 부드러움 (0 < alpha < 1)
+        """
+        self.filtered_left_thrust = (self.filter_alpha * new_left +
+                                     (1.0 - self.filter_alpha) * self.filtered_left_thrust)
+        self.filtered_right_thrust = (self.filter_alpha * new_right +
+                                      (1.0 - self.filter_alpha) * self.filtered_right_thrust)
+
+        return self.filtered_left_thrust, self.filtered_right_thrust
 
     def calculate_thruster_allocation(
         self, sway_force: float, yaw_moment: float, surge_velocity: float
@@ -503,6 +531,7 @@ class CircleBuoyMission(BaseMissionStrategy):
         self.lock_distance_threshold = mission_params.get('circle_lock_distance', self.lock_distance_threshold)
         self.sway_strength = mission_params.get('circle_sway_strength', self.sway_strength)
         self.sway_max_angle = mission_params.get('circle_sway_max_angle', self.sway_max_angle)
+        self.filter_alpha = mission_params.get('circle_filter_alpha', self.filter_alpha)
 
         circle_pid_kp = mission_params.get('circle_pid_kp', self.pid_controller.kp)
         if circle_pid_kp != self.pid_controller.kp:
@@ -630,6 +659,10 @@ class CircleBuoyMission(BaseMissionStrategy):
         # 스러스터를 thrust_scale로 변환
         left_thrust = (left_command / 1000.0) * self.thrust_scale
         right_thrust = (right_command / 1000.0) * self.thrust_scale
+
+        # 1차 저주파 필터 적용 (명령값 튀기 방지)
+        left_thrust, right_thrust = self.apply_low_pass_filter(left_thrust, right_thrust)
+
         left_pos = 0.0  # 기본 각도
         right_pos = 0.0
 
@@ -1154,7 +1187,7 @@ class DockMission(BaseMissionStrategy):
         yaw_moment = np.clip(yaw_moment, -1.0, 1.0)
 
         # 3. SURGE: 전진 속도 (에러가 작을수록 빠르게 전진)
-        surge_velocity = self.base_surge * (1.0 - 6*abs(sway_force))
+        surge_velocity = self.base_surge * (1.0 - 4*abs(sway_force))
         surge_velocity = max(-0.0000, surge_velocity)
 
         control_mode = "SWAY_YAW_CONTROL"

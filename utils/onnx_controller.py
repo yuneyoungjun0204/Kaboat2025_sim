@@ -129,12 +129,12 @@ class ONNXController:
         """ONNX 모델 출력 파싱 (differential drive 제약 조건 포함)"""
         if len(outputs) > 2 and outputs[2] is not None:
             linear_velocity = np.clip(
-                outputs[4][0][1] * Constants.ONNX_V_SCALE,
+                outputs[2][0][1] * Constants.ONNX_V_SCALE,
                 Constants.ONNX_LINEAR_VELOCITY_RANGE[0],
                 Constants.ONNX_LINEAR_VELOCITY_RANGE[1]
             )
             angular_velocity = np.clip(
-                outputs[4][0][0] * Constants.ONNX_W_SCALE,
+                outputs[2][0][0] * Constants.ONNX_W_SCALE,
                 Constants.ONNX_ANGULAR_VELOCITY_RANGE[0],
                 Constants.ONNX_ANGULAR_VELOCITY_RANGE[1]
             )

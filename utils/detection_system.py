@@ -35,7 +35,7 @@ class MissionType(Enum):
 class DetectionSystem:
     """NanoOWL + MiDaS 통합 탐지 시스템"""
 
-    def __init__(self, depth_estimator, device="cuda", detection_threshold=0.005,
+    def __init__(self, depth_estimator, device="cuda", detection_threshold=0.0065,
                  min_box_area=500, max_box_area=80000, min_depth=0.0, max_depth=50.0):
         """
         Args:

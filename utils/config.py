@@ -31,8 +31,8 @@ class Constants:
         # ONNX 모델 파일
         # ONNX_MODEL = MODELS_DIR / 'Once_observation.onnx'
         ONNX_MODEL = MODELS_DIR / 'Ray.onnx'
-        ONNX_MODEL_FALLBACK_1 = MODELS_DIR / 'Ray-9558758.onnx'
-        ONNX_MODEL_FALLBACK_2 = MODELS_DIR / 'Ray-23999963.onnx'
+        # ONNX_MODEL = MODELS_DIR / 'Ray-9558758.onnx'
+        # ONNX_MODEL_FALLBACK_2 = MODELS_DIR / 'Ray-23999963.onnx'
         
 
         @classmethod
@@ -46,7 +46,7 @@ class Constants:
             Raises:
                 FileNotFoundError: 사용 가능한 모델이 없을 때
             """
-            for model_path in [cls.ONNX_MODEL, cls.ONNX_MODEL_FALLBACK_1, cls.ONNX_MODEL_FALLBACK_2]:
+            for model_path in [cls.ONNX_MODEL]:
                 if model_path.exists():
                     return str(model_path)
             raise FileNotFoundError(f"ONNX 모델을 찾을 수 없습니다: {cls.MODELS_DIR}")
@@ -73,7 +73,7 @@ class Constants:
     LIDAR_ARRAY_SIZE = 201
     MAX_LIDAR_DISTANCE = 100.0
     LIDAR_ANGLE_RANGE = (-100, 100)  # degrees
-    LIDAR_SCALE_FACTOR = 1.2  # LiDAR 거리값 스케일 조정 (1.0 = 변환 없음)
+    LIDAR_SCALE_FACTOR = 0.8  # LiDAR 거리값 스케일 조정 (1.0 = 변환 없음)
 
     # ============================================================================
     # 센서 데이터
@@ -83,7 +83,7 @@ class Constants:
     # ============================================================================
     # 웨이포인트 설정
     # ============================================================================
-    DEFAULT_WAYPOINT_RADIUS = 20.0
+    DEFAULT_WAYPOINT_RADIUS = 15.0
 
     # 미리 정의된 웨이포인트 (x, y, mission_type, radius, params)
     # mission_type: 'PASS_BETWEEN_BUOYS', 'CIRCLE_BUOY', 'WAYPOINT_FOLLOW', 'OBSTACLE_AVOID', 'DOCK_MODE'
@@ -91,9 +91,9 @@ class Constants:
         # (150, 9, 'PASS_BETWEEN_BUOYS', DEFAULT_WAYPOINT_RADIUS, {}),
         # (100, 10, 'ROTATION', DEFAULT_WAYPOINT_RADIUS, {'desired_angle': 60.0}),
         # (100, 10, 'DOCK_MODE', DEFAULT_WAYPOINT_RADIUS, {}),
-        (160, 0, 'CIRCLE_BUOY', DEFAULT_WAYPOINT_RADIUS, {'rotation_direction': 2, 'circle_radius': 15.0}),
-        (140, 42, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {'rotation_direction': 2, 'circle_radius': 15.0}),
-        (100, 10, 'ROTATION', DEFAULT_WAYPOINT_RADIUS, {'desired_angle': 60.0}),
+        (160, 0, 'CIRCLE_BUOY', DEFAULT_WAYPOINT_RADIUS, {'rotation_direction': 1, 'circle_radius': 15.0}),
+        (155, -5, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS,{}),
+        (100, 10, 'ROTATION', DEFAULT_WAYPOINT_RADIUS, {'desired_angle': 67.0}),
         (100, 10, 'DOCK_MODE', DEFAULT_WAYPOINT_RADIUS, {}),
         (80, 42, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {}),
         (0, 0, 'PASS_BETWEEN_BUOYS', DEFAULT_WAYPOINT_RADIUS, {})
@@ -141,17 +141,17 @@ class Constants:
     # ============================================================================
     # 장애물 회피 설정
     # ============================================================================
-    BOAT_WIDTH = 3.5
-    BOAT_HEIGHT = 50.0
-    LOS_DELTA = 10.0
-    LOS_LOOKAHEAD_MIN = 30.0
-    LOS_LOOKAHEAD_MAX = 80.0
-    FILTER_ALPHA = 0.5
+    BOAT_WIDTH = 4.5
+    BOAT_HEIGHT = 13.0
+    LOS_DELTA = 15.0
+    LOS_LOOKAHEAD_MIN = 20.0
+    LOS_LOOKAHEAD_MAX = 40.0
+    FILTER_ALPHA = 0.4
 
     # ============================================================================
     # 미션 설정
     # ============================================================================
-    DEFAULT_THRUST_SCALE = 3500.0  # 1000 → 2000 (장애물 회피 성능 향상)
+    DEFAULT_THRUST_SCALE = 1500.0  # 1000 → 2000 (장애물 회피 성능 향상)
     MAX_COAST_FRAMES = 10
     TRACKER_FPS = 20.0
 
@@ -174,9 +174,9 @@ class Constants:
     CIRCLE_PID_KD = 0.4
 
     # CircleBuoy 미션 속도 파라미터
-    CIRCLE_BASE_SPEED = 150.0
+    CIRCLE_BASE_SPEED = 450.0
     CIRCLE_MIN_SPEED = 50.0
-    CIRCLE_MAX_TURN_THRUST = 150.0
+    CIRCLE_MAX_TURN_THRUST = 250.0
     CIRCLE_DEFAULT_ROTATION_DIR = 1
     locked_left_cmd = 0.0
     locked_right_cmd = 0.0
@@ -187,17 +187,17 @@ class Constants:
 
     # CircleBuoy 미션 target_x 결정식 파라미터 (시계방향)
     CIRCLE_TX_BASE_X = 1240.0
-    CIRCLE_TX_SLOPE = 700.0
-    CIRCLE_TX_MIN_X = 750.0
-    CIRCLE_TX_MAX_X = 1200.0
+    CIRCLE_TX_SLOPE = 500.0
+    CIRCLE_TX_MIN_X = 800.0
+    CIRCLE_TX_MAX_X = 1000.0
 
     # CircleBuoy 미션 반시계방향 파라미터
-    CIRCLE_CCW_SLOPE = 350.0  # Counter-clockwise slope
-    CIRCLE_CCW_MIN_X = 140.0
-    CIRCLE_CCW_MAX_X = 690.0
+    CIRCLE_CCW_SLOPE = 500.0  # Counter-clockwise slope
+    CIRCLE_CCW_MIN_X = 310.0
+    CIRCLE_CCW_MAX_X = 580.0
 
     # CircleBuoy 완료 기준
-    CIRCLE_COMPLETION_ROTATION = 200.0  # 350도 회전 시 완료
+    CIRCLE_COMPLETION_ROTATION = 390.0  # 350도 회전 시 완료
     CIRCLE_COMPLETION_SPEED = 0.3  # 완료 후 전진 속도
 
     # CircleBuoy 명령 고정 기준
@@ -207,8 +207,11 @@ class Constants:
     CIRCLE_SWAY_STRENGTH = 0.3  # SWAY 힘 강도 (0-1)
     CIRCLE_SWAY_MAX_ANGLE = 30.0  # SWAY 최대 각도 (도)
 
+    # CircleBuoy 1차 저주파 필터 (명령값 튀기 방지)
+    CIRCLE_FILTER_ALPHA = 0.08 # 필터 계수 (0-1, 작을수록 부드러움)
+
     # WaypointFollow 미션 파라미터
-    WAYPOINT_STEERING_GAIN = 0.01
+    WAYPOINT_STEERING_GAIN = 0.003
     WAYPOINT_FORWARD_SPEED = 0.5
     WAYPOINT_MAX_STEERING = 0.5
     WAYPOINT_MIN_DISTANCE = 1.0  # 목표 거리 최소값 (미터)
@@ -228,16 +231,16 @@ class Constants:
 
 
     # Dock_mode 미션 파라미터
-    DOCK_SWAY_GAIN = 2.670915  # Sway motion 비례 게인 (픽셀 오차 -> 추력)
+    DOCK_SWAY_GAIN = 3.670915  # Sway motion 비례 게인 (픽셀 오차 -> 추력)
     DOCK_YAW_GAIN = 0.3548  # Yaw 회전 비례 게인
     DOCK_MAX_SWAY_THRUST = 400.0  # 최대 횡방향 추력
     DOCK_MAX_YAW_THRUST = 200.0  # 최대 회전 추력
     DOCK_BASE_SURGE = 0.3  # 기본 전진 속도 (0-1)
     DOCK_DEPTH_THRESHOLD = 0.6  # Depth 임계값 (가까움, 0-1 스케일)
     DOCK_APPROACH_TIME = 1.0  # 직진 접근 시간 (초)
-    DOCK_REVERSE_TIME = 10.0  # 후진 시간 (초)
+    DOCK_REVERSE_TIME = 20.0  # 후진 시간 (초)
     DOCK_APPROACH_SPEED = 0.4  # 최종 접근 속도
-    DOCK_REVERSE_SPEED = -0.3  # 후진 속도
+    DOCK_REVERSE_SPEED = -0.6  # 후진 속도
     DOCK_CENTER_TOLERANCE = 600.0  # 이미지 중앙 허용 오차 (픽셀, ± 범위)
     DOCK_SWAY_STRENGTH = 0.5  # SWAY 제어 강도 (0-1)
     DOCK_SWAY_TO_YAW_THRESHOLD = 50.0  # SWAY에서 YAW로 전환하는 픽셀 오차 임계값
@@ -261,7 +264,7 @@ class Constants:
     ROTATION_DEFAULT_TARGET = 0.0  # 기본 목표 각도 (도)
     ROTATION_TOLERANCE = 3.0  # 목표 각도 허용 오차 (도)
     ROTATION_STABLE_FRAMES = 10  # 안정화 필요 프레임 수
-    ROTATION_GAIN = 0.001  # 회전 비례 게인
+    ROTATION_GAIN = 0.003  # 회전 비례 게인
     ROTATION_MAX_THRUST = 0.3  # 최대 회전 추력
 
     # ============================================================================
