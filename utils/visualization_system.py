@@ -10,44 +10,42 @@ import cv2
 import numpy as np
 from typing import List, Dict, Callable, Optional
 from .detection_system import MissionType
+from .config import Constants
 
 
 class VisualizationSystem:
     """통합 시각화 시스템"""
 
-    def __init__(self, detection_threshold=0.026, min_box_area=500, max_box_area=80000,
-                 min_depth=0, max_depth=50, thrust_scale=700):
+    def __init__(self, detection_threshold=None, min_box_area=None, max_box_area=None,
+                 min_depth=None, max_depth=None, thrust_scale=None):
         """
         Args:
-            detection_threshold: 탐지 임계값
-            min_box_area: 최소 박스 면적
-            max_box_area: 최대 박스 면적
-            min_depth: 최소 깊이 (미터)
-            max_depth: 최대 깊이 (미터)
-            thrust_scale: 스러스터 스케일
+            모든 파라미터는 config.py에서 가져옵니다 (하위 호환성 유지)
         """
-        # Jetson 최적화: 고정된 파라미터 (트랙바 제거)
-        self.detection_threshold = 0  # 원래 값으로 복구
-        self.min_box_area = 2
-        self.max_box_area = 800000
-        self.min_depth_threshold = 0.0    # 원래 값으로 복구 (가까운 부표도 탐지)
-        self.max_depth_threshold = 50.0   # 원래 값으로 복구 (먼 부표도 탐지)
-        self.thrust_scale = 700.0
+        # Config에서 파라미터 가져오기
+        vp = Constants.VisualizationParams
 
-        # IMM-PDAF 파라미터 (고정)
-        self.max_coast_frames = 4
-        self.gate_threshold = 9.0  # 원래 90/10
+        self.detection_threshold = vp.DETECTION_THRESHOLD
+        self.min_box_area = vp.MIN_BOX_AREA
+        self.max_box_area = vp.MAX_BOX_AREA
+        self.min_depth_threshold = vp.MIN_DEPTH_THRESHOLD
+        self.max_depth_threshold = vp.MAX_DEPTH_THRESHOLD
+        self.thrust_scale = Constants.DEFAULT_THRUST_SCALE
+
+        # IMM-PDAF 파라미터
+        self.max_coast_frames = vp.MAX_COAST_FRAMES
+        self.gate_threshold = vp.GATE_THRESHOLD
 
         # 색상 매핑
         self.colors = {
-            "red_cone": (0, 0, 255),      # 빨강
-            "green_cone": (0, 255, 0),     # 초록
-            "blue_buoy": (255, 0, 0)       # 파랑
+            "red_cone": vp.COLOR_RED_CONE,
+            "green_cone": vp.COLOR_GREEN_CONE,
+            "blue_buoy": vp.COLOR_BLUE_BUOY
         }
 
-        # Jetson 최적화: 메인 시각화 창만 생성 (Parameters 창 제거)
-        cv2.namedWindow('VRX Mission Control', cv2.WINDOW_NORMAL)
-        cv2.resizeWindow('VRX Mission Control', 640, 480)
+        # 시각화 창 생성
+        cv2.namedWindow(vp.WINDOW_NAME, cv2.WINDOW_NORMAL)
+        cv2.resizeWindow(vp.WINDOW_NAME, vp.WINDOW_WIDTH, vp.WINDOW_HEIGHT)
 
     # Jetson 최적화: 트랙바 시스템 완전 제거 (고정 파라미터 사용)
     def update_parameters_from_trackbars(self) -> Dict:
@@ -61,23 +59,28 @@ class VisualizationSystem:
             'detection_threshold': self.detection_threshold,
             'min_box_area': self.min_box_area,
             'max_box_area': self.max_box_area,
-            'min_depth': self.min_depth_threshold,
-            'max_depth': self.max_depth_threshold,
+            'min_depth_threshold': self.min_depth_threshold,
+            'max_depth_threshold': self.max_depth_threshold,
             'thrust_scale': self.thrust_scale,
             'max_coast_frames': self.max_coast_frames,
             'gate_threshold': self.gate_threshold,
-            'circle_rotation_dir': 1,  # 시계방향 고정
-            'circle_base_speed': 150.0,
-            'circle_min_speed': 50.0,
-            'circle_max_turn': 150.0,
-            'circle_pid_kp': 0.8,
-            'circle_tx_base_x': 1040.0,
-            'circle_tx_slope': 700.0,
-            'circle_tx_min_x': 800.0,
-            'circle_tx_max_x': 1200.0,
-            'pass_max_depth_diff': 0.2,
-            'force_mission_mode': 0,  # 일반 모드 고정
-            'force_obstacle_avoid': False
+            'circle_rotation_dir': Constants.CIRCLE_DEFAULT_ROTATION_DIR,
+            'circle_base_speed': Constants.CIRCLE_BASE_SPEED,
+            'circle_min_speed': Constants.CIRCLE_MIN_SPEED,
+            'circle_max_turn': Constants.CIRCLE_MAX_TURN_THRUST,
+            'circle_pid_kp': Constants.CIRCLE_PID_KP,
+            'circle_tx_base_x': Constants.CIRCLE_TX_BASE_X,
+            'circle_tx_slope': Constants.CIRCLE_TX_SLOPE,
+            'circle_tx_min_x': Constants.CIRCLE_TX_MIN_X,
+            'circle_tx_max_x': Constants.CIRCLE_TX_MAX_X,
+            'pass_max_depth_diff': Constants.PASS_BETWEEN_MAX_DEPTH_DIFF,
+            'force_mission_mode': Constants.ForceMissionMode.NORMAL,
+            'force_obstacle_avoid': False,
+            'rotation_gain': Constants.ROTATION_GAIN,
+            'rotation_tolerance': Constants.ROTATION_TOLERANCE,
+            'rotation_stable_frames': Constants.ROTATION_STABLE_FRAMES,
+            'rotation_max_thrust': Constants.ROTATION_MAX_THRUST,
+            'rotation_default_angle': Constants.ROTATION_DEFAULT_TARGET
         }
 
     # visualize_depth_map 메서드 제거 (성능 최적화)
@@ -127,12 +130,13 @@ class VisualizationSystem:
         # 도킹 미션일 경우 누적 각도 표시
         if mission_name == "DOCK_MODE" and accumulated_angle is not None:
             # 화면 상단에 누적 각도 표시
+            vp = Constants.VisualizationParams
             text = f"Accumulated Angle: {accumulated_angle:.1f} deg"
             cv2.putText(vis_image, text, (10, 30),
-                       cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 255), 2)
+                       cv2.FONT_HERSHEY_SIMPLEX, 1.0, vp.COLOR_ACCUMULATED_ANGLE, 2)
 
         # 화면 표시
-        cv2.imshow('VRX Mission Control', vis_image)
+        cv2.imshow(Constants.VisualizationParams.WINDOW_NAME, vis_image)
         cv2.waitKey(1)
 
     # _draw_dashed_rectangle 및 _draw_dashed_line 메서드 제거 (사용되지 않음, Jetson 최적화)

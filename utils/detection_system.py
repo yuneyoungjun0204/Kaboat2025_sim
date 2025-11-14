@@ -26,8 +26,10 @@ class MissionType(Enum):
     PASS_BETWEEN_BUOYS = 1
     CIRCLE_BUOY = 2
     WAYPOINT_FOLLOW = 3
-    OBSTACLE_AVOID = 3
-    DOCK_MODE = 4
+    OBSTACLE_AVOID = 4
+    HEADING_ALIGN = 5
+    DOCK_MODE = 6
+    ROTATION = 7  # 제자리 선회 미션
 
 
 class DetectionSystem:

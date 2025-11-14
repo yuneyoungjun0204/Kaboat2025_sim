@@ -47,7 +47,9 @@ class WaypointManager:
             'CIRCLE_BUOY': MissionType.CIRCLE_BUOY,
             'WAYPOINT_FOLLOW': MissionType.WAYPOINT_FOLLOW,
             'OBSTACLE_AVOID': MissionType.OBSTACLE_AVOID,
-            'DOCK_MODE': MissionType.DOCK_MODE
+            'HEADING_ALIGN': MissionType.HEADING_ALIGN,
+            'DOCK_MODE': MissionType.DOCK_MODE,
+            'ROTATION': MissionType.ROTATION
         }
 
         for x, y, mission_type_str, radius, params in Constants.PREDEFINED_WAYPOINTS:

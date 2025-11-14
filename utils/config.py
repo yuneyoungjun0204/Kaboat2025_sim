@@ -88,10 +88,13 @@ class Constants:
     # 미리 정의된 웨이포인트 (x, y, mission_type, radius, params)
     # mission_type: 'PASS_BETWEEN_BUOYS', 'CIRCLE_BUOY', 'WAYPOINT_FOLLOW', 'OBSTACLE_AVOID', 'DOCK_MODE'
     PREDEFINED_WAYPOINTS = [
-        (100, 10, 'DOCK_MODE', DEFAULT_WAYPOINT_RADIUS, {}),
-        (150, 9, 'PASS_BETWEEN_BUOYS', DEFAULT_WAYPOINT_RADIUS, {}),
-        (160, 0, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {}),
+        # (150, 9, 'PASS_BETWEEN_BUOYS', DEFAULT_WAYPOINT_RADIUS, {}),
+        # (100, 10, 'ROTATION', DEFAULT_WAYPOINT_RADIUS, {'desired_angle': 60.0}),
+        # (100, 10, 'DOCK_MODE', DEFAULT_WAYPOINT_RADIUS, {}),
+        (160, 0, 'CIRCLE_BUOY', DEFAULT_WAYPOINT_RADIUS, {'rotation_direction': 2, 'circle_radius': 15.0}),
         (140, 42, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {'rotation_direction': 2, 'circle_radius': 15.0}),
+        (100, 10, 'ROTATION', DEFAULT_WAYPOINT_RADIUS, {'desired_angle': 60.0}),
+        (100, 10, 'DOCK_MODE', DEFAULT_WAYPOINT_RADIUS, {}),
         (80, 42, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {}),
         (0, 0, 'PASS_BETWEEN_BUOYS', DEFAULT_WAYPOINT_RADIUS, {})
     ]
@@ -174,6 +177,9 @@ class Constants:
     CIRCLE_BASE_SPEED = 150.0
     CIRCLE_MIN_SPEED = 50.0
     CIRCLE_MAX_TURN_THRUST = 150.0
+    CIRCLE_DEFAULT_ROTATION_DIR = 1
+    locked_left_cmd = 0.0
+    locked_right_cmd = 0.0
 
     # CircleBuoy 미션 이미지 크기
     CIRCLE_IMAGE_WIDTH = 1280
@@ -182,17 +188,24 @@ class Constants:
     # CircleBuoy 미션 target_x 결정식 파라미터 (시계방향)
     CIRCLE_TX_BASE_X = 1240.0
     CIRCLE_TX_SLOPE = 700.0
-    CIRCLE_TX_MIN_X = 800.0
+    CIRCLE_TX_MIN_X = 750.0
     CIRCLE_TX_MAX_X = 1200.0
 
     # CircleBuoy 미션 반시계방향 파라미터
-    CIRCLE_CCW_SLOPE = 200.0  # Counter-clockwise slope
+    CIRCLE_CCW_SLOPE = 350.0  # Counter-clockwise slope
     CIRCLE_CCW_MIN_X = 140.0
-    CIRCLE_CCW_MAX_X = 640.0
+    CIRCLE_CCW_MAX_X = 690.0
 
     # CircleBuoy 완료 기준
-    CIRCLE_COMPLETION_ROTATION = 350.0  # 350도 회전 시 완료
+    CIRCLE_COMPLETION_ROTATION = 200.0  # 350도 회전 시 완료
     CIRCLE_COMPLETION_SPEED = 0.3  # 완료 후 전진 속도
+
+    # CircleBuoy 명령 고정 기준
+    CIRCLE_LOCK_DISTANCE_THRESHOLD = 0.7  # 부표와의 거리가 이 값 이하이면 명령 고정 (미터)
+
+    # CircleBuoy SWAY 제어 (부드러운 원 그리기)
+    CIRCLE_SWAY_STRENGTH = 0.3  # SWAY 힘 강도 (0-1)
+    CIRCLE_SWAY_MAX_ANGLE = 30.0  # SWAY 최대 각도 (도)
 
     # WaypointFollow 미션 파라미터
     WAYPOINT_STEERING_GAIN = 0.01
@@ -215,11 +228,11 @@ class Constants:
 
 
     # Dock_mode 미션 파라미터
-    DOCK_SWAY_GAIN = 1.670915  # Sway motion 비례 게인 (픽셀 오차 -> 추력)
-    DOCK_YAW_GAIN = 0.548  # Yaw 회전 비례 게인
+    DOCK_SWAY_GAIN = 2.670915  # Sway motion 비례 게인 (픽셀 오차 -> 추력)
+    DOCK_YAW_GAIN = 0.3548  # Yaw 회전 비례 게인
     DOCK_MAX_SWAY_THRUST = 400.0  # 최대 횡방향 추력
     DOCK_MAX_YAW_THRUST = 200.0  # 최대 회전 추력
-    DOCK_BASE_SURGE = 0.01  # 기본 전진 속도 (0-1)
+    DOCK_BASE_SURGE = 0.3  # 기본 전진 속도 (0-1)
     DOCK_DEPTH_THRESHOLD = 0.6  # Depth 임계값 (가까움, 0-1 스케일)
     DOCK_APPROACH_TIME = 1.0  # 직진 접근 시간 (초)
     DOCK_REVERSE_TIME = 10.0  # 후진 시간 (초)
@@ -227,6 +240,29 @@ class Constants:
     DOCK_REVERSE_SPEED = -0.3  # 후진 속도
     DOCK_CENTER_TOLERANCE = 600.0  # 이미지 중앙 허용 오차 (픽셀, ± 범위)
     DOCK_SWAY_STRENGTH = 0.5  # SWAY 제어 강도 (0-1)
+    DOCK_SWAY_TO_YAW_THRESHOLD = 50.0  # SWAY에서 YAW로 전환하는 픽셀 오차 임계값
+    DOCK_FALLBACK_SWAY_GAIN = 0.01  # 목표 미탐지 시 누적 각도 기반 SWAY 게인
+    DOCK_FALLBACK_SURGE_VELOCITY = 0.05  # 목표 미탐지 시 전진 속도
+    DOCK_ANGLE_FEEDBACK_GAIN = 0.005  # 누적 각도 피드백 게인
+    DOCK_SURGE_ERROR_COEFFICIENT = 0.3  # 에러에 따른 surge 감소 계수
+
+    # Dock Thruster Allocation 파라미터
+    DOCK_SWAY_MAX_ANGLE = 30.0  # SWAY 최대 각도 (도)
+    DOCK_YAW_MAX_ANGLE_DIFF = 15.0  # YAW 각도 차이 (도)
+    DOCK_SWAY_FORCE_THRESHOLD = 0.1  # SWAY force 임계값
+    DOCK_SURGE_VELOCITY_THRESHOLD = 0.05  # Surge velocity 임계값
+    DOCK_SWAY_ONLY_THRUST_COEFF = 0.5  # SWAY 전용 추력 계수
+    DOCK_ANGLE_COMPENSATION_BASE = 1.0  # 각도 보상 기본값
+    DOCK_ANGLE_COMPENSATION_COEFF = 0.3  # 각도 보상 계수
+    DOCK_YAW_THRUST_DIFF_COEFF = 0.3  # YAW 추력 차이 계수
+    DOCK_MAX_THRUST_LIMIT_COEFF = 1.5  # 최대 추력 제한 계수
+
+    # Rotation 미션 파라미터
+    ROTATION_DEFAULT_TARGET = 0.0  # 기본 목표 각도 (도)
+    ROTATION_TOLERANCE = 3.0  # 목표 각도 허용 오차 (도)
+    ROTATION_STABLE_FRAMES = 10  # 안정화 필요 프레임 수
+    ROTATION_GAIN = 0.001  # 회전 비례 게인
+    ROTATION_MAX_THRUST = 0.3  # 최대 회전 추력
 
     # ============================================================================
     # ROS2 토픽명 설정
@@ -249,9 +285,15 @@ class Constants:
         LEFT_POS = '/wamv/thrusters/left/pos'
         RIGHT_POS = '/wamv/thrusters/right/pos'
 
+        # 통합 제어 명령 토픽 (배 독립적)
+        DESIRED_SPEED = '/vrx/desired_speed'  # Surge velocity (-1~1)
+        DESIRED_MOMENT = '/vrx/desired_moment'  # Yaw moment (-1~1)
+        DESIRED_FORCE_Y = '/vrx/desired_force_y'  # Sway force (-1~1)
+
         # 시스템 상태 토픽
         MISSION_STATUS = '/vrx/mission_status'
         DETECTIONS = '/vrx/detections'
+        DETECTION_DEPTHS = '/vrx/detection_depths'  # 탐지된 객체들의 depth 정보
         VISUALIZATION = '/vrx/visualization'
         CONTROL_OUTPUT = '/vrx/control_output'
         CONTROL_MODE = '/vrx/control_mode'
@@ -295,6 +337,33 @@ class Constants:
 
         # 업데이트 주기
         UPDATE_RATE = 0.1  # 10Hz
+
+    # ============================================================================
+    # 시각화 파라미터 (VisualizationSystem)
+    # ============================================================================
+    class VisualizationParams:
+        """시각화 시스템 파라미터"""
+        # 탐지 임계값
+        DETECTION_THRESHOLD = 0.0
+        MIN_BOX_AREA = 2
+        MAX_BOX_AREA = 800000
+        MIN_DEPTH_THRESHOLD = 0.0  # 최소 깊이 (미터)
+        MAX_DEPTH_THRESHOLD = 50.0  # 최대 깊이 (미터)
+
+        # IMM-PDAF 파라미터
+        MAX_COAST_FRAMES = 4
+        GATE_THRESHOLD = 9.0
+
+        # 윈도우 설정
+        WINDOW_NAME = 'VRX Mission Control'
+        WINDOW_WIDTH = 640
+        WINDOW_HEIGHT = 480
+
+        # 색상 매핑 (BGR)
+        COLOR_RED_CONE = (0, 0, 255)
+        COLOR_GREEN_CONE = (0, 255, 0)
+        COLOR_BLUE_BUOY = (255, 0, 0)
+        COLOR_ACCUMULATED_ANGLE = (0, 255, 255)  # 누적 각도 텍스트 색상
 
     # ============================================================================
     # 강제 미션 모드 설정 (트랙바 값)

@@ -73,6 +73,21 @@ class ParameterManager:
                            if k.startswith('circle_')}
             return {**waypoint_params, **circle_params}
 
+        elif mission_type == MissionType.ROTATION:
+            rotation_params = {
+                'desired_angle': trackbar_params.get(
+                    'rotation_default_angle', Constants.ROTATION_DEFAULT_TARGET
+                ),
+                'rotation_gain': trackbar_params.get('rotation_gain', Constants.ROTATION_GAIN),
+                'rotation_tolerance': trackbar_params.get('rotation_tolerance', Constants.ROTATION_TOLERANCE),
+                'rotation_stable_frames': trackbar_params.get(
+                    'rotation_stable_frames', Constants.ROTATION_STABLE_FRAMES
+                ),
+                'rotation_max_thrust': trackbar_params.get('rotation_max_thrust', Constants.ROTATION_MAX_THRUST)
+            }
+            rotation_params.update(waypoint_params)
+            return rotation_params
+
         return {}
 
     def get_force_mission_mode(self) -> int:

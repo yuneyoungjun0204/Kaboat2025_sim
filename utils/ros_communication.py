@@ -119,6 +119,9 @@ class ROSCommunicationManager:
         self.publishers['detections'] = self.node.create_publisher(
             Float64MultiArray, Constants.Topics.DETECTIONS, Constants.QueueSizes.STATUS
         )
+        self.publishers['detection_depths'] = self.node.create_publisher(
+            Float64MultiArray, Constants.Topics.DETECTION_DEPTHS, Constants.QueueSizes.STATUS
+        )
         self.publishers['viz_image'] = self.node.create_publisher(
             Image, Constants.Topics.VISUALIZATION, Constants.QueueSizes.DEFAULT
         )
@@ -137,6 +140,16 @@ class ROSCommunicationManager:
         )
         self.publishers['target_depth'] = self.node.create_publisher(
             Float64, Constants.Topics.TARGET_DEPTH, Constants.QueueSizes.STATUS
+        )
+        # 통합 제어 명령 퍼블리셔 (배 독립적)
+        self.publishers['desired_speed'] = self.node.create_publisher(
+            Float64, Constants.Topics.DESIRED_SPEED, Constants.QueueSizes.CONTROL
+        )
+        self.publishers['desired_moment'] = self.node.create_publisher(
+            Float64, Constants.Topics.DESIRED_MOMENT, Constants.QueueSizes.CONTROL
+        )
+        self.publishers['desired_force_y'] = self.node.create_publisher(
+            Float64, Constants.Topics.DESIRED_FORCE_Y, Constants.QueueSizes.CONTROL
         )
 
     def publish_thrust_commands(self, left_thrust: float, right_thrust: float) -> None:
@@ -200,6 +213,51 @@ class ROSCommunicationManager:
 
         msg.data = data
         self.publishers['detections'].publish(msg)
+
+    def publish_detection_depths(self, detections: List[Dict[str, Any]]) -> None:
+        """
+        탐지된 객체들의 depth 정보 발행
+
+        Args:
+            detections: 탐지 결과 리스트
+                각 항목: {'label': str, 'depth': float, 'center': [x, y]}
+
+        발행 포맷:
+            [count, label_id_1, depth_1, center_x_1, center_y_1, label_id_2, depth_2, ...]
+        """
+        msg = Float64MultiArray()
+        data = [float(len(detections))]
+
+        # 라벨 ID 매핑
+        label_to_id = {
+            "red_cone": 0,
+            "green_cone": 1,
+            "blue_buoy": 2,
+            "red_circle": 3,
+            "blue_circle": 4,
+            "green_circle": 5,
+            "red_triangle": 6,
+            "blue_triangle": 7,
+            "green_triangle": 8,
+            "red_cross": 9,
+            "blue_cross": 10,
+            "green_cross": 11
+        }
+
+        for det in detections:
+            label_id = label_to_id.get(det.get('label', ''), -1)
+            depth = det.get('depth', 0.0)
+            center = det.get('center', [0.0, 0.0])
+
+            data.extend([
+                float(label_id),
+                float(depth),
+                float(center[0]),
+                float(center[1])
+            ])
+
+        msg.data = data
+        self.publishers['detection_depths'].publish(msg)
 
     def publish_control_output(self, linear_velocity: float, angular_velocity: float) -> None:
         """
@@ -281,3 +339,25 @@ class ROSCommunicationManager:
         msg = Float64()
         msg.data = float(depth)
         self.publishers['target_depth'].publish(msg)
+
+    def publish_desired_control(self, desired_speed: float, desired_moment: float,
+                               desired_force_y: float) -> None:
+        """
+        통합 제어 명령 발행 (배 독립적)
+
+        Args:
+            desired_speed: Surge velocity (-1~1)
+            desired_moment: Yaw moment (-1~1)
+            desired_force_y: Sway force (-1~1)
+        """
+        speed_msg = Float64()
+        speed_msg.data = float(desired_speed)
+        self.publishers['desired_speed'].publish(speed_msg)
+
+        moment_msg = Float64()
+        moment_msg.data = float(desired_moment)
+        self.publishers['desired_moment'].publish(moment_msg)
+
+        force_y_msg = Float64()
+        force_y_msg.data = float(desired_force_y)
+        self.publishers['desired_force_y'].publish(force_y_msg)

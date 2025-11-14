@@ -37,8 +37,13 @@ class MissionExecutor:
 
     def execute_circle_buoy(self, detected_objects: list, current_image,
                             agent_heading: float, mission_params: Dict[str, Any],
-                            raw_detections: list, logger) -> Tuple[float, float]:
-        """부표 회전 미션 실행"""
+                            raw_detections: list, logger) -> Tuple[float, float, float, float]:
+        """
+        부표 회전 미션 실행 (SWAY 포함)
+
+        Returns:
+            Tuple[float, float, float, float]: (left_thrust, right_thrust, left_pos, right_pos)
+        """
         return self.mission_manager.execute_mission(
             MissionType.CIRCLE_BUOY,
             detected_objects=detected_objects,
@@ -46,6 +51,16 @@ class MissionExecutor:
             agent_heading=agent_heading,
             mission_params=mission_params,
             raw_detections=raw_detections,
+            logger=logger
+        )
+
+    def execute_rotation(self, agent_heading: float, mission_params: Dict[str, Any],
+                         logger) -> Tuple[float, float]:
+        """제자리 선회 미션 실행"""
+        return self.mission_manager.execute_mission(
+            MissionType.ROTATION,
+            agent_heading=agent_heading,
+            mission_params=mission_params,
             logger=logger
         )
 

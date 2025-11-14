@@ -14,8 +14,51 @@ from .config import Constants
 
 
 # ============================================================================
-# 헬퍼 함수
+# 헬퍼 함수 (유틸리티)
 # ============================================================================
+
+def normalize_heading(heading: float) -> float:
+    """
+    헤딩을 0~360 범위로 정규화
+
+    Args:
+        heading: 헤딩 (도)
+
+    Returns:
+        float: 정규화된 헤딩 (0~360)
+    """
+    normalized = heading % 360
+    if normalized < 0:
+        normalized += 360
+    return normalized
+
+
+def calculate_heading_error(target_heading: float, current_heading: float) -> float:
+    """
+    목표 헤딩과 현재 헤딩의 최단 거리 오차 계산
+
+    Args:
+        target_heading: 목표 헤딩 (도, -180~180 또는 0~360)
+        current_heading: 현재 헤딩 (도, -180~180 또는 0~360)
+
+    Returns:
+        float: 헤딩 오차 (-180~180)
+    """
+    # 0~360 범위로 정규화
+    target = normalize_heading(target_heading)
+    current = normalize_heading(current_heading)
+
+    # 오차 계산
+    error = target - current
+
+    # -180 ~ 180 범위로 정규화
+    if error > 180:
+        error -= 360
+    elif error < -180:
+        error += 360
+
+    return error
+
 
 def find_buoy_with_fallback(
     label: str,
@@ -288,9 +331,23 @@ class CircleBuoyMission(BaseMissionStrategy):
         # 목표 X 위치 저장 (시각화용)
         self.target_x: Optional[float] = None
 
-        # 마지막으로 성공한 스러스터 명령 저장 (탐지 실패 시 사용)
+        # 마지막으로 성공한 스러스터 명령 저장 (부표 미탐지 시 사용)
+        # 주의: thrust_scale로 변환된 실제 값 저장 (예: 500.0)
         self.last_known_left_cmd = 0.0
         self.last_known_right_cmd = 0.0
+
+        # 거리 기반 명령 고정 (부표에 가까워지면 명령 고정)
+        self.distance_locked = False  # 거리 임계값 도달 플래그
+        # 주의: thrust_scale로 변환된 실제 값 저장 (예: 500.0)
+        self.locked_left_cmd = 0.0  # 고정된 왼쪽 명령
+        self.locked_right_cmd = 0.0  # 고정된 오른쪽 명령
+        self.locked_left_pos = 0.0  # 고정된 왼쪽 각도
+        self.locked_right_pos = 0.0  # 고정된 오른쪽 각도
+        self.lock_distance_threshold = Constants.CIRCLE_LOCK_DISTANCE_THRESHOLD
+
+        # SWAY 제어 파라미터 (부드러운 원 그리기)
+        self.sway_strength = Constants.CIRCLE_SWAY_STRENGTH
+        self.sway_max_angle = Constants.CIRCLE_SWAY_MAX_ANGLE
 
     def reset(self):
         """미션 상태 초기화"""
@@ -304,6 +361,11 @@ class CircleBuoyMission(BaseMissionStrategy):
         self.target_x = None
         self.last_known_left_cmd = 0.0
         self.last_known_right_cmd = 0.0
+        self.distance_locked = False
+        self.locked_left_cmd = 0.0
+        self.locked_right_cmd = 0.0
+        self.locked_left_pos = 0.0
+        self.locked_right_pos = 0.0
 
     def calculate_rotation_target(self, rotation_direction: int, object_depth: float) -> float:
         """
@@ -363,6 +425,53 @@ class CircleBuoyMission(BaseMissionStrategy):
             adaptive_speed = self.min_speed + (self.base_speed - self.min_speed) * speed_ratio
             return max(self.min_speed, adaptive_speed)
 
+    def calculate_thruster_allocation(
+        self, sway_force: float, yaw_moment: float, surge_velocity: float
+    ) -> Tuple[float, float, float, float]:
+        """
+        2-Motor Vectored Thruster Control Allocation (Circle 미션용)
+
+        Args:
+            sway_force: 횡방향 힘 (좌우 이동, -1~1)
+            yaw_moment: 회전 모멘트 (-1~1)
+            surge_velocity: 전진 속도 (0~1)
+
+        Returns:
+            Tuple[float, float, float, float]: (left_pos, left_thrust, right_pos, right_thrust)
+                pos는 라디안 단위 각도
+                thrust는 추력 크기
+        """
+        # 1. SWAY를 위한 기본 각도 (양쪽 동일)
+        sway_angle = sway_force * np.radians(self.sway_max_angle)
+
+        # 2. YAW를 위한 각도 차이 (양쪽 반대)
+        yaw_angle_diff = yaw_moment * (np.pi / 6)  # 최대 ±30도
+
+        # 3. 최종 각도 = SWAY 각도 ± YAW 각도 차이
+        left_angle = sway_angle + yaw_angle_diff
+        right_angle = sway_angle - yaw_angle_diff
+
+        # 각도 제한
+        left_angle = np.clip(left_angle, -np.pi / 2, np.pi / 2)
+        right_angle = np.clip(right_angle, -np.pi / 2, np.pi / 2)
+
+        # 4. Base thrust 계산 (surge_velocity 기반)
+        base_thrust = surge_velocity * self.thrust_scale
+
+        # 5. 추력 차이로 Yaw moment 추가 생성
+        yaw_thrust_diff = yaw_moment * self.thrust_scale * 0.3
+
+        # 6. 최종 추력 계산
+        left_thrust = base_thrust + yaw_thrust_diff
+        right_thrust = base_thrust - yaw_thrust_diff
+
+        # 추력 제한
+        max_thrust = self.thrust_scale * 1.5
+        left_thrust = np.clip(left_thrust, -max_thrust, max_thrust)
+        right_thrust = np.clip(right_thrust, -max_thrust, max_thrust)
+
+        return left_angle, left_thrust, right_angle, right_thrust
+
     def execute(
         self,
         detected_objects: List[Dict],
@@ -372,9 +481,9 @@ class CircleBuoyMission(BaseMissionStrategy):
         logger=None,
         raw_detections: Optional[List[Dict]] = None,
         **kwargs
-    ) -> Tuple[float, float]:
+    ) -> Tuple[float, float, float, float]:
         """
-        파란색 부표 주변을 회전
+        파란색 부표 주변을 회전 (SWAY 포함)
 
         Args:
             detected_objects: 추적된 객체 (IMM-PDAF 출력, 추정값)
@@ -385,12 +494,15 @@ class CircleBuoyMission(BaseMissionStrategy):
             raw_detections: 원본 탐지 결과 (NanoOWL 직접 출력, 측정값)
 
         Returns:
-            Tuple[float, float]: (left_thrust, right_thrust)
+            Tuple[float, float, float, float]: (left_thrust, right_thrust, left_pos, right_pos)
         """
         # 트랙바 파라미터 업데이트 (동적 조정)
         self.base_speed = mission_params.get('circle_base_speed', self.base_speed)
         self.min_speed = mission_params.get('circle_min_speed', self.min_speed)
         self.max_turn_thrust = mission_params.get('circle_max_turn', self.max_turn_thrust)
+        self.lock_distance_threshold = mission_params.get('circle_lock_distance', self.lock_distance_threshold)
+        self.sway_strength = mission_params.get('circle_sway_strength', self.sway_strength)
+        self.sway_max_angle = mission_params.get('circle_sway_max_angle', self.sway_max_angle)
 
         circle_pid_kp = mission_params.get('circle_pid_kp', self.pid_controller.kp)
         if circle_pid_kp != self.pid_controller.kp:
@@ -436,21 +548,35 @@ class CircleBuoyMission(BaseMissionStrategy):
             self.target_x = None
             if logger:
                 logger.info("🎉 부표 360도 회전 완료! 다음 미션으로 전환됩니다.")
-            # 미션 완료 후 천천히 전진
+            # 미션 완료 후 천천히 전진 (thruster 각도 0)
             left_thrust = Constants.CIRCLE_COMPLETION_SPEED * self.thrust_scale
             right_thrust = Constants.CIRCLE_COMPLETION_SPEED * self.thrust_scale
-            return left_thrust, right_thrust
+            return left_thrust, right_thrust, 0.0, 0.0
 
         # 부표 미탐지 시 이전 명령 사용
         if not blue_buoy:
             self.target_x = None
-            left_cmd = self.last_known_left_cmd
-            right_cmd = self.last_known_right_cmd
-            if logger:
-                logger.warn(
-                    f"파란색 부표 미탐지: 이전 명령 사용 L={left_cmd:.1f}, R={right_cmd:.1f}"
-                )
-            return left_cmd, right_cmd
+            # 거리 고정 상태이면 고정된 명령 사용, 아니면 마지막 명령 사용
+            if self.distance_locked:
+                left_thrust = self.locked_left_cmd
+                right_thrust = self.locked_right_cmd
+                left_pos = self.locked_left_pos
+                right_pos = self.locked_right_pos
+                if logger:
+                    logger.warn(
+                        f"파란색 부표 미탐지 (거리 고정 모드): 고정 명령 사용 "
+                        f"L={left_thrust:.1f}, R={right_thrust:.1f}"
+                    )
+            else:
+                left_thrust = self.last_known_left_cmd
+                right_thrust = self.last_known_right_cmd
+                left_pos = 0.0  # 기본값
+                right_pos = 0.0
+                if logger:
+                    logger.warn(
+                        f"파란색 부표 미탐지: 이전 명령 사용 L={left_thrust:.1f}, R={right_thrust:.1f}"
+                    )
+            return left_thrust, right_thrust, left_pos, right_pos
 
         # 미션 파라미터
         rotation_direction = mission_params.get('rotation_direction', 1)
@@ -459,6 +585,29 @@ class CircleBuoyMission(BaseMissionStrategy):
         buoy_depth = blue_buoy['depth']
         buoy_x = blue_buoy['center'][0]
 
+        # === 거리 고정 모드 체크 (이미 고정된 경우) ===
+        if self.distance_locked:
+            left_thrust = self.locked_left_cmd
+            right_thrust = self.locked_right_cmd
+            left_pos = self.locked_left_pos
+            right_pos = self.locked_right_pos
+            self.target_x = None  # 시각화에서 target_x 표시 안함
+
+            # 마지막 명령도 고정된 값으로 업데이트 (부표 미탐지 시 사용)
+            self.last_known_left_cmd = left_thrust
+            self.last_known_right_cmd = right_thrust
+
+            if logger:
+                direction_name = "시계방향" if rotation_direction == 1 else "반시계방향"
+                logger.info(
+                    f"Circle [LOCKED][{data_source}]: rotation={self.total_rotation:.1f}°, "
+                    f"부표 위치=({buoy_x:.1f}px), 깊이={buoy_depth:.3f}m, "
+                    f"방향={direction_name}, 고정 명령 사용"
+                )
+
+            return left_thrust, right_thrust, left_pos, right_pos
+
+        # === 일반 제어 모드 (명령 계산) ===
         # 회전 모드: 부표를 기준으로 일정한 방향으로 회전
         target_x = self.calculate_rotation_target(rotation_direction, buoy_depth)
         self.target_x = target_x
@@ -478,9 +627,30 @@ class CircleBuoyMission(BaseMissionStrategy):
         left_command = forward_thrust - turn_thrust
         right_command = forward_thrust + turn_thrust
 
-        # 마지막으로 성공한 명령 저장
-        self.last_known_left_cmd = left_command
-        self.last_known_right_cmd = right_command
+        # 스러스터를 thrust_scale로 변환
+        left_thrust = (left_command / 1000.0) * self.thrust_scale
+        right_thrust = (right_command / 1000.0) * self.thrust_scale
+        left_pos = 0.0  # 기본 각도
+        right_pos = 0.0
+
+        # === 거리 기반 명령 고정 로직 (막 임계값을 넘었을 때) ===
+        # 거리가 임계값 이하로 가까워지면 방금 계산한 명령 고정
+        if not self.distance_locked and buoy_depth >= self.lock_distance_threshold:
+            self.distance_locked = True
+            # 방금 계산한 명령을 고정 (thrust_scale 변환된 실제 값)
+            self.locked_left_cmd = left_thrust
+            self.locked_right_cmd = right_thrust
+            self.locked_left_pos = left_pos
+            self.locked_right_pos = right_pos
+            if logger:
+                logger.info(
+                    f"🔒 거리 임계값 도달 (depth={buoy_depth:.2f}m <= {self.lock_distance_threshold:.2f}m): "
+                    f"현재 명령 고정 L={left_thrust:.1f}, R={right_thrust:.1f}"
+                )
+
+        # 마지막으로 성공한 명령 저장 (thrust_scale 변환된 실제 값 저장)
+        self.last_known_left_cmd = left_thrust
+        self.last_known_right_cmd = right_thrust
 
         if logger:
             direction_name = "시계방향" if rotation_direction == 1 else "반시계방향"
@@ -491,11 +661,7 @@ class CircleBuoyMission(BaseMissionStrategy):
                 f"조향={steering_command:.3f}, 방향={direction_name}"
             )
 
-        # 스러스터를 thrust_scale로 변환하여 반환
-        left_thrust = (left_command / 1000.0) * self.thrust_scale
-        right_thrust = (right_command / 1000.0) * self.thrust_scale
-
-        return left_thrust, right_thrust
+        return left_thrust, right_thrust, left_pos, right_pos
 
 
 class WaypointFollowMission(BaseMissionStrategy):
@@ -684,9 +850,10 @@ class DockMission(BaseMissionStrategy):
         # 누적 각도 추적 (도킹 미션 시작부터의 총 각도 변화)
         self.initial_heading: Optional[float] = None  # 누적 각도 기준 (항상 0으로 고정)
         self.initial_imu_heading: Optional[float] = None  # 처음 IMU 헤딩 값 (보정 기준)
-        self.accumulated_angle: float = 0.0  # 누적 각도 변화량 (부호 반대: 왼쪽=양수, 오른쪽=음수)
+        self.accumulated_angle: float = 0.0  # 누적 각도 변화량 (부호 반대: 왼쪽=음수, 오른쪽=양수)
         self.previous_heading: Optional[float] = None  # 이전 헤딩 (각도 변화 계산용)
         self.rotation_direction: int = 1  # 현재 회전 방향 (0=왼쪽, 1=오른쪽)
+        self.is_completed: bool = False
 
         # 제어 파라미터
         self.sway_gain = Constants.DOCK_SWAY_GAIN
@@ -705,6 +872,11 @@ class DockMission(BaseMissionStrategy):
         self.center_tolerance = Constants.DOCK_CENTER_TOLERANCE  # 이미지 중앙 허용 오차 (픽셀)
         self.sway_strength = Constants.DOCK_SWAY_STRENGTH  # SWAY 강도 (0-1)
 
+        # 최근 body-force 명령 (ROS 퍼블리시용)
+        self.last_sway_force = 0.0
+        self.last_yaw_moment = 0.0
+        self.last_surge_velocity = 0.0
+
     def reset(self):
         """미션 상태 초기화"""
         self.docking_phase = "TRACKING"
@@ -717,6 +889,7 @@ class DockMission(BaseMissionStrategy):
         self.accumulated_angle = 0.0
         self.previous_heading = None
         self.rotation_direction = 1
+        self.is_completed = False
 
     def set_target_shape(self, shape_label: str):
         """
@@ -726,6 +899,17 @@ class DockMission(BaseMissionStrategy):
             shape_label: 도형 라벨 (예: "red_circle", "blue_square")
         """
         self.target_shape_label = shape_label
+
+    def get_last_body_forces(self) -> Tuple[float, float, float]:
+        """최근 SWAY/YAW/SURGE 명령 반환"""
+        return self.last_sway_force, self.last_yaw_moment, self.last_surge_velocity
+
+    def _set_body_forces(self, sway_force: float = 0.0, yaw_moment: float = 0.0,
+                         surge_velocity: float = 0.0):
+        """최근 body-force 명령 저장"""
+        self.last_sway_force = float(np.clip(sway_force, -1.0, 1.0))
+        self.last_yaw_moment = float(np.clip(yaw_moment, -1.0, 1.0))
+        self.last_surge_velocity = float(np.clip(surge_velocity, -1.0, 1.0))
 
     def calculate_thruster_allocation(
         self, sway_force: float, yaw_moment: float, surge_velocity: float
@@ -764,30 +948,26 @@ class DockMission(BaseMissionStrategy):
         left_angle = np.clip(left_angle, -np.pi / 2, np.pi / 2)
         right_angle = np.clip(right_angle, -np.pi / 2, np.pi / 2)
 
-        # 2. Base thrust 계산
+        # 2. Base thrust 계산 (surge_velocity는 이미 sway_force를 고려하여 계산됨)
         base_thrust = surge_velocity * self.thrust_scale
 
-        # 3. Sway 전용 추력 (surge=0일 때도 작동)
-        # Sway만 사용할 때는 각도로 횡방향 이동
-        if abs(sway_force) > 0.01 and surge_velocity < 0.01:
-            # SWAY_ONLY 모드: 횡방향 이동을 위한 최소 추력
-            sway_thrust = abs(sway_force) * self.thrust_scale * 0.5
-            base_thrust = sway_thrust
-        elif surge_velocity > 0.01:
-            # SURGE 모드: 각도에 따른 추력 보정
-            angle_compensation = 1.0 + abs(sway_force) * 0.3
-            base_thrust = base_thrust * angle_compensation
-
+        # 3. Sway 전용 추가 추력 (surge가 거의 0이고 sway가 있을 때만)
+        # Sway는 주로 각도로 제어하되, 필요시 최소 추가 추력 제공
+        additional_thrust = 0.0
+        if abs(sway_force) > 0.01 and abs(surge_velocity) < 0.01:
+            # SWAY_ONLY 모드: 횡방향 이동을 위한 최소 추가 추력
+            additional_thrust = abs(sway_force) * self.thrust_scale * 0.2
         # 4. 추력 차이로 Yaw moment 추가 생성
         yaw_thrust_diff = yaw_moment * self.thrust_scale * 0.5
 
-        # 5. 최종 추력 계산 (각도 + 추력 차이 복합 제어)
-        left_thrust = base_thrust + yaw_thrust_diff
-        right_thrust = base_thrust - yaw_thrust_diff
+        # 5. 최종 추력 계산 (base_thrust는 surge_velocity에 직접 비례, 추가 추력 포함)
+        left_thrust = base_thrust + additional_thrust + yaw_thrust_diff
+        right_thrust = base_thrust + additional_thrust - yaw_thrust_diff
 
-        # 추력 제한
-        left_thrust = np.clip(left_thrust, 0.0, self.thrust_scale * 1.5)
-        right_thrust = np.clip(right_thrust, 0.0, self.thrust_scale * 1.5)
+        # 추력 제한 (음수 허용: 후진 가능)
+        max_thrust = self.thrust_scale * 1.5
+        left_thrust = np.clip(left_thrust, -max_thrust, max_thrust)
+        right_thrust = np.clip(right_thrust, -max_thrust, max_thrust)
 
         return left_angle, left_thrust, right_angle, right_thrust
 
@@ -836,8 +1016,15 @@ class DockMission(BaseMissionStrategy):
             elif heading_diff < -180:
                 heading_diff += 360
 
-            # 누적 각도에 부호를 반대로 더함 (왼쪽=양수, 오른쪽=음수)
-            self.accumulated_angle -= heading_diff
+            if self.initial_imu_heading is not None:
+                # 현재 각도를 DOCK_MODE 시작 각도 대비 0 기준으로 환산
+                self.accumulated_angle = calculate_heading_error(
+                    agent_heading,
+                    self.initial_imu_heading
+                )
+            else:
+                # 초기 헤딩을 아직 모르면 상대적 변화량으로 추적
+                self.accumulated_angle -= heading_diff
 
             # 회전 방향 플래그 업데이트 (0=왼쪽, 1=오른쪽)
             # heading_diff < 0: 왼쪽 회전 (실제 헤딩 감소)
@@ -901,6 +1088,7 @@ class DockMission(BaseMissionStrategy):
             # 목표 미탐지 시 정지
             if logger:
                 logger.warn(f"목표 도형 '{self.target_shape_label}' 미탐지: 정지")
+            self._set_body_forces(0.0, 0.0, 0.0)
             return 0.0, 0.0, 0.0, 0.0, None
 
         # 목표 객체 정보
@@ -951,11 +1139,11 @@ class DockMission(BaseMissionStrategy):
         else:
             sway_force = 0.0
 
-        # Accumulated angle 피드백 추가 (방향 반대)
-        # accumulated_angle > 0 (양수, 왼쪽 회전 누적) → SWAY를 왼쪽으로 (-)
-        # accumulated_angle < 0 (음수, 오른쪽 회전 누적) → SWAY를 오른쪽으로 (+)
-        angle_feedback_gain = 0.01  # 게인 (조정 가능)
-        angle_feedback = -self.accumulated_angle * angle_feedback_gain
+        # Accumulated angle 피드백 추가
+        # accumulated_angle < 0 (음수, 왼쪽 회전 누적) → SWAY를 오른쪽으로 (+)
+        # accumulated_angle > 0 (양수, 오른쪽 회전 누적) → SWAY를 왼쪽으로 (-)
+        angle_feedback_gain = 0.04  # 게인 (조정 가능)
+        angle_feedback = self.accumulated_angle * angle_feedback_gain
         sway_force += angle_feedback
         sway_force = np.clip(sway_force, -1.0, 1.0)
 
@@ -966,8 +1154,8 @@ class DockMission(BaseMissionStrategy):
         yaw_moment = np.clip(yaw_moment, -1.0, 1.0)
 
         # 3. SURGE: 전진 속도 (에러가 작을수록 빠르게 전진)
-        surge_velocity = self.base_surge * (1.0 - abs(normalized_error_x) * 0.5)
-        surge_velocity = max(0.0, surge_velocity)
+        surge_velocity = self.base_surge * (1.0 - 6*abs(sway_force))
+        surge_velocity = max(-0.0000, surge_velocity)
 
         control_mode = "SWAY_YAW_CONTROL"
 
@@ -975,6 +1163,7 @@ class DockMission(BaseMissionStrategy):
         left_pos, left_thrust, right_pos, right_thrust = self.calculate_thruster_allocation(
             sway_force, yaw_moment, surge_velocity
         )
+        self._set_body_forces(sway_force, yaw_moment, surge_velocity)
 
         if logger:
             direction_str = "왼쪽" if self.rotation_direction == 0 else "오른쪽"
@@ -1007,6 +1196,7 @@ class DockMission(BaseMissionStrategy):
             right_pos = 0.0
             left_thrust = self.approach_speed * self.thrust_scale
             right_thrust = self.approach_speed * self.thrust_scale
+            self._set_body_forces(0.0, 0.0, self.approach_speed)
 
             if logger:
                 logger.info(
@@ -1023,6 +1213,7 @@ class DockMission(BaseMissionStrategy):
                 logger.info("🛑 도킹 완료! REVERSING 단계 시작")
 
             # 정지
+            self._set_body_forces(0.0, 0.0, 0.0)
             return 0.0, 0.0, 0.0, 0.0, None
 
     def _execute_reversing_phase(self, logger) -> Tuple[float, float, float, float, Optional[float]]:
@@ -1043,6 +1234,7 @@ class DockMission(BaseMissionStrategy):
             right_pos = 0.0
             left_thrust = self.reverse_speed * self.thrust_scale
             right_thrust = self.reverse_speed * self.thrust_scale
+            self._set_body_forces(0.0, 0.0, self.reverse_speed)
 
             if logger:
                 logger.info(
@@ -1053,12 +1245,86 @@ class DockMission(BaseMissionStrategy):
         else:
             # 후진 완료, 미션 종료
             self.docking_phase = "COMPLETED"
+            self.is_completed = True
 
             if logger:
                 logger.info("✅ Dock 미션 완료!")
 
             # 정지
+            self._set_body_forces(0.0, 0.0, 0.0)
             return 0.0, 0.0, 0.0, 0.0, None
+
+
+class RotationMission(BaseMissionStrategy):
+    """미션 6: 제자리 선회"""
+
+    def __init__(self, thrust_scale: float = 1000.0):
+        super().__init__(thrust_scale)
+        self.target_angle: Optional[float] = None
+        self.is_completed: bool = False
+        self.stable_frames: int = 0
+
+    def reset(self):
+        self.target_angle = None
+        self.is_completed = False
+        self.stable_frames = 0
+
+    def execute(
+        self,
+        agent_heading: Optional[float],
+        mission_params: Optional[Dict],
+        logger=None,
+        **kwargs
+    ) -> Tuple[float, float]:
+        """
+        제자리에서 목표 각도까지 선회
+
+        Args:
+            agent_heading: 현재 헤딩 (deg)
+            mission_params: {'desired_angle': float, ...}
+        """
+        if agent_heading is None or mission_params is None:
+            return 0.0, 0.0
+
+        desired_angle = mission_params.get('desired_angle', Constants.ROTATION_DEFAULT_TARGET)
+        if self.target_angle is None or self.target_angle != desired_angle:
+            self.target_angle = desired_angle
+            self.stable_frames = 0
+            self.is_completed = False
+
+        gain = mission_params.get('rotation_gain', Constants.ROTATION_GAIN)
+        tolerance = mission_params.get('rotation_tolerance', Constants.ROTATION_TOLERANCE)
+        required_stable = mission_params.get(
+            'rotation_stable_frames', Constants.ROTATION_STABLE_FRAMES
+        )
+        max_thrust = mission_params.get('rotation_max_thrust', Constants.ROTATION_MAX_THRUST)
+
+        error = calculate_heading_error(self.target_angle, agent_heading)
+
+        if abs(error) <= tolerance:
+            self.stable_frames += 1
+        else:
+            self.stable_frames = 0
+
+        if self.stable_frames >= required_stable:
+            if not self.is_completed and logger:
+                logger.info(
+                    f"Rotation 완료: 목표={self.target_angle:.1f}°, 현재={agent_heading:.1f}°"
+                )
+            self.is_completed = True
+            return 0.0, 0.0
+
+        rotation_cmd = np.clip(error * gain, -max_thrust, max_thrust)
+        left_thrust = -rotation_cmd * self.thrust_scale
+        right_thrust = rotation_cmd * self.thrust_scale
+
+        if logger:
+            logger.info(
+                f"Rotation: 목표={self.target_angle:.1f}°, 오차={error:.1f}°, "
+                f"명령={rotation_cmd:.3f}"
+            )
+
+        return left_thrust, right_thrust
 
 
 # ============================================================================
@@ -1080,7 +1346,8 @@ class MissionManager:
             MissionType.CIRCLE_BUOY: CircleBuoyMission(thrust_scale),
             MissionType.WAYPOINT_FOLLOW: WaypointFollowMission(thrust_scale),
             MissionType.OBSTACLE_AVOID: ObstacleAvoidMission(thrust_scale, avoidance_controller),
-            MissionType.DOCK_MODE: DockMission(thrust_scale)
+            MissionType.DOCK_MODE: DockMission(thrust_scale),
+            MissionType.ROTATION: RotationMission(thrust_scale)
         }
         self.current_mission: Optional[MissionType] = None
 
@@ -1096,6 +1363,8 @@ class MissionManager:
             if self.current_mission and self.current_mission in self.missions:
                 self.missions[self.current_mission].reset()
             self.current_mission = mission_type
+            if mission_type in self.missions:
+                self.missions[mission_type].reset()
 
     def update_thrust_scale(self, thrust_scale: float):
         """
@@ -1158,6 +1427,15 @@ class MissionManager:
                 return circle_mission.total_rotation >= Constants.CIRCLE_COMPLETION_ROTATION
         return False
 
+    def is_rotation_mission_completed(self) -> bool:
+        """
+        ROTATION 미션 완료 여부 확인
+        """
+        rotation_mission = self.missions.get(MissionType.ROTATION)
+        if rotation_mission and hasattr(rotation_mission, 'is_completed'):
+            return rotation_mission.is_completed
+        return False
+
     def get_dock_accumulated_angle(self) -> Optional[float]:
         """
         DOCK_MODE 미션의 누적 각도 가져오기 (시각화용)
@@ -1169,3 +1447,19 @@ class MissionManager:
         if dock_mission and hasattr(dock_mission, 'accumulated_angle'):
             return dock_mission.accumulated_angle
         return None
+
+    def is_dock_mission_completed(self) -> bool:
+        """Dock 미션 완료 여부"""
+        dock_mission = self.missions.get(MissionType.DOCK_MODE)
+        if dock_mission and hasattr(dock_mission, 'is_completed'):
+            return dock_mission.is_completed
+        return False
+
+    def get_dock_body_forces(self) -> Tuple[Optional[float], Optional[float], Optional[float]]:
+        """
+        Dock 미션의 최근 body-force 명령 반환 (sway, yaw, surge)
+        """
+        dock_mission = self.missions.get(MissionType.DOCK_MODE)
+        if dock_mission and hasattr(dock_mission, 'get_last_body_forces'):
+            return dock_mission.get_last_body_forces()
+        return None, None, None

@@ -67,12 +67,28 @@ class WaypointTransitionHandler:
         """웨이포인트 도달 여부 확인"""
         distance_reached = distance < waypoint['radius']
 
-        # CIRCLE_BUOY는 회전 완료도 체크
+        # CIRCLE_BUOY는 360도 회전 완료만 체크 (거리는 무관)
         if waypoint['mission_type'] == MissionType.CIRCLE_BUOY:
             rotation_completed = self.mission_manager.is_circle_mission_completed()
-            if distance_reached and not rotation_completed and self.loop_counter % 100 == 0:
-                self.logger.info("⚠️ 웨이포인트 도달 - 360도 회전 미완료")
-            return distance_reached and rotation_completed
+            if not rotation_completed and self.loop_counter % 100 == 0:
+                self.logger.info(f"⚠️ 360도 회전 진행 중 (거리={distance:.1f}m)")
+            return rotation_completed
+
+        if waypoint['mission_type'] == MissionType.ROTATION:
+            rotation_completed = self.mission_manager.is_rotation_mission_completed()
+            if self.loop_counter % 100 == 0:
+                self.logger.info(
+                    f"ROTATION 상태: completed={rotation_completed}, 거리={distance:.1f}m"
+                )
+            return rotation_completed
+
+        if waypoint['mission_type'] == MissionType.DOCK_MODE:
+            dock_completed = self.mission_manager.is_dock_mission_completed()
+            if self.loop_counter % 100 == 0:
+                self.logger.info(
+                    f"DOCK 상태: completed={dock_completed}, 거리={distance:.1f}m"
+                )
+            return dock_completed
 
         return distance_reached
 
@@ -410,6 +426,10 @@ class MissionLoopExecutor:
 
         self.detected_objects = self.tracker.get_tracked_objects()
 
+        # Depth 정보 ROS 발행 (원본 탐지 결과)
+        if len(self.raw_detections) > 0:
+            self.ros_comm.publish_detection_depths(self.raw_detections)
+
         # 로깅 빈도 감소 (Jetson 최적화: 매번 -> 100 루프마다)
         if (len(self.raw_detections) > 0 or len(self.detected_objects) > 0) and self.loop_counter % 100 == 0:
             self.logger.info(
@@ -430,6 +450,9 @@ class MissionLoopExecutor:
         elif mission_type == MissionType.DOCK_MODE:
             return self._execute_dock_mission()
 
+        elif mission_type == MissionType.ROTATION:
+            return self._execute_rotation_mission()
+
         return 0.0, 0.0
 
     def _execute_buoy_mission(
@@ -447,15 +470,42 @@ class MissionLoopExecutor:
         return left, right
 
     def _execute_circle_mission(self) -> Tuple[float, float]:
-        """부표 회전 미션 실행"""
+        """
+        부표 회전 미션 실행 (SWAY 포함)
+
+        Returns:
+            Tuple[float, float]: (left_thrust, right_thrust)
+
+        Note:
+            thruster positions는 self.thruster_positions에 저장됨
+        """
         wp_params = self.waypoint_manager.get_current_mission_params()
         params = self.param_manager.get_mission_parameters(MissionType.CIRCLE_BUOY, wp_params)
-        left, right = self.mission_executor.execute_circle_buoy(
+        result = self.mission_executor.execute_circle_buoy(
             self.detected_objects, self.sensor_handler.current_image,
             self.sensor_handler.agent_heading, params,
             self.raw_detections, self.logger
         )
-        self._publish_control_info(left, right, "CIRCLE_MISSION")
+
+        # 4개 값 언패킹: (left_thrust, right_thrust, left_pos, right_pos)
+        left_thrust, right_thrust, left_pos, right_pos = result
+
+        # thruster positions 저장
+        self.thruster_positions = (left_pos, right_pos)
+
+        self._publish_control_info(left_thrust, right_thrust, "CIRCLE_MISSION")
+        return left_thrust, right_thrust
+
+    def _execute_rotation_mission(self) -> Tuple[float, float]:
+        """제자리 선회 미션 실행"""
+        wp_params = self.waypoint_manager.get_current_mission_params()
+        params = self.param_manager.get_mission_parameters(MissionType.ROTATION, wp_params)
+        left, right = self.mission_executor.execute_rotation(
+            self.sensor_handler.agent_heading,
+            params,
+            self.logger
+        )
+        self._publish_control_info(left, right, "ROTATION_MISSION")
         return left, right
 
     def _execute_obstacle_avoid(self) -> Tuple[float, float]:
@@ -540,6 +590,27 @@ class MissionLoopExecutor:
 
     def _publish_commands(self, left: float, right: float, mission_type: MissionType):
         """제어 명령 발행 (Jetson 최적화: ROS 발행 빈도 감소)"""
+        from .config import Constants
+
+        thrust_scale = self.param_manager.get_thrust_scale() or Constants.DEFAULT_THRUST_SCALE
+        thrust_scale = max(thrust_scale, 1e-3)
+        forward = (left + right) / 2.0
+        turn = (left - right) / 2.0
+        desired_speed = float(np.clip(forward / thrust_scale, -1.0, 1.0))
+        desired_moment = float(np.clip(turn / thrust_scale, -1.0, 1.0))
+        desired_force_y = 0.0
+
+        if mission_type == MissionType.DOCK_MODE:
+            sway_force, yaw_moment, surge_velocity = self.mission_manager.get_dock_body_forces()
+            if surge_velocity is not None:
+                desired_speed = float(np.clip(surge_velocity, -1.0, 1.0))
+            if yaw_moment is not None:
+                desired_moment = float(np.clip(yaw_moment, -1.0, 1.0))
+            if sway_force is not None:
+                desired_force_y = float(np.clip(sway_force, -1.0, 1.0))
+
+        self.ros_comm.publish_desired_control(desired_speed, desired_moment, desired_force_y)
+
         # 스러스트 명령은 매번 발행 (중요)
         self.ros_comm.publish_thrust_commands(left, right)
 
