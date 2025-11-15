@@ -13,6 +13,9 @@ from abc import ABC, abstractmethod
 from scipy.stats import chi2
 from scipy.linalg import block_diag
 
+# Depth filtering for temporal smoothing
+from .depth_filter import ExponentialMovingAverageFilter
+
 
 class MotionModel(ABC):
     """모션 모델 베이스 클래스"""
@@ -462,7 +465,8 @@ class Track:
                  initial_measurement: np.ndarray,
                  models: List[MotionModel],
                  transition_probs: np.ndarray,
-                 initial_covariance: float = 100.0):
+                 initial_covariance: float = 100.0,
+                 depth_filter_alpha: float = 0.3):
         """
         Args:
             track_id: Unique track ID
@@ -471,6 +475,7 @@ class Track:
             models: List of motion models
             transition_probs: Model transition probability matrix
             initial_covariance: Initial state covariance
+            depth_filter_alpha: EMA smoothing factor for depth (0 < alpha <= 1)
         """
         self.track_id = track_id
         self.label = label
@@ -499,8 +504,11 @@ class Track:
         # State and covariance (combined from IMM)
         self.x, self.P = self.imm.combination()
 
-        # Measurement history
+        # Depth measurement with temporal EMA filtering
         self.depth = initial_measurement[2] if len(initial_measurement) > 2 else None
+        self.depth_filter = ExponentialMovingAverageFilter(alpha=depth_filter_alpha)
+        if self.depth is not None:
+            self.depth_filter.update(self.depth)
 
     def predict(self, dt: float):
         """Predict step"""
@@ -567,16 +575,19 @@ class Track:
         # Combine
         self.x, self.P = self.imm.combination()
 
-        # Update depth (weighted average)
+        # Update depth (weighted average with temporal EMA filtering)
         if validated_dicts:
             y, S = self.imm.filters[0].get_innovation(validated_measurements[0], H, R)
             beta = self.pda.association_probabilities(validated_measurements,
                                                      [self.imm.filters[0].get_innovation(z, H, R)[0]
                                                       for z in validated_measurements],
                                                      S)
+            # PDAF weighted average of raw depth measurements
             depth_weighted = sum(beta[i+1] * validated_dicts[i]['depth']
                                 for i in range(len(validated_dicts)))
-            self.depth = depth_weighted
+
+            # Apply temporal EMA low-pass filter to reduce high-frequency noise
+            self.depth = self.depth_filter.update(depth_weighted)
 
         # Reset coast count
         self.coast_count = 0
@@ -605,7 +616,8 @@ class IMMPDAFTracker:
                  P_D: float = 0.95,
                  clutter_density: float = 1e-6,
                  max_coast_frames: int = 10,
-                 gate_threshold: float = 9.21):
+                 gate_threshold: float = 9.21,
+                 depth_filter_alpha: float = 0.3):
         """
         Args:
             dt: Time step (default 1/30 for 30 fps)
@@ -613,9 +625,11 @@ class IMMPDAFTracker:
             clutter_density: Clutter spatial density
             max_coast_frames: Maximum frames without detection before track deletion
             gate_threshold: Chi-square gating threshold
+            depth_filter_alpha: EMA smoothing factor for depth filtering (0 < alpha <= 1)
         """
         self.dt = dt
         self.max_coast_frames = max_coast_frames
+        self.depth_filter_alpha = depth_filter_alpha
 
         # Motion models for maritime buoys
         self.models = [
@@ -656,7 +670,8 @@ class IMMPDAFTracker:
             initial_measurement=measurement,
             models=self.models,
             transition_probs=self.transition_probs,
-            initial_covariance=100.0
+            initial_covariance=100.0,
+            depth_filter_alpha=self.depth_filter_alpha
         )
 
         self.next_track_id += 1

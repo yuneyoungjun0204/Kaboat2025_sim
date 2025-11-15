@@ -16,6 +16,9 @@ from typing import List, Dict, Optional
 # config 모듈에서 경로 가져오기
 from .config import Constants
 
+# Depth filtering utilities
+from .depth_filter import smooth_depth_spatially
+
 # NanoOWL 경로 추가
 sys.path.insert(0, str(Constants.Paths.NANOOWL_DIR))
 from nanoowl.owl_predictor import OwlPredictor
@@ -36,7 +39,8 @@ class DetectionSystem:
     """NanoOWL + MiDaS 통합 탐지 시스템"""
 
     def __init__(self, depth_estimator, device="cuda", detection_threshold=0.0065,
-                 min_box_area=500, max_box_area=80000, min_depth=0.0, max_depth=50.0):
+                 min_box_area=500, max_box_area=80000, min_depth=0.0, max_depth=50.0,
+                 spatial_smoothing=True, spatial_kernel_size=5):
         """
         Args:
             depth_estimator: MiDaSHybridDepthEstimator 인스턴스
@@ -46,6 +50,8 @@ class DetectionSystem:
             max_box_area: 최대 박스 면적
             min_depth: 최소 깊이 (미터)
             max_depth: 최대 깊이 (미터)
+            spatial_smoothing: 공간적 depth smoothing 활성화 여부
+            spatial_kernel_size: spatial smoothing 커널 크기 (홀수 권장)
         """
         self.device = device
         self.depth_estimator = depth_estimator
@@ -56,6 +62,10 @@ class DetectionSystem:
         self.max_box_area = max_box_area
         self.min_depth_threshold = min_depth
         self.max_depth_threshold = max_depth
+
+        # Depth smoothing 파라미터
+        self.spatial_smoothing = spatial_smoothing
+        self.spatial_kernel_size = spatial_kernel_size
 
         # NanoOWL 초기화
         self._init_nanoowl()
@@ -179,11 +189,18 @@ class DetectionSystem:
             if not (self.min_box_area <= area <= self.max_box_area):
                 continue
 
-            # 중심점에서 깊이 추출
+            # 중심점에서 깊이 추출 (spatial smoothing 적용)
             cx, cy = (x1 + x2) // 2, (y1 + y2) // 2
             cx = max(0, min(depth_map.shape[1] - 1, cx))
             cy = max(0, min(depth_map.shape[0] - 1, cy))
-            depth = depth_map[cy, cx]
+
+            # Spatial smoothing으로 주변 영역 평균 사용 (노이즈 감소)
+            if self.spatial_smoothing:
+                depth = smooth_depth_spatially(
+                    depth_map, cx, cy, kernel_size=self.spatial_kernel_size
+                )
+            else:
+                depth = depth_map[cy, cx]
 
             # 깊이 필터링
             if not (self.min_depth_threshold <= depth <= self.max_depth_threshold):

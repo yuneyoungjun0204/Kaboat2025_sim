@@ -79,7 +79,7 @@ class Constants:
     LIDAR_ARRAY_SIZE = 201
     MAX_LIDAR_DISTANCE = 100.0
     LIDAR_ANGLE_RANGE = (-100, 100)  # degrees
-    LIDAR_SCALE_FACTOR = 0.8  # LiDAR 거리값 스케일 조정 (1.0 = 변환 없음)
+    LIDAR_SCALE_FACTOR = 0.9  # LiDAR 거리값 스케일 조정 (1.0 = 변환 없음)
 
     # ============================================================================
     # 센서 데이터
@@ -99,9 +99,10 @@ class Constants:
         # (100, 10, 'DOCK_MODE', DEFAULT_WAYPOINT_RADIUS, {}),
         (160, 0, 'CIRCLE_BUOY', DEFAULT_WAYPOINT_RADIUS, {'rotation_direction': 1, 'circle_radius': 15.0}),
         (155, -5, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS,{}),
-        (100, 10, 'ROTATION', DEFAULT_WAYPOINT_RADIUS, {'desired_angle': 67.0}),
+        (100, 10, 'ROTATION', DEFAULT_WAYPOINT_RADIUS, {'desired_angle': 65.0}),
         (100, 10, 'DOCK_MODE', DEFAULT_WAYPOINT_RADIUS, {}),
-        (80, 42, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {}),
+        (155, 55, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {}),
+        (80, 45, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {}),
         (0, 0, 'PASS_BETWEEN_BUOYS', DEFAULT_WAYPOINT_RADIUS, {})
     ]
 
@@ -142,7 +143,7 @@ class Constants:
     # ONNX_INPUT_SIZE: 자동 계산됨 (OBSERVATION_SIZE * STACK_COUNT)
     ONNX_INPUT_SIZE = OBSERVATION_SIZE * STACK_COUNT  # 기본값: 213 * 2 = 426
 
-    ONNX_V_SCALE = 1.0
+    ONNX_V_SCALE = 0.6
     ONNX_W_SCALE = -1.0
     ONNX_LINEAR_VELOCITY_RANGE = (0.2, 1.0)
     ONNX_ANGULAR_VELOCITY_RANGE = (-1.0, 1.0)
@@ -151,8 +152,8 @@ class Constants:
     # 장애물 회피 설정
     # ============================================================================
     BOAT_WIDTH = 4.5
-    BOAT_HEIGHT = 13.0
-    LOS_DELTA = 15.0
+    BOAT_HEIGHT = 20.0
+    LOS_DELTA = 25.0
     LOS_LOOKAHEAD_MIN = 20.0
     LOS_LOOKAHEAD_MAX = 40.0
     FILTER_ALPHA = 0.4
@@ -197,27 +198,27 @@ class Constants:
     # CircleBuoy 미션 target_x 결정식 파라미터 (시계방향)
     CIRCLE_TX_BASE_X = 1240.0
     CIRCLE_TX_SLOPE = 500.0
-    CIRCLE_TX_MIN_X = 800.0
+    CIRCLE_TX_MIN_X = 820.0
     CIRCLE_TX_MAX_X = 1000.0
 
     # CircleBuoy 미션 반시계방향 파라미터
     CIRCLE_CCW_SLOPE = 500.0  # Counter-clockwise slope
     CIRCLE_CCW_MIN_X = 310.0
-    CIRCLE_CCW_MAX_X = 580.0
+    CIRCLE_CCW_MAX_X = 560.0
 
     # CircleBuoy 완료 기준
     CIRCLE_COMPLETION_ROTATION = 390.0  # 350도 회전 시 완료
     CIRCLE_COMPLETION_SPEED = 0.3  # 완료 후 전진 속도
 
     # CircleBuoy 명령 고정 기준
-    CIRCLE_LOCK_DISTANCE_THRESHOLD = 0.7  # 부표와의 거리가 이 값 이하이면 명령 고정 (미터)
+    CIRCLE_LOCK_DISTANCE_THRESHOLD = 0.65  # 부표와의 거리가 이 값 이하이면 명령 고정 (미터)
 
     # CircleBuoy SWAY 제어 (부드러운 원 그리기)
     CIRCLE_SWAY_STRENGTH = 0.3  # SWAY 힘 강도 (0-1)
     CIRCLE_SWAY_MAX_ANGLE = 30.0  # SWAY 최대 각도 (도)
 
     # CircleBuoy 1차 저주파 필터 (명령값 튀기 방지)
-    CIRCLE_FILTER_ALPHA = 0.08 # 필터 계수 (0-1, 작을수록 부드러움)
+    CIRCLE_FILTER_ALPHA = 0.1 # 필터 계수 (0-1, 작을수록 부드러움)
 
     # WaypointFollow 미션 파라미터
     WAYPOINT_STEERING_GAIN = 0.003
@@ -240,7 +241,7 @@ class Constants:
 
 
     # Dock_mode 미션 파라미터
-    DOCK_SWAY_GAIN = 3.670915  # Sway motion 비례 게인 (픽셀 오차 -> 추력)
+    DOCK_SWAY_GAIN = 5.670915  # Sway motion 비례 게인 (픽셀 오차 -> 추력)
     DOCK_YAW_GAIN = 0.3548  # Yaw 회전 비례 게인
     DOCK_MAX_SWAY_THRUST = 400.0  # 최대 횡방향 추력
     DOCK_MAX_YAW_THRUST = 200.0  # 최대 회전 추력
@@ -259,7 +260,7 @@ class Constants:
     DOCK_SURGE_ERROR_COEFFICIENT = 0.3  # 에러에 따른 surge 감소 계수
 
     # Dock Thruster Allocation 파라미터
-    DOCK_SWAY_MAX_ANGLE = 30.0  # SWAY 최대 각도 (도)
+    DOCK_SWAY_MAX_ANGLE = 90.0  # SWAY 최대 각도 (도)
     DOCK_YAW_MAX_ANGLE_DIFF = 15.0  # YAW 각도 차이 (도)
     DOCK_SWAY_FORCE_THRESHOLD = 0.1  # SWAY force 임계값
     DOCK_SURGE_VELOCITY_THRESHOLD = 0.05  # Surge velocity 임계값
@@ -275,6 +276,13 @@ class Constants:
     ROTATION_STABLE_FRAMES = 10  # 안정화 필요 프레임 수
     ROTATION_GAIN = 0.003  # 회전 비례 게인
     ROTATION_MAX_THRUST = 0.3  # 최대 회전 추력
+
+
+
+
+
+
+
 
     # ============================================================================
     # ROS2 토픽명 설정
@@ -317,6 +325,15 @@ class Constants:
         CURRENT_MODE = '/vrx/current_mode'
         GOAL_CHECK_AREAS = '/vrx/goal_check_areas'
 
+
+
+
+
+
+
+
+
+
     # ============================================================================
     # 시각화 설정 (trajectory_viz.py용)
     # ============================================================================
@@ -350,17 +367,29 @@ class Constants:
         # 업데이트 주기
         UPDATE_RATE = 0.1  # 10Hz
 
+
+
+
+
+
+
+
     # ============================================================================
     # 시각화 파라미터 (VisualizationSystem)
     # ============================================================================
     class VisualizationParams:
         """시각화 시스템 파라미터"""
         # 탐지 임계값
-        DETECTION_THRESHOLD = 0.0
+        DETECTION_THRESHOLD = 0.0085
         MIN_BOX_AREA = 2
         MAX_BOX_AREA = 800000
-        MIN_DEPTH_THRESHOLD = 0.0  # 최소 깊이 (미터)
-        MAX_DEPTH_THRESHOLD = 50.0  # 최대 깊이 (미터)
+        MIN_DEPTH_THRESHOLD = 0.12  # 최소 깊이 (미터)
+        MAX_DEPTH_THRESHOLD = 0.9   # 최대 깊이 (미터)
+
+        # Depth 필터링 파라미터
+        SPATIAL_SMOOTHING_ENABLED = True  # 공간적 depth smoothing 활성화
+        SPATIAL_KERNEL_SIZE = 31  # Spatial smoothing 커널 크기 (홀수 권장)
+        TEMPORAL_FILTER_ALPHA = 0.3  # EMA 시간적 필터 smoothing factor (0.2-0.4 권장)
 
         # IMM-PDAF 파라미터
         MAX_COAST_FRAMES = 4
@@ -372,10 +401,17 @@ class Constants:
         WINDOW_HEIGHT = 480
 
         # 색상 매핑 (BGR)
-        COLOR_RED_CONE = (0, 0, 255)
-        COLOR_GREEN_CONE = (0, 255, 0)
-        COLOR_BLUE_BUOY = (255, 0, 0)
+        COLOR_RED_CONE = (0, 255, 255)
+        COLOR_GREEN_CONE = (0, 255, 255)
+        COLOR_BLUE_BUOY = (0, 255, 255)
         COLOR_ACCUMULATED_ANGLE = (0, 255, 255)  # 누적 각도 텍스트 색상
+
+
+
+
+
+
+
 
     # ============================================================================
     # 강제 미션 모드 설정 (트랙바 값)
@@ -387,6 +423,13 @@ class Constants:
         PASS_BETWEEN_BUOYS = 2  # 강제 부표 사이 지나기 미션
         CIRCLE_BUOY = 3  # 강제 부표 한바퀴 돌기 미션
         DOCK_MODE = 4  # 강제 도킹 미션
+
+
+
+
+
+
+
 
     # ============================================================================
     # 유틸리티 메서드
@@ -428,6 +471,13 @@ class Constants:
             'warnings': warnings,
             'info': info
         }
+
+
+
+
+
+
+
 
     @classmethod
     def print_config_summary(cls) -> None:

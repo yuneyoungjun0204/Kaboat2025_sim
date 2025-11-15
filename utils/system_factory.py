@@ -79,8 +79,15 @@ class VRXSystemFactory:
         if depth_estimator is None:
             depth_estimator = self.create_depth_estimator()
 
-        detection_system = DetectionSystem(depth_estimator, device=self.device)
-        self.logger.info("✓ 객체 탐지 시스템 초기화 완료")
+        detection_system = DetectionSystem(
+            depth_estimator,
+            device=self.device,
+            spatial_smoothing=Constants.VisualizationParams.SPATIAL_SMOOTHING_ENABLED,
+            spatial_kernel_size=Constants.VisualizationParams.SPATIAL_KERNEL_SIZE
+        )
+        self.logger.info("✓ 객체 탐지 시스템 초기화 완료 "
+                        f"(Spatial smoothing: {Constants.VisualizationParams.SPATIAL_SMOOTHING_ENABLED}, "
+                        f"Kernel size: {Constants.VisualizationParams.SPATIAL_KERNEL_SIZE})")
         return detection_system
 
     def create_sensor_system(self) -> Tuple[SensorDataManager, SensorCallbackHandler]:
@@ -188,9 +195,11 @@ class VRXSystemFactory:
         self.logger.info("IMM-PDAF 트래커 초기화 중...")
         tracker = create_tracker(
             fps=Constants.TRACKER_FPS,
-            max_coast_frames=Constants.MAX_COAST_FRAMES
+            max_coast_frames=Constants.MAX_COAST_FRAMES,
+            depth_filter_alpha=Constants.VisualizationParams.TEMPORAL_FILTER_ALPHA
         )
-        self.logger.info("✓ IMM-PDAF 트래커 초기화 완료")
+        self.logger.info("✓ IMM-PDAF 트래커 초기화 완료 "
+                        f"(Temporal filter alpha: {Constants.VisualizationParams.TEMPORAL_FILTER_ALPHA})")
         return tracker
 
     def create_ros_communication(self, callbacks: Dict[str, Any]) -> ROSCommunicationManager:
