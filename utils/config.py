@@ -32,13 +32,15 @@ class Constants:
 
         # 모델 디렉토리
         MODELS_DIR = PROJECT_ROOT / 'models' / 'correct_IMU' / 'gpu'
+        # MODELS_DIR = PROJECT_ROOT / 'models' / '207'
         # MODELS_DIR = PROJECT_ROOT / 'models'
 
         # ONNX 모델 파일
         # ONNX_MODEL = MODELS_DIR / 'Once_observation.onnx'
         ONNX_MODEL = MODELS_DIR / 'Ray.onnx'
         # ONNX_MODEL = MODELS_DIR / 'Ray-9558758.onnx'
-        # ONNX_MODEL_FALLBACK_2 = MODELS_DIR / 'Ray-23999963.onnx'
+        # ONNX_MODEL_FALLBACK_2 = MODELS_DIR / 'Ray-24499969.onnx'
+        # ONNX_MODEL = MODELS_DIR / 'Ray-24499969.onnx'
         
 
         @classmethod
@@ -79,7 +81,7 @@ class Constants:
     LIDAR_ARRAY_SIZE = 201
     MAX_LIDAR_DISTANCE = 100.0
     LIDAR_ANGLE_RANGE = (-100, 100)  # degrees
-    LIDAR_SCALE_FACTOR = 0.9  # LiDAR 거리값 스케일 조정 (1.0 = 변환 없음)
+    LIDAR_SCALE_FACTOR = 1.0  # LiDAR 거리값 스케일 조정 (1.0 = 변환 없음)
 
     # ============================================================================
     # 센서 데이터
@@ -99,7 +101,7 @@ class Constants:
         # (100, 10, 'DOCK_MODE', DEFAULT_WAYPOINT_RADIUS, {}),
         (160, 0, 'CIRCLE_BUOY', DEFAULT_WAYPOINT_RADIUS, {'rotation_direction': 1, 'circle_radius': 15.0}),
         (155, -5, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS,{}),
-        (100, 10, 'ROTATION', DEFAULT_WAYPOINT_RADIUS, {'desired_angle': 65.0}),
+        (100, 10, 'ROTATION', DEFAULT_WAYPOINT_RADIUS, {'desired_angle': 72.0}),
         (100, 10, 'DOCK_MODE', DEFAULT_WAYPOINT_RADIUS, {}),
         (155, 55, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {}),
         (80, 45, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {}),

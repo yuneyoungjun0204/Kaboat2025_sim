@@ -12,7 +12,7 @@ from typing import Tuple, List, Optional
 from utils.config import Constants
 
 
-class ONNXControllerV2:
+class ONNXController:
     """ONNX 모델 기반 제어 클래스 v2 (Unity ML-Agent 스타일)"""
 
     def __init__(self, model_path: str, logger, stack_count: int = 2):

@@ -224,7 +224,7 @@ class ObstacleAvoidExecutor:
         return waypoints, self.waypoint_manager.get_waypoint_index()
 
     def _get_onnx_control(self) -> Tuple[float, float]:
-        """ONNX 제어 래퍼"""
+        """ONNX 제어 래퍼 (v2 API - previous/next waypoint 제거)"""
         current, previous, next_wp = self.mission_executor.get_waypoint_positions()
         return self.onnx_controller.get_control(
             self.sensor_handler.lidar_distances,
@@ -232,8 +232,8 @@ class ObstacleAvoidExecutor:
             self.sensor_handler.angular_velocity_y,
             self.sensor_handler.agent_position,
             [current[1], current[0]],
-            previous,
-            next_wp
+            [previous[1], previous[0]],
+            [next_wp[1], next_wp[0]]
         )
 
     def _publish_debug_info(
