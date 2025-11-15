@@ -539,7 +539,8 @@ class MissionLoopExecutor:
             thruster positions와 target_depth는 self.thruster_positions와
             self.target_depth에 저장됨
         """
-        params = self.param_manager.get_mission_parameters(MissionType.DOCK_MODE)
+        wp_params = self.waypoint_manager.get_current_mission_params()
+        params = self.param_manager.get_mission_parameters(MissionType.DOCK_MODE, wp_params)
         result = self.mission_executor.execute_dock_mission(
             self.detected_objects,
             self.sensor_handler.current_image,

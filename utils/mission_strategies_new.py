@@ -349,11 +349,11 @@ class CircleBuoyMission(BaseMissionStrategy):
         abs_angle = abs(turn_angle)
 
         # 각도가 클수록 속도 감소 (선형적)
-        # 0도: 기본 속도, 90도: 최소 속도
-        if abs_angle >= 90:
+        # 0도: 기본 속도, ANGLE_THRESHOLD도: 최소 속도
+        if abs_angle >= Constants.CIRCLE_SPEED_ANGLE_THRESHOLD:
             return self.min_speed
         else:
-            speed_ratio = 1.0 - (abs_angle / 90.0)
+            speed_ratio = 1.0 - (abs_angle / Constants.CIRCLE_SPEED_ANGLE_THRESHOLD)
             adaptive_speed = self.min_speed + (self.base_speed - self.min_speed) * speed_ratio
             return max(self.min_speed, adaptive_speed)
 
@@ -715,7 +715,7 @@ class ObstacleAvoidMission(BaseMissionStrategy):
 class DockMission(BaseMissionStrategy):
     """미션 5: 도킹 스테이션 미션"""
 
-    def __init__(self, thrust_scale: float = 1000.0):
+    def __init__(self, thrust_scale: float = Constants.DOCK_DEFAULT_THRUST_SCALE):
         super().__init__(thrust_scale)
         # 상태 변수
         self.docking_phase = "TRACKING"
@@ -771,9 +771,10 @@ class DockMission(BaseMissionStrategy):
     def _set_body_forces(self, sway_force: float = 0.0, yaw_moment: float = 0.0,
                          surge_velocity: float = 0.0):
         """최근 body-force 명령 저장"""
-        self.last_sway_force = float(np.clip(sway_force, -1.0, 1.0))
-        self.last_yaw_moment = float(np.clip(yaw_moment, -1.0, 1.0))
-        self.last_surge_velocity = float(np.clip(surge_velocity, -1.0, 1.0))
+        clip_value = Constants.DOCK_BODY_FORCE_CLIP_VALUE
+        self.last_sway_force = float(np.clip(sway_force, -clip_value, clip_value))
+        self.last_yaw_moment = float(np.clip(yaw_moment, -clip_value, clip_value))
+        self.last_surge_velocity = float(np.clip(surge_velocity, -clip_value, clip_value))
 
     def execute(
         self,
@@ -940,30 +941,44 @@ class DockMission(BaseMissionStrategy):
         if effective_error_x != 0.0:
             # 오차 크기에 비례하도록 개선 (너무 강하지 않게)
             error_ratio = abs(effective_error_x) / (current_image.shape[1] / 2)
-            sway_force = sway_direction * self.sway_strength * min(1.0, error_ratio * 2.0)
-            sway_force = np.clip(sway_force, -1.0, 1.0)
+            sway_force = sway_direction * self.sway_strength * min(
+                1.0, error_ratio * Constants.DOCK_ERROR_RATIO_MULTIPLIER
+            )
+            sway_force = np.clip(
+                sway_force,
+                -Constants.DOCK_SWAY_INITIAL_CLIP_VALUE,
+                Constants.DOCK_SWAY_INITIAL_CLIP_VALUE
+            )
         else:
             sway_force = 0.0
 
         # Accumulated angle 피드백 추가 (게인 감소로 안정성 향상)
         # accumulated_angle < 0 (음수, 왼쪽 회전 누적) → SWAY를 오른쪽으로 (+)
         # accumulated_angle > 0 (양수, 오른쪽 회전 누적) → SWAY를 왼쪽으로 (-)
-        angle_feedback_gain = 0.02  # 게인 감소 (0.04 → 0.02)
-        angle_feedback = self.accumulated_angle * angle_feedback_gain
+        angle_feedback = self.accumulated_angle * Constants.DOCK_ANGLE_FEEDBACK_GAIN
         sway_force += angle_feedback
-        sway_force = np.clip(sway_force, -0.8, 0.8)  # SWAY 최대값 제한 (과도한 횡이동 방지)
+        sway_force = np.clip(
+            sway_force,
+            -Constants.DOCK_SWAY_FINAL_CLIP_VALUE,
+            Constants.DOCK_SWAY_FINAL_CLIP_VALUE
+        )  # SWAY 최대값 제한 (과도한 횡이동 방지)
 
         # 2. Moment(YAW) 제어: error_x 기반 회전 (객체 x좌표를 이미지 중심으로)
         # error_x > 0: 객체가 오른쪽에 있음 → 오른쪽으로 회전 (양수 moment)
         # error_x < 0: 객체가 왼쪽에 있음 → 왼쪽으로 회전 (음수 moment)
         yaw_moment = normalized_error_x * self.yaw_gain
-        yaw_moment = np.clip(yaw_moment, -1.0, 1.0)
+        yaw_moment = np.clip(
+            yaw_moment,
+            -Constants.DOCK_YAW_CLIP_VALUE,
+            Constants.DOCK_YAW_CLIP_VALUE
+        )
 
         # 3. SURGE: 전진 속도 (SWAY 사용 시에도 최소 속도 보장)
         # SWAY와 SURGE를 동시에 사용 가능하도록 개선
-        surge_reduction_factor = 1.5  # 계수 감소 (4 → 1.5)
-        min_surge_ratio = 0.3  # 최소 30% 전진 속도 보장
-        surge_velocity = self.base_surge * max(min_surge_ratio, 1.0 - surge_reduction_factor * abs(sway_force))
+        surge_velocity = self.base_surge * max(
+            Constants.DOCK_MIN_SURGE_RATIO,
+            1.0 - Constants.DOCK_SURGE_REDUCTION_FACTOR * abs(sway_force)
+        )
         surge_velocity = max(0.0, surge_velocity)
 
         control_mode = "SWAY_YAW_CONTROL"

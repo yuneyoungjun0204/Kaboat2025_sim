@@ -81,7 +81,7 @@ class Constants:
     LIDAR_ARRAY_SIZE = 201
     MAX_LIDAR_DISTANCE = 100.0
     LIDAR_ANGLE_RANGE = (-100, 100)  # degrees
-    LIDAR_SCALE_FACTOR = 1.0  # LiDAR 거리값 스케일 조정 (1.0 = 변환 없음)
+    LIDAR_SCALE_FACTOR = 0.75  # LiDAR 거리값 스케일 조정 (1.0 = 변환 없음)
 
     # ============================================================================
     # 센서 데이터
@@ -100,9 +100,9 @@ class Constants:
         # (100, 10, 'ROTATION', DEFAULT_WAYPOINT_RADIUS, {'desired_angle': 60.0}),
         # (100, 10, 'DOCK_MODE', DEFAULT_WAYPOINT_RADIUS, {}),
         (160, 0, 'CIRCLE_BUOY', DEFAULT_WAYPOINT_RADIUS, {'rotation_direction': 1, 'circle_radius': 15.0}),
-        (155, -5, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS,{}),
-        (100, 10, 'ROTATION', DEFAULT_WAYPOINT_RADIUS, {'desired_angle': 72.0}),
-        (100, 10, 'DOCK_MODE', DEFAULT_WAYPOINT_RADIUS, {}),
+        (150, -15, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS,{}),
+        (100, 10, 'ROTATION', DEFAULT_WAYPOINT_RADIUS, {'desired_angle': 70.0}),
+        (100, 10, 'DOCK_MODE', DEFAULT_WAYPOINT_RADIUS, {'target_shape': 'red_square'}),
         (155, 55, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {}),
         (80, 45, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {}),
         (0, 0, 'PASS_BETWEEN_BUOYS', DEFAULT_WAYPOINT_RADIUS, {})
@@ -145,7 +145,7 @@ class Constants:
     # ONNX_INPUT_SIZE: 자동 계산됨 (OBSERVATION_SIZE * STACK_COUNT)
     ONNX_INPUT_SIZE = OBSERVATION_SIZE * STACK_COUNT  # 기본값: 213 * 2 = 426
 
-    ONNX_V_SCALE = 0.6
+    ONNX_V_SCALE = 1.0
     ONNX_W_SCALE = -1.0
     ONNX_LINEAR_VELOCITY_RANGE = (0.2, 1.0)
     ONNX_ANGULAR_VELOCITY_RANGE = (-1.0, 1.0)
@@ -222,6 +222,9 @@ class Constants:
     # CircleBuoy 1차 저주파 필터 (명령값 튀기 방지)
     CIRCLE_FILTER_ALPHA = 0.1 # 필터 계수 (0-1, 작을수록 부드러움)
 
+    # CircleBuoy 속도 계산 파라미터
+    CIRCLE_SPEED_ANGLE_THRESHOLD = 90.0  # 속도 계산 시 각도 임계값 (도)
+
     # WaypointFollow 미션 파라미터
     WAYPOINT_STEERING_GAIN = 0.003
     WAYPOINT_FORWARD_SPEED = 0.5
@@ -243,28 +246,40 @@ class Constants:
 
 
     # Dock_mode 미션 파라미터
+    DOCK_DEFAULT_THRUST_SCALE = 1000.0  # 도킹 미션 기본 thrust scale
     DOCK_SWAY_GAIN = 5.670915  # Sway motion 비례 게인 (픽셀 오차 -> 추력)
     DOCK_YAW_GAIN = 0.3548  # Yaw 회전 비례 게인
-    DOCK_MAX_SWAY_THRUST = 400.0  # 최대 횡방향 추력
+    DOCK_MAX_SWAY_THRUST = 500.0  # 최대 횡방향 추력
     DOCK_MAX_YAW_THRUST = 200.0  # 최대 회전 추력
-    DOCK_BASE_SURGE = 0.3  # 기본 전진 속도 (0-1)
+    DOCK_BASE_SURGE = 0.1  # 기본 전진 속도 (0-1)
     DOCK_DEPTH_THRESHOLD = 0.6  # Depth 임계값 (가까움, 0-1 스케일)
     DOCK_APPROACH_TIME = 1.0  # 직진 접근 시간 (초)
     DOCK_REVERSE_TIME = 20.0  # 후진 시간 (초)
-    DOCK_APPROACH_SPEED = 0.4  # 최종 접근 속도
+    DOCK_APPROACH_SPEED = 0.2  # 최종 접근 속도
     DOCK_REVERSE_SPEED = -0.6  # 후진 속도
     DOCK_CENTER_TOLERANCE = 600.0  # 이미지 중앙 허용 오차 (픽셀, ± 범위)
     DOCK_SWAY_STRENGTH = 0.5  # SWAY 제어 강도 (0-1)
     DOCK_SWAY_TO_YAW_THRESHOLD = 50.0  # SWAY에서 YAW로 전환하는 픽셀 오차 임계값
     DOCK_FALLBACK_SWAY_GAIN = 0.01  # 목표 미탐지 시 누적 각도 기반 SWAY 게인
     DOCK_FALLBACK_SURGE_VELOCITY = 0.05  # 목표 미탐지 시 전진 속도
-    DOCK_ANGLE_FEEDBACK_GAIN = 0.005  # 누적 각도 피드백 게인
-    DOCK_SURGE_ERROR_COEFFICIENT = 0.3  # 에러에 따른 surge 감소 계수
+    DOCK_ANGLE_FEEDBACK_GAIN = 0.02  # 누적 각도 피드백 게인 (업데이트: 0.005 → 0.02)
+    DOCK_SURGE_ERROR_COEFFICIENT = 0.6  # 에러에 따른 surge 감소 계수
+
+    # Dock SWAY 제어 세부 파라미터
+    DOCK_ERROR_RATIO_MULTIPLIER = 2.0  # 오차 비율 계산 시 곱하는 값
+    DOCK_SWAY_INITIAL_CLIP_VALUE = 1.0  # SWAY force 초기 클리핑 값
+    DOCK_SWAY_FINAL_CLIP_VALUE = 0.8  # SWAY force 최종 클리핑 값 (각도 피드백 적용 후)
+    DOCK_YAW_CLIP_VALUE = 1.0  # YAW moment 클리핑 값
+    DOCK_BODY_FORCE_CLIP_VALUE = 1.0  # Body force 저장 시 클리핑 값
+
+    # Dock SURGE 제어 파라미터
+    DOCK_SURGE_REDUCTION_FACTOR = 10.0  # SWAY force에 따른 surge 속도 감소 계수
+    DOCK_MIN_SURGE_RATIO = 0.1  # 최소 surge 속도 비율 (base_surge 대비)
 
     # Dock Thruster Allocation 파라미터
     DOCK_SWAY_MAX_ANGLE = 90.0  # SWAY 최대 각도 (도)
     DOCK_YAW_MAX_ANGLE_DIFF = 15.0  # YAW 각도 차이 (도)
-    DOCK_SWAY_FORCE_THRESHOLD = 0.1  # SWAY force 임계값
+    DOCK_SWAY_FORCE_THRESHOLD = 0.5  # SWAY force 임계값
     DOCK_SURGE_VELOCITY_THRESHOLD = 0.05  # Surge velocity 임계값
     DOCK_SWAY_ONLY_THRUST_COEFF = 0.5  # SWAY 전용 추력 계수
     DOCK_ANGLE_COMPENSATION_BASE = 1.0  # 각도 보상 기본값

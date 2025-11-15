@@ -88,6 +88,15 @@ class ParameterManager:
             rotation_params.update(waypoint_params)
             return rotation_params
 
+        elif mission_type == MissionType.DOCK_MODE:
+            # 도킹 미션 파라미터: trackbar 파라미터 + waypoint 파라미터 병합
+            dock_params = {k: v for k, v in trackbar_params.items()
+                          if k.startswith('dock_')}
+            # waypoint_params를 먼저 넣고 trackbar로 덮어쓰기 (trackbar 우선순위)
+            # 하지만 target_shape은 waypoint_params 우선
+            result = {**dock_params, **waypoint_params}
+            return result
+
         return {}
 
     def get_force_mission_mode(self) -> int:
