@@ -48,7 +48,7 @@ class WaypointTransitionHandler:
             return True  # 모든 미션 완료
 
         # 거리 계산
-        target_pos = np.array([current_wp['x'], current_wp['y']], dtype=np.float32)
+        target_pos = np.array([current_wp['y'], current_wp['x']], dtype=np.float32)
         distance = np.linalg.norm(agent_position - target_pos)
 
         # 주기적 로그
@@ -220,7 +220,8 @@ class ObstacleAvoidExecutor:
             }
             return [manual_wp], 0
 
-        waypoints = [[wp['x'], wp['y']] for wp in self.waypoint_manager.waypoints]
+        # GPS 웨이포인트는 x, y가 반대로 저장되어 있으므로 다시 반대로
+        waypoints = [[wp['y'], wp['x']] if wp.get('is_gps', False) else [wp['x'], wp['y']] for wp in self.waypoint_manager.waypoints]
         return waypoints, self.waypoint_manager.get_waypoint_index()
 
     def _get_onnx_control(self) -> Tuple[float, float]:

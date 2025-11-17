@@ -105,11 +105,11 @@ class Constants:
     # 웨이포인트 좌표계 모드
     # 0: 로컬 좌표계 (UTM 상대 좌표, 미터 단위)
     # 1: GPS 좌표계 (위도/경도)
-    WAYPOINT_MODE = 0
+    WAYPOINT_MODE = 1
 
     # GPS 기준점 (MODE=1일 때 사용)
-    GPS_REFERENCE_LAT = -33.8568  # Sydney Regatta Centre 기준
-    GPS_REFERENCE_LON = 151.2153
+    GPS_REFERENCE_LAT = -33.72134071972633  # Sydney Regatta Centre 기준
+    GPS_REFERENCE_LON = 150.67390426971753
 
     # 미리 정의된 웨이포인트
     # MODE=0: (x, y, mission_type, radius, params) - x,y는 미터 단위
@@ -118,17 +118,17 @@ class Constants:
     PREDEFINED_WAYPOINTS = [
         # MODE=0 (로컬 좌표) 예시:
         # (160, 0, 'CIRCLE_BUOY', DEFAULT_WAYPOINT_RADIUS, {'rotation_direction': 1, 'circle_radius': 15.0}),
-        (150, -15, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS,{}),
-        (100, 10, 'ROTATION', DEFAULT_WAYPOINT_RADIUS, {'desired_angle': 70.0}),
-        (100, 10, 'DOCK_MODE', DEFAULT_WAYPOINT_RADIUS, {'target_shape': 'red_square'}),
-        (155, 55, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {}),
-        (80, 45, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {}),
-        (0, 0, 'PASS_BETWEEN_BUOYS', DEFAULT_WAYPOINT_RADIUS, {})
+        # (150, -15, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS,{}),
+        # (100, 10, 'ROTATION', DEFAULT_WAYPOINT_RADIUS, {'desired_angle': 70.0}),
+        # (100, 10, 'DOCK_MODE', DEFAULT_WAYPOINT_RADIUS, {'target_shape': 'red_square'}),
+        # (155, 55, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {}),
+        # (80, 45, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {}),
+        # (0, 0, 'PASS_BETWEEN_BUOYS', DEFAULT_WAYPOINT_RADIUS, {})
 
         # MODE=1 (GPS 좌표) 예시: (WAYPOINT_MODE를 1로 변경 후 사용)
-        # (-33.8570, 151.2155, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {}),
-        # (-33.8575, 151.2160, 'CIRCLE_BUOY', DEFAULT_WAYPOINT_RADIUS, {'rotation_direction': 1}),
-        # (-33.8580, 151.2165, 'DOCK_MODE', DEFAULT_WAYPOINT_RADIUS, {'target_shape': 'red_square'}),
+        (-33.72168257390378, 150.67388097019614, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {}),
+        (-33.8575, 151.2160, 'CIRCLE_BUOY', DEFAULT_WAYPOINT_RADIUS, {'rotation_direction': 1}),
+        (-33.8580, 151.2165, 'DOCK_MODE', DEFAULT_WAYPOINT_RADIUS, {'target_shape': 'red_square'}),
     ]
 
     # ============================================================================
