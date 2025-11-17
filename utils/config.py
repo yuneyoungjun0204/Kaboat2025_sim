@@ -108,8 +108,8 @@ class Constants:
     WAYPOINT_MODE = 1
 
     # GPS 기준점 (MODE=1일 때 사용)
-    GPS_REFERENCE_LAT = -33.72134071972633  # Sydney Regatta Centre 기준
-    GPS_REFERENCE_LON = 150.67390426971753
+    GPS_REFERENCE_LAT = -33.72259952421798  # Sydney Regatta Centre 기준
+    GPS_REFERENCE_LON = 150.67390369752246
 
     # 미리 정의된 웨이포인트
     # MODE=0: (x, y, mission_type, radius, params) - x,y는 미터 단위
@@ -126,7 +126,7 @@ class Constants:
         # (0, 0, 'PASS_BETWEEN_BUOYS', DEFAULT_WAYPOINT_RADIUS, {})
 
         # MODE=1 (GPS 좌표) 예시: (WAYPOINT_MODE를 1로 변경 후 사용)
-        (-33.72168257390378, 150.67388097019614, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {}),
+        (-33.721297465088334, 150.6739411790103, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {}),
         (-33.8575, 151.2160, 'CIRCLE_BUOY', DEFAULT_WAYPOINT_RADIUS, {'rotation_direction': 1}),
         (-33.8580, 151.2165, 'DOCK_MODE', DEFAULT_WAYPOINT_RADIUS, {'target_shape': 'red_square'}),
     ]

@@ -142,7 +142,7 @@ class ONNXController:
             float(angular_velocity_y)     # deg/s
         ]
 
-        for waypoint in [agent_position, current_waypoint, previous_waypoint, next_waypoint]:
+        for waypoint in [[agent_position[1],agent_position[0]], [current_waypoint[1],current_waypoint[0]], [previous_waypoint[1],previous_waypoint[0]], [next_waypoint[1],next_waypoint[0]]]:
             observation_values.extend([0.0 if np.isinf(v) or np.isnan(v) else float(v) for v in waypoint[:2]])
 
         observation_values.extend([
