@@ -114,16 +114,18 @@ class LOSGuidance:
 class ObstacleDetector:
     """장애물 감지 시스템"""
 
-    def __init__(self, boat_width=2.2, boat_height=50.0, max_lidar_distance=100.0):
+    def __init__(self, boat_width=2.2, boat_height=50.0, max_lidar_distance=100.0, obstacle_count_threshold=5):
         """
         Args:
             boat_width: 배 폭 (미터)
             boat_height: 배 높이 (미터)
             max_lidar_distance: LiDAR 최대 거리 (미터)
+            obstacle_count_threshold: ONNX 모드 전환을 위한 최소 장애물 감지 개수
         """
         self.boat_width = boat_width
         self.boat_height = boat_height
         self.max_lidar_distance = max_lidar_distance
+        self.obstacle_count_threshold = obstacle_count_threshold
 
     @staticmethod
     def normalize_angle(angle: float) -> float:
@@ -189,7 +191,7 @@ class ObstacleDetector:
         range_theta = self.calculate_range_theta(L)
 
         check_area_points = []
-        obstacle_found = False
+        obstacle_count = 0  # 장애물 개수 카운팅
 
         # 1. LOS target으로 가는 경로 체크
         # 상대 각도를 중심으로 배 폭만큼의 범위를 체크
@@ -221,9 +223,9 @@ class ObstacleDetector:
             if lidar_distance > self.max_lidar_distance or lidar_distance < 0.0 or np.isinf(lidar_distance):
                 lidar_distance = self.max_lidar_distance
 
-            # 장애물 감지
+            # 장애물 감지 (개수 카운팅)
             if lidar_distance < search_distance:
-                obstacle_found = True
+                obstacle_count += 1
 
         # 2. 정면 20m 이내 긴급 장애물 검사
         L_front = 20.0
@@ -254,9 +256,12 @@ class ObstacleDetector:
             if lidar_distance > self.max_lidar_distance or lidar_distance < 0.0 or np.isinf(lidar_distance):
                 lidar_distance = self.max_lidar_distance
 
-            # 장애물 감지
+            # 장애물 감지 (개수 카운팅)
             if lidar_distance < search_distance:
-                obstacle_found = True
+                obstacle_count += 1
+
+        # 임계값과 비교하여 장애물 존재 여부 결정
+        obstacle_found = obstacle_count >= self.obstacle_count_threshold
 
         return obstacle_found, check_area_points
 
@@ -366,7 +371,7 @@ class AvoidanceController:
 
     def __init__(self, boat_width=2.2, boat_height=50.0, max_lidar_distance=100.0,
                  los_delta=10.0, los_lookahead_min=30.0, los_lookahead_max=80.0,
-                 filter_alpha=0.35):
+                 filter_alpha=0.35, obstacle_count_threshold=5):
         """
         Args:
             boat_width: 배 폭 (미터)
@@ -376,9 +381,10 @@ class AvoidanceController:
             los_lookahead_min: 최소 look-ahead 거리 (미터)
             los_lookahead_max: 최대 look-ahead 거리 (미터)
             filter_alpha: 필터 계수
+            obstacle_count_threshold: ONNX 모드 전환을 위한 최소 장애물 감지 개수
         """
         self.los_guidance = LOSGuidance(los_delta, los_lookahead_min, los_lookahead_max)
-        self.obstacle_detector = ObstacleDetector(boat_width, boat_height, max_lidar_distance)
+        self.obstacle_detector = ObstacleDetector(boat_width, boat_height, max_lidar_distance, obstacle_count_threshold)
         self.low_pass_filter = LowPassFilter(filter_alpha)
 
     def get_los_target(self, current_pos: np.ndarray, waypoints: List,

@@ -12,7 +12,8 @@
       "Bash(find:*)",
       "Read(//c/Users/ANSL/Downloads/**)",
       "Bash(git restore:*)",
-      "Bash(chmod:*)"
+      "Bash(chmod:*)",
+      "Bash(pip install:*)"
     ],
     "deny": [],
     "ask": []

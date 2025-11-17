@@ -20,6 +20,7 @@ from matplotlib.figure import Figure
 from matplotlib.patches import Polygon, Circle, FancyArrow
 
 from utils import Constants, SensorDataManager
+from utils.sensor_callbacks import LidarFilter
 
 
 class CoordinateTransformer:
@@ -438,6 +439,24 @@ class UnifiedVizNode(Node):
         self.plot_manager = UnifiedPlotManager(self.get_logger())
         self.transformer = CoordinateTransformer()
 
+        # LiDAR 필터 초기화 (sensor_callbacks와 동일한 설정)
+        self.lidar_filter = None
+        self.lidar_cartesian_x = np.array([])
+        self.lidar_cartesian_y = np.array([])
+        if Constants.LIDAR_FILTER_ENABLED:
+            self.lidar_filter = LidarFilter(
+                min_valid_distance=Constants.LIDAR_MIN_VALID_DISTANCE,
+                max_valid_distance=Constants.LIDAR_MAX_VALID_DISTANCE,
+                median_window=Constants.LIDAR_MEDIAN_FILTER_WINDOW,
+                temporal_alpha=Constants.LIDAR_TEMPORAL_FILTER_ALPHA,
+                array_size=Constants.LIDAR_ARRAY_SIZE
+            )
+            self.get_logger().info(
+                f"✓ LiDAR 필터 활성화 - Median: {Constants.LIDAR_MEDIAN_FILTER_WINDOW}, "
+                f"Temporal: {Constants.LIDAR_TEMPORAL_FILTER_ALPHA}, "
+                f"Scale: {Constants.LIDAR_SCALE_FACTOR}"
+            )
+
         # 데이터 히스토리 (NED 좌표)
         self.position_history = deque(maxlen=Constants.Visualization.POSITION_HISTORY_MAXLEN)
         self.heading_history = deque(maxlen=Constants.Visualization.HEADING_HISTORY_MAXLEN)
@@ -535,8 +554,58 @@ class UnifiedVizNode(Node):
         self.heading_history.append(self.current_heading)
 
     def lidar_callback(self, msg):
-        """LiDAR 데이터 콜백"""
-        self.sensor_manager.process_lidar_data(msg)
+        """LiDAR 데이터 콜백 (전처리 포함)"""
+        # sensor_callbacks.py와 동일한 전처리 로직 적용
+        ranges = np.array(msg.ranges, dtype=np.float32)
+        angle_min = msg.angle_min
+        angle_increment = msg.angle_increment
+
+        raw_ranges = np.full(
+            Constants.LIDAR_ARRAY_SIZE,
+            Constants.MAX_LIDAR_DISTANCE,
+            dtype=np.float32
+        )
+
+        # 1. 원본 데이터 변환 및 스케일 적용
+        for i in range(len(ranges)):
+            angle_rad = angle_min + i * angle_increment
+            angle_deg = np.degrees(angle_rad)
+
+            if Constants.LIDAR_ANGLE_RANGE[0] <= angle_deg <= Constants.LIDAR_ANGLE_RANGE[1]:
+                distance = ranges[i]
+                if np.isinf(distance) or np.isnan(distance) or distance >= Constants.MAX_LIDAR_DISTANCE:
+                    distance = Constants.MAX_LIDAR_DISTANCE
+                else:
+                    # LIDAR_SCALE_FACTOR 적용
+                    distance = distance / Constants.LIDAR_SCALE_FACTOR
+
+                idx = int(angle_deg + 100)
+                idx = max(0, min(Constants.LIDAR_ARRAY_SIZE - 1, idx))
+                raw_ranges[idx] = distance
+
+        # 2. 필터 적용 (활성화된 경우)
+        if self.lidar_filter is not None:
+            filtered_ranges = self.lidar_filter.filter(raw_ranges)
+        else:
+            filtered_ranges = raw_ranges
+
+        # 3. 직교좌표로 변환 (시각화용)
+        # 각도 배열 생성 (-100도 ~ +100도)
+        angles_deg = np.arange(-100, 101, 1)+90  # 201개
+        angles_rad = np.radians(angles_deg)
+
+        # 유효한 데이터만 선택 (최대 거리가 아닌 것)
+        valid_mask = filtered_ranges < Constants.MAX_LIDAR_DISTANCE
+        valid_ranges = filtered_ranges[valid_mask]
+        valid_angles = angles_rad[valid_mask]
+
+        # 직교좌표 변환
+        if len(valid_ranges) > 0:
+            self.lidar_cartesian_y = valid_ranges * np.cos(valid_angles)
+            self.lidar_cartesian_x = valid_ranges * np.sin(valid_angles)
+        else:
+            self.lidar_cartesian_y = np.array([])
+            self.lidar_cartesian_x = np.array([])
 
     def control_callback(self, msg):
         """제어 출력 콜백"""
@@ -604,13 +673,13 @@ class UnifiedVizNode(Node):
                 target_heading
             )
 
-            # 2. LiDAR 업데이트
+            # 2. LiDAR 업데이트 (전처리된 데이터 사용)
             if self.current_heading is not None:
-                lidar_x, lidar_y = self.sensor_manager.get_lidar_cartesian()
-                if len(lidar_x) > 0:
+                # 전처리된 LiDAR 데이터 사용
+                if len(self.lidar_cartesian_x) > 0:
                     self.plot_manager.update_lidar(
-                        lidar_x, lidar_y,
-                        self.current_position,
+                        self.lidar_cartesian_y, self.lidar_cartesian_x,
+                        [self.current_position[0],self.current_position[1]],
                         self.current_heading
                     )
 

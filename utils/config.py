@@ -81,7 +81,16 @@ class Constants:
     LIDAR_ARRAY_SIZE = 201
     MAX_LIDAR_DISTANCE = 100.0
     LIDAR_ANGLE_RANGE = (-100, 100)  # degrees
-    LIDAR_SCALE_FACTOR = 0.75  # LiDAR 거리값 스케일 조정 (1.0 = 변환 없음)
+    LIDAR_SCALE_FACTOR = 1.0  # LiDAR 거리값 스케일 조정 (1.0 = 변환 없음)
+    LIDAR_OBSTACLE_COUNT_THRESHOLD = 2  # ONNX 모드 전환을 위한 최소 장애물 감지 개수
+
+    # LiDAR 필터링 설정
+    LIDAR_FILTER_ENABLED = True  # 필터링 활성화 여부
+    LIDAR_MIN_VALID_DISTANCE = 0.1  # 최소 유효 거리 (미터)
+    LIDAR_MAX_VALID_DISTANCE = 100.0  # 최대 유효 거리 (미터)
+    LIDAR_MEDIAN_FILTER_WINDOW = 1  # Median 필터 윈도우 크기 (홀수, 3-7 권장)
+    LIDAR_TEMPORAL_FILTER_ALPHA = 1.0  # 시간적 필터 계수 (0-1, 낮을수록 부드러움)
+    LIDAR_FILTER_DEBUG_LOG_INTERVAL = 100  # 필터링 통계 로그 출력 주기 (프레임 수, 0=비활성화)
 
     # ============================================================================
     # 센서 데이터
@@ -93,19 +102,33 @@ class Constants:
     # ============================================================================
     DEFAULT_WAYPOINT_RADIUS = 15.0
 
-    # 미리 정의된 웨이포인트 (x, y, mission_type, radius, params)
-    # mission_type: 'PASS_BETWEEN_BUOYS', 'CIRCLE_BUOY', 'WAYPOINT_FOLLOW', 'OBSTACLE_AVOID', 'DOCK_MODE'
+    # 웨이포인트 좌표계 모드
+    # 0: 로컬 좌표계 (UTM 상대 좌표, 미터 단위)
+    # 1: GPS 좌표계 (위도/경도)
+    WAYPOINT_MODE = 0
+
+    # GPS 기준점 (MODE=1일 때 사용)
+    GPS_REFERENCE_LAT = -33.8568  # Sydney Regatta Centre 기준
+    GPS_REFERENCE_LON = 151.2153
+
+    # 미리 정의된 웨이포인트
+    # MODE=0: (x, y, mission_type, radius, params) - x,y는 미터 단위
+    # MODE=1: (lat, lon, mission_type, radius, params) - lat,lon은 위도/경도
+    # mission_type: 'PASS_BETWEEN_BUOYS', 'CIRCLE_BUOY', 'WAYPOINT_FOLLOW', 'OBSTACLE_AVOID', 'DOCK_MODE', 'ROTATION'
     PREDEFINED_WAYPOINTS = [
-        # (150, 9, 'PASS_BETWEEN_BUOYS', DEFAULT_WAYPOINT_RADIUS, {}),
-        # (100, 10, 'ROTATION', DEFAULT_WAYPOINT_RADIUS, {'desired_angle': 60.0}),
-        # (100, 10, 'DOCK_MODE', DEFAULT_WAYPOINT_RADIUS, {}),
-        (160, 0, 'CIRCLE_BUOY', DEFAULT_WAYPOINT_RADIUS, {'rotation_direction': 1, 'circle_radius': 15.0}),
+        # MODE=0 (로컬 좌표) 예시:
+        # (160, 0, 'CIRCLE_BUOY', DEFAULT_WAYPOINT_RADIUS, {'rotation_direction': 1, 'circle_radius': 15.0}),
         (150, -15, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS,{}),
         (100, 10, 'ROTATION', DEFAULT_WAYPOINT_RADIUS, {'desired_angle': 70.0}),
         (100, 10, 'DOCK_MODE', DEFAULT_WAYPOINT_RADIUS, {'target_shape': 'red_square'}),
         (155, 55, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {}),
         (80, 45, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {}),
         (0, 0, 'PASS_BETWEEN_BUOYS', DEFAULT_WAYPOINT_RADIUS, {})
+
+        # MODE=1 (GPS 좌표) 예시: (WAYPOINT_MODE를 1로 변경 후 사용)
+        # (-33.8570, 151.2155, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {}),
+        # (-33.8575, 151.2160, 'CIRCLE_BUOY', DEFAULT_WAYPOINT_RADIUS, {'rotation_direction': 1}),
+        # (-33.8580, 151.2165, 'DOCK_MODE', DEFAULT_WAYPOINT_RADIUS, {'target_shape': 'red_square'}),
     ]
 
     # ============================================================================

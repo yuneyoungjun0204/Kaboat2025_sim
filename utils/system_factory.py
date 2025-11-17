@@ -121,9 +121,10 @@ class VRXSystemFactory:
             los_delta=Constants.LOS_DELTA,
             los_lookahead_min=Constants.LOS_LOOKAHEAD_MIN,
             los_lookahead_max=Constants.LOS_LOOKAHEAD_MAX,
-            filter_alpha=Constants.FILTER_ALPHA
+            filter_alpha=Constants.FILTER_ALPHA,
+            obstacle_count_threshold=Constants.LIDAR_OBSTACLE_COUNT_THRESHOLD
         )
-        self.logger.info("✓ 장애물 회피 컨트롤러 초기화 완료")
+        self.logger.info(f"✓ 장애물 회피 컨트롤러 초기화 완료 (장애물 감지 임계값: {Constants.LIDAR_OBSTACLE_COUNT_THRESHOLD}개)")
         return controller
 
     def create_mission_system(
@@ -151,6 +152,18 @@ class VRXSystemFactory:
         # 웨이포인트 관리자
         waypoint_manager = WaypointManager()
         waypoint_manager.setup_predefined_waypoints()
+
+        # 웨이포인트 모드 정보 로깅
+        mode_str = waypoint_manager.get_waypoint_mode_str()
+        total_waypoints = waypoint_manager.get_total_waypoints()
+        self.logger.info(
+            f"✓ 웨이포인트 시스템: {mode_str} 모드, "
+            f"총 {total_waypoints}개 웨이포인트"
+        )
+        if waypoint_manager.waypoint_mode == 1:
+            self.logger.info(
+                f"  GPS 기준점: ({Constants.GPS_REFERENCE_LAT:.6f}, {Constants.GPS_REFERENCE_LON:.6f})"
+            )
 
         # 미션 실행자
         mission_executor = MissionExecutor(mission_manager, waypoint_manager)

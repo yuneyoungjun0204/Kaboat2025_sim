@@ -3,44 +3,125 @@
 웨이포인트 관리 모듈
 - 웨이포인트 추가/관리
 - 미션 전환 로직
+- GPS 좌표 <-> 로컬 좌표 변환 지원
 """
 
 import numpy as np
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Tuple
 from .detection_system import MissionType
 from .config import Constants
 
 
-class WaypointManager:
-    """웨이포인트 관리 시스템"""
+def gps_to_local(lat: float, lon: float, ref_lat: float, ref_lon: float) -> Tuple[float, float]:
+    """
+    GPS 좌표(위도/경도)를 로컬 좌표(미터)로 변환
 
-    def __init__(self):
+    Args:
+        lat: 목표 위도
+        lon: 목표 경도
+        ref_lat: 기준점 위도
+        ref_lon: 기준점 경도
+
+    Returns:
+        (x, y): 로컬 좌표 (미터) - x=Easting, y=Northing
+    """
+    # 위도/경도를 미터 단위로 근사 변환
+    # 1도 ≈ 111,320m (위도), 1도 ≈ 111,320 * cos(위도) m (경도)
+    lat_m = (lat - ref_lat) * 111320.0
+    lon_m = (lon - ref_lon) * 111320.0 * np.cos(np.radians(ref_lat))
+    return lon_m, lat_m  # x=Easting, y=Northing
+
+
+def local_to_gps(x: float, y: float, ref_lat: float, ref_lon: float) -> Tuple[float, float]:
+    """
+    로컬 좌표(미터)를 GPS 좌표(위도/경도)로 변환
+
+    Args:
+        x: 로컬 X 좌표 (Easting, 미터)
+        y: 로컬 Y 좌표 (Northing, 미터)
+        ref_lat: 기준점 위도
+        ref_lon: 기준점 경도
+
+    Returns:
+        (lat, lon): GPS 좌표 (위도, 경도)
+    """
+    lat = ref_lat + (y / 111320.0)
+    lon = ref_lon + (x / (111320.0 * np.cos(np.radians(ref_lat))))
+    return lat, lon
+
+
+class WaypointManager:
+    """
+    웨이포인트 관리 시스템
+    - 로컬 좌표 (MODE=0) 또는 GPS 좌표 (MODE=1) 지원
+    """
+
+    def __init__(self, waypoint_mode: int = None):
+        """
+        Args:
+            waypoint_mode: 웨이포인트 좌표계 모드
+                - 0: 로컬 좌표 (UTM 상대 좌표, 미터)
+                - 1: GPS 좌표 (위도/경도)
+                - None: Constants.WAYPOINT_MODE 사용
+        """
         self.waypoints = []
         self.current_waypoint_index = 0
+        self.waypoint_mode = waypoint_mode if waypoint_mode is not None else Constants.WAYPOINT_MODE
+        self.gps_reference_lat = Constants.GPS_REFERENCE_LAT
+        self.gps_reference_lon = Constants.GPS_REFERENCE_LON
 
     def add_waypoint(self, x: float, y: float, mission_type: MissionType,
-                    radius: float = None, params: Optional[Dict] = None):
+                    radius: float = None, params: Optional[Dict] = None,
+                    is_gps: bool = None):
         """
-        웨이포인트 추가
+        웨이포인트 추가 (로컬 좌표 또는 GPS 좌표)
 
         Args:
-            x: X 좌표
-            y: Y 좌표
+            x: X 좌표 (미터) 또는 위도
+            y: Y 좌표 (미터) 또는 경도
             mission_type: 미션 타입
             radius: 도달 판정 반경 (미터), None이면 기본값 사용
             params: 미션별 파라미터
+            is_gps: True이면 x,y를 GPS 좌표(위도/경도)로 처리,
+                   None이면 self.waypoint_mode 사용
         """
-        waypoint = {
-            'x': x,
-            'y': y,
-            'mission_type': mission_type,
-            'radius': radius if radius is not None else Constants.DEFAULT_WAYPOINT_RADIUS,
-            'params': params if params else {}
-        }
+        # GPS 좌표인지 확인
+        use_gps = is_gps if is_gps is not None else (self.waypoint_mode == 1)
+
+        # GPS 좌표를 로컬 좌표로 변환
+        if use_gps:
+            lat, lon = x, y
+            x_local, y_local = gps_to_local(lat, lon, self.gps_reference_lat, self.gps_reference_lon)
+            waypoint = {
+                'x': x_local,
+                'y': y_local,
+                'lat': lat,  # 원본 GPS 좌표 저장
+                'lon': lon,
+                'mission_type': mission_type,
+                'radius': radius if radius is not None else Constants.DEFAULT_WAYPOINT_RADIUS,
+                'params': params if params else {},
+                'is_gps': True
+            }
+        else:
+            waypoint = {
+                'x': x,
+                'y': y,
+                'mission_type': mission_type,
+                'radius': radius if radius is not None else Constants.DEFAULT_WAYPOINT_RADIUS,
+                'params': params if params else {},
+                'is_gps': False
+            }
+
         self.waypoints.append(waypoint)
 
     def setup_predefined_waypoints(self):
-        """미리 정의된 웨이포인트 설정 (config에서 가져오기)"""
+        """
+        미리 정의된 웨이포인트 설정 (config에서 가져오기)
+
+        WAYPOINT_MODE에 따라 자동으로 좌표계 변환:
+        - MODE=0: x,y를 로컬 좌표(미터)로 처리
+        - MODE=1: x,y를 GPS 좌표(위도/경도)로 처리
+        """
         # mission_type 문자열을 MissionType enum으로 변환하는 매핑
         mission_type_map = {
             'PASS_BETWEEN_BUOYS': MissionType.PASS_BETWEEN_BUOYS,
@@ -55,7 +136,8 @@ class WaypointManager:
         for x, y, mission_type_str, radius, params in Constants.PREDEFINED_WAYPOINTS:
             mission_type = mission_type_map.get(mission_type_str)
             if mission_type:
-                self.add_waypoint(x, y, mission_type, radius, params)
+                # waypoint_mode에 따라 is_gps 자동 설정
+                self.add_waypoint(x, y, mission_type, radius, params, is_gps=None)
 
     def check_waypoint_reached(self, agent_position: np.ndarray) -> Optional[Dict]:
         """
@@ -123,3 +205,57 @@ class WaypointManager:
     def is_mission_completed(self) -> bool:
         """모든 미션 완료 여부 확인"""
         return self.current_waypoint_index >= len(self.waypoints)
+
+    def get_waypoint_gps_info(self, index: int = None) -> Optional[Dict]:
+        """
+        웨이포인트의 GPS 정보 반환
+
+        Args:
+            index: 웨이포인트 인덱스 (None이면 현재 웨이포인트)
+
+        Returns:
+            GPS 정보 딕셔너리 또는 None
+            - 'lat': 위도
+            - 'lon': 경도
+            - 'is_gps': GPS 좌표로 추가되었는지 여부
+        """
+        if index is None:
+            index = self.current_waypoint_index
+
+        if index < 0 or index >= len(self.waypoints):
+            return None
+
+        waypoint = self.waypoints[index]
+
+        if waypoint.get('is_gps', False):
+            return {
+                'lat': waypoint['lat'],
+                'lon': waypoint['lon'],
+                'is_gps': True
+            }
+        else:
+            # 로컬 좌표를 GPS 좌표로 변환
+            lat, lon = local_to_gps(
+                waypoint['x'], waypoint['y'],
+                self.gps_reference_lat, self.gps_reference_lon
+            )
+            return {
+                'lat': lat,
+                'lon': lon,
+                'is_gps': False
+            }
+
+    def set_gps_reference(self, lat: float, lon: float):
+        """
+        GPS 기준점 설정 (런타임에 변경 가능)
+
+        Args:
+            lat: 기준점 위도
+            lon: 기준점 경도
+        """
+        self.gps_reference_lat = lat
+        self.gps_reference_lon = lon
+
+    def get_waypoint_mode_str(self) -> str:
+        """현재 웨이포인트 모드 문자열 반환"""
+        return "GPS 좌표" if self.waypoint_mode == 1 else "로컬 좌표"
