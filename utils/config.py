@@ -4,15 +4,53 @@ VRX 시스템 설정 상수
 - 모든 시스템 파라미터를 중앙 관리
 - ROS 토픽명, PID 게인, 웨이포인트, 미션 파라미터, 파일 경로 등
 
-Version: 2.0 (Refactored 2025-01-15)
-- 통일된 명령 인터페이스 추가
-- ONNX v2 지원
-- Thruster allocation 모듈화
+Version: 3.0 (Refactored 2025-01-18)
+- 환경 전환 시스템 추가 (시뮬레이터/실제 PX4)
+- 모든 하드코딩 파라미터 중앙화
+- Quick Start 가이드 추가
+
+================================================================================
+🚀 QUICK START GUIDE (빠른 시작 가이드)
+================================================================================
+
+1. 환경 전환 (시뮬레이터 ↔ 실제 환경):
+   - 아래 CURRENT_ENVIRONMENT 변수만 수정하세요
+   - Environment.SIMULATOR: Gazebo 시뮬레이터
+   - Environment.REAL_PX4: 실제 Pixhawk 하드웨어
+
+2. 웨이포인트 설정:
+   - PREDEFINED_WAYPOINTS 리스트 수정
+   - WAYPOINT_MODE: 0=로컬좌표(미터), 1=GPS좌표(위경도)
+
+3. 미션별 PID 튜닝:
+   - 각 미션 섹션에서 PID_KP, PID_KI, PID_KD 수정
+   - 예: CIRCLE_PID_KP, DOCK_SWAY_GAIN 등
+
+4. 센서 설정:
+   - LiDAR: LIDAR_ARRAY_SIZE, MAX_LIDAR_DISTANCE
+   - 카메라: Topics.CAMERA_IMAGE
+
+================================================================================
 """
 
 import os
 from pathlib import Path
 from typing import Dict, Any
+
+
+# ============================================================================
+# 🔧 환경 설정 (ENVIRONMENT CONFIGURATION)
+# ============================================================================
+class Environment:
+    """실행 환경 정의"""
+    SIMULATOR = "simulator"    # Gazebo 시뮬레이터
+    REAL_PX4 = "real_px4"      # 실제 Pixhawk 하드웨어
+
+
+# ┌─────────────────────────────────────────────────────────────────────────┐
+# │  🔧 여기만 수정하세요! 시뮬레이터 ↔ 실제 환경 전환                      │
+# └─────────────────────────────────────────────────────────────────────────┘
+CURRENT_ENVIRONMENT = Environment.SIMULATOR
 
 
 class Constants:
@@ -502,15 +540,84 @@ class Constants:
 
 
     # ============================================================================
-    # 강제 미션 모드 설정 (트랙바 값)
+    # 장애물 회피 제어 파라미터 (AvoidControl)
     # ============================================================================
-    class ForceMissionMode:
-        """트랙바로 설정하는 강제 미션 모드"""
-        NORMAL = 0  # 일반 모드 (웨이포인트 기반)
-        OBSTACLE_AVOID = 1  # 강제 장애물 회피 모드
-        PASS_BETWEEN_BUOYS = 2  # 강제 부표 사이 지나기 미션
-        CIRCLE_BUOY = 3  # 강제 부표 한바퀴 돌기 미션
-        DOCK_MODE = 4  # 강제 도킹 미션
+    class AvoidControl:
+        """장애물 회피 컨트롤러 파라미터 (avoid_control.py에서 사용)"""
+
+        # LOS (Line of Sight) Guidance 파라미터
+        LOS_DELTA = 10.0              # 수직 오프셋 (미터)
+        LOS_LOOKAHEAD_MIN = 30.0      # 최소 look-ahead 거리 (미터)
+        LOS_LOOKAHEAD_MAX = 80.0      # 최대 look-ahead 거리 (미터)
+        LOS_LOOKAHEAD_FACTOR = 1.0    # look-ahead 거리 계산 계수
+
+        # ObstacleDetector 파라미터
+        OBSTACLE_BOAT_WIDTH = 2.2     # 배 폭 (미터) - 장애물 검사용
+        OBSTACLE_BOAT_HEIGHT = 50.0   # 배 높이/길이 (미터)
+        OBSTACLE_COUNT_THRESHOLD = 5  # ONNX 모드 전환 최소 감지 개수
+
+        # DirectController 속도 임계값 (거리별 선속도)
+        DIRECT_SPEED_FAR_DISTANCE = 20.0   # 먼 거리 기준 (미터)
+        DIRECT_SPEED_FAR = 1.0             # 먼 거리 속도
+        DIRECT_SPEED_MID_DISTANCE = 10.0   # 중간 거리 기준 (미터)
+        DIRECT_SPEED_MID = 0.6             # 중간 거리 속도
+        DIRECT_SPEED_NEAR = 0.4            # 가까운 거리 속도
+
+        # 긴급 정면 검사
+        L_FRONT = 20.0                # 정면 긴급 장애물 검사 거리 (미터)
+
+        # 1차 저주파 필터 (Low Pass Filter)
+        LPF_ALPHA = 0.35              # 필터 계수 (0-1, 낮을수록 부드러움)
+
+        # 각속도 클리핑
+        ANGULAR_VELOCITY_CLIP = 0.7   # 최대 각속도 (-0.7 ~ 0.7)
+
+    # ============================================================================
+    # 스러스터 제어 파라미터 (ThrusterControl)
+    # ============================================================================
+    class ThrusterControl:
+        """스러스터 및 루프 제어 파라미터"""
+
+        # 스러스터 출력 범위
+        THRUST_MIN = -2000            # 최소 추력
+        THRUST_MAX = 2000             # 최대 추력
+
+        # 제어 루프 최적화 (Jetson 최적화용)
+        PARAM_UPDATE_INTERVAL = 1000  # 파라미터 업데이트 주기 (프레임)
+        ROS_PUBLISH_SKIP_FRAMES = 5   # ROS 발행 스킵 프레임 수
+
+        # 속도-추력 변환
+        DIRECT_THRUST_SCALE = 2000    # main_avoid.py에서 사용
+
+    # ============================================================================
+    # 환경별 오버라이드 (Environment Overrides)
+    # ============================================================================
+    class EnvOverrides:
+        """
+        환경별 파라미터 오버라이드
+
+        CURRENT_ENVIRONMENT에 따라 기본값을 덮어씁니다.
+        여기에 없는 파라미터는 위의 기본값을 사용합니다.
+        """
+
+        # 실제 PX4 환경 오버라이드
+        REAL_PX4 = {
+            'AvoidControl': {
+                'LOS_DELTA': 15.0,           # 실제 환경에서 더 작은 오프셋
+                'LOS_LOOKAHEAD_MIN': 20.0,   # 실제 환경에서 더 짧은 look-ahead
+                'LOS_LOOKAHEAD_MAX': 50.0,
+                'LPF_ALPHA': 0.25,           # 더 부드러운 필터링
+            },
+            'ThrusterControl': {
+                'ROS_PUBLISH_SKIP_FRAMES': 3,  # 더 빈번한 발행
+            },
+            'PX4': {
+                'MAX_VELOCITY': 1.5,         # 실제 환경에서 더 낮은 최대 속도
+            }
+        }
+
+        # 시뮬레이터 환경 (기본값 사용)
+        SIMULATOR = {}
 
 
 
@@ -522,6 +629,50 @@ class Constants:
     # ============================================================================
     # 유틸리티 메서드
     # ============================================================================
+    @classmethod
+    def get_param(cls, category: str, param: str):
+        """
+        환경에 따른 파라미터 값 반환
+
+        Args:
+            category: 파라미터 카테고리 (예: 'AvoidControl', 'ThrusterControl')
+            param: 파라미터 이름 (예: 'LOS_DELTA', 'THRUST_MAX')
+
+        Returns:
+            환경에 맞는 파라미터 값
+
+        Example:
+            >>> Constants.get_param('AvoidControl', 'LOS_DELTA')
+            10.0  # 시뮬레이터 환경
+            15.0  # 실제 PX4 환경
+        """
+        # 기본값 가져오기
+        category_class = getattr(cls, category, None)
+        if category_class is None:
+            raise ValueError(f"Unknown category: {category}")
+
+        base_value = getattr(category_class, param, None)
+        if base_value is None:
+            raise ValueError(f"Unknown param: {category}.{param}")
+
+        # 환경별 오버라이드 확인
+        if CURRENT_ENVIRONMENT == Environment.REAL_PX4:
+            overrides = cls.EnvOverrides.REAL_PX4
+            if category in overrides and param in overrides[category]:
+                return overrides[category][param]
+
+        return base_value
+
+    @classmethod
+    def get_current_environment(cls) -> str:
+        """현재 환경 반환"""
+        return CURRENT_ENVIRONMENT
+
+    @classmethod
+    def is_real_environment(cls) -> bool:
+        """실제 환경인지 확인"""
+        return CURRENT_ENVIRONMENT == Environment.REAL_PX4
+
     @classmethod
     def validate_config(cls) -> Dict[str, Any]:
         """
@@ -574,11 +725,22 @@ class Constants:
         print("VRX System Configuration Summary")
         print("=" * 70)
 
+        # 환경 정보
+        env_name = "Simulator (Gazebo)" if CURRENT_ENVIRONMENT == Environment.SIMULATOR else "Real PX4 (Pixhawk)"
+        print(f"\n🌍 현재 환경: {env_name}")
+
         validation = cls.validate_config()
 
         print(f"\n📊 기본 정보:")
         for key, value in validation['info'].items():
             print(f"  - {key}: {value}")
+
+        # 환경별 오버라이드 정보
+        if CURRENT_ENVIRONMENT == Environment.REAL_PX4:
+            print(f"\n🔧 환경별 오버라이드 적용됨:")
+            for category, params in cls.EnvOverrides.REAL_PX4.items():
+                for param, value in params.items():
+                    print(f"  - {category}.{param}: {value}")
 
         if validation['warnings']:
             print(f"\n⚠️ 경고 ({len(validation['warnings'])}개):")

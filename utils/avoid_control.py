@@ -14,23 +14,25 @@
 import numpy as np
 import math
 from typing import Tuple, Optional, List
+from .config import Constants
 
 
 class LOSGuidance:
     """LOS (Line of Sight) Guidance 시스템"""
 
-    def __init__(self, delta=10.0, lookahead_min=30.0, lookahead_max=80.0, lookahead_factor=1.0):
+    def __init__(self, delta=None, lookahead_min=None, lookahead_max=None, lookahead_factor=None):
         """
         Args:
-            delta: 수직 오프셋 (미터)
-            lookahead_min: 최소 look-ahead 거리 (미터)
-            lookahead_max: 최대 look-ahead 거리 (미터)
-            lookahead_factor: look-ahead 거리 계산 계수
+            delta: 수직 오프셋 (미터) - None이면 config에서 로드
+            lookahead_min: 최소 look-ahead 거리 (미터) - None이면 config에서 로드
+            lookahead_max: 최대 look-ahead 거리 (미터) - None이면 config에서 로드
+            lookahead_factor: look-ahead 거리 계산 계수 - None이면 config에서 로드
         """
-        self.delta = delta
-        self.lookahead_min = lookahead_min
-        self.lookahead_max = lookahead_max
-        self.lookahead_factor = lookahead_factor
+        ac = Constants.AvoidControl
+        self.delta = delta if delta is not None else ac.LOS_DELTA
+        self.lookahead_min = lookahead_min if lookahead_min is not None else ac.LOS_LOOKAHEAD_MIN
+        self.lookahead_max = lookahead_max if lookahead_max is not None else ac.LOS_LOOKAHEAD_MAX
+        self.lookahead_factor = lookahead_factor if lookahead_factor is not None else ac.LOS_LOOKAHEAD_FACTOR
 
     def calculate_crosstrack_error(self, current_pos: np.ndarray, line_start: np.ndarray,
                                    line_end: np.ndarray) -> float:
@@ -114,18 +116,19 @@ class LOSGuidance:
 class ObstacleDetector:
     """장애물 감지 시스템"""
 
-    def __init__(self, boat_width=2.2, boat_height=50.0, max_lidar_distance=100.0, obstacle_count_threshold=5):
+    def __init__(self, boat_width=None, boat_height=None, max_lidar_distance=None, obstacle_count_threshold=None):
         """
         Args:
-            boat_width: 배 폭 (미터)
-            boat_height: 배 높이 (미터)
-            max_lidar_distance: LiDAR 최대 거리 (미터)
-            obstacle_count_threshold: ONNX 모드 전환을 위한 최소 장애물 감지 개수
+            boat_width: 배 폭 (미터) - None이면 config에서 로드
+            boat_height: 배 높이 (미터) - None이면 config에서 로드
+            max_lidar_distance: LiDAR 최대 거리 (미터) - None이면 config에서 로드
+            obstacle_count_threshold: ONNX 모드 전환을 위한 최소 장애물 감지 개수 - None이면 config에서 로드
         """
-        self.boat_width = boat_width
-        self.boat_height = boat_height
-        self.max_lidar_distance = max_lidar_distance
-        self.obstacle_count_threshold = obstacle_count_threshold
+        ac = Constants.AvoidControl
+        self.boat_width = boat_width if boat_width is not None else ac.OBSTACLE_BOAT_WIDTH
+        self.boat_height = boat_height if boat_height is not None else ac.OBSTACLE_BOAT_HEIGHT
+        self.max_lidar_distance = max_lidar_distance if max_lidar_distance is not None else Constants.MAX_LIDAR_DISTANCE
+        self.obstacle_count_threshold = obstacle_count_threshold if obstacle_count_threshold is not None else ac.OBSTACLE_COUNT_THRESHOLD
 
     @staticmethod
     def normalize_angle(angle: float) -> float:
@@ -227,8 +230,8 @@ class ObstacleDetector:
             if lidar_distance < search_distance:
                 obstacle_count += 1
 
-        # 2. 정면 20m 이내 긴급 장애물 검사
-        L_front = 20.0
+        # 2. 정면 긴급 장애물 검사
+        L_front = Constants.AvoidControl.L_FRONT
         range_theta_front = self.calculate_range_theta(L_front)
 
         for i in range(-90, 91):
@@ -314,16 +317,17 @@ class DirectController:
         distance_to_los = np.sqrt((los_target[0] - current_pos[0])**2 +
                                  (los_target[1] - current_pos[1])**2)
 
-        # 각속도: 헤딩 차이에 비례 (-0.7 ~ 0.7)
-        angular_velocity = np.clip(heading_diff_rad / np.pi, -0.7, 0.7)
+        # 각속도: 헤딩 차이에 비례
+        ac = Constants.AvoidControl
+        angular_velocity = np.clip(heading_diff_rad / np.pi, -ac.ANGULAR_VELOCITY_CLIP, ac.ANGULAR_VELOCITY_CLIP)
 
         # 선속도: 거리에 따라 조절
-        if distance_to_los > 20.0:
-            linear_velocity = 1.0
-        elif distance_to_los > 10.0:
-            linear_velocity = 0.6
+        if distance_to_los > ac.DIRECT_SPEED_FAR_DISTANCE:
+            linear_velocity = ac.DIRECT_SPEED_FAR
+        elif distance_to_los > ac.DIRECT_SPEED_MID_DISTANCE:
+            linear_velocity = ac.DIRECT_SPEED_MID
         else:
-            linear_velocity = 0.4
+            linear_velocity = ac.DIRECT_SPEED_NEAR
 
         # 회전 중에는 속도 감소
         linear_velocity = linear_velocity * (1.0 - abs(angular_velocity) * 0.3)
@@ -335,12 +339,12 @@ class DirectController:
 class LowPassFilter:
     """1차 저주파 필터"""
 
-    def __init__(self, alpha=0.35):
+    def __init__(self, alpha=None):
         """
         Args:
-            alpha: 필터 계수 (0~1, 낮을수록 더 부드러움)
+            alpha: 필터 계수 (0~1, 낮을수록 더 부드러움) - None이면 config에서 로드
         """
-        self.alpha = alpha
+        self.alpha = alpha if alpha is not None else Constants.AvoidControl.LPF_ALPHA
         self.filtered_linear_velocity = 0.0
         self.filtered_angular_velocity = 0.0
         self.filtered_left_thrust = 0.0
@@ -369,19 +373,22 @@ class AvoidanceController:
     - LOS guidance, 장애물 감지, 직접 제어를 통합
     """
 
-    def __init__(self, boat_width=2.2, boat_height=50.0, max_lidar_distance=100.0,
-                 los_delta=10.0, los_lookahead_min=30.0, los_lookahead_max=80.0,
-                 filter_alpha=0.35, obstacle_count_threshold=5):
+    def __init__(self, boat_width=None, boat_height=None, max_lidar_distance=None,
+                 los_delta=None, los_lookahead_min=None, los_lookahead_max=None,
+                 filter_alpha=None, obstacle_count_threshold=None):
         """
         Args:
-            boat_width: 배 폭 (미터)
-            boat_height: 배 높이 (미터)
-            max_lidar_distance: LiDAR 최대 거리 (미터)
-            los_delta: LOS 수직 오프셋 (미터)
-            los_lookahead_min: 최소 look-ahead 거리 (미터)
-            los_lookahead_max: 최대 look-ahead 거리 (미터)
-            filter_alpha: 필터 계수
-            obstacle_count_threshold: ONNX 모드 전환을 위한 최소 장애물 감지 개수
+            boat_width: 배 폭 (미터) - None이면 config에서 로드
+            boat_height: 배 높이 (미터) - None이면 config에서 로드
+            max_lidar_distance: LiDAR 최대 거리 (미터) - None이면 config에서 로드
+            los_delta: LOS 수직 오프셋 (미터) - None이면 config에서 로드
+            los_lookahead_min: 최소 look-ahead 거리 (미터) - None이면 config에서 로드
+            los_lookahead_max: 최대 look-ahead 거리 (미터) - None이면 config에서 로드
+            filter_alpha: 필터 계수 - None이면 config에서 로드
+            obstacle_count_threshold: ONNX 모드 전환을 위한 최소 장애물 감지 개수 - None이면 config에서 로드
+
+        Note:
+            모든 파라미터가 None이면 Constants.AvoidControl에서 기본값을 로드합니다.
         """
         self.los_guidance = LOSGuidance(los_delta, los_lookahead_min, los_lookahead_max)
         self.obstacle_detector = ObstacleDetector(boat_width, boat_height, max_lidar_distance, obstacle_count_threshold)

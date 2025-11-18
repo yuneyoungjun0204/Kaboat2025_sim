@@ -161,9 +161,11 @@ class VRXObstacleAvoidController(Node):
 
     def _calc_thrust(self, linear: float, angular: float) -> tuple:
         """선속도/각속도 → 스러스터"""
-        fwd = linear * 2000
-        turn = angular * 2000
-        return (np.clip(fwd + turn, -2000, 2000), np.clip(fwd - turn, -2000, 2000))
+        tc = Constants.ThrusterControl
+        fwd = linear * tc.DIRECT_THRUST_SCALE
+        turn = angular * tc.DIRECT_THRUST_SCALE
+        return (np.clip(fwd + turn, tc.THRUST_MIN, tc.THRUST_MAX),
+                np.clip(fwd - turn, tc.THRUST_MIN, tc.THRUST_MAX))
 
     def _log(self, msg: str, header: bool = False):
         """로그 헬퍼"""

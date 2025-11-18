@@ -74,8 +74,6 @@ class VisualizationSystem:
             'circle_tx_min_x': Constants.CIRCLE_TX_MIN_X,
             'circle_tx_max_x': Constants.CIRCLE_TX_MAX_X,
             'pass_max_depth_diff': Constants.PASS_BETWEEN_MAX_DEPTH_DIFF,
-            'force_mission_mode': Constants.ForceMissionMode.NORMAL,
-            'force_obstacle_avoid': False,
             'rotation_gain': Constants.ROTATION_GAIN,
             'rotation_tolerance': Constants.ROTATION_TOLERANCE,
             'rotation_stable_frames': Constants.ROTATION_STABLE_FRAMES,

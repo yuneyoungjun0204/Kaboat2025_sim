@@ -311,8 +311,8 @@ class MissionLoopExecutor:
         self.logger = logger
 
         self.loop_counter = 0
-        self.param_update_interval = 1000  # 거의 업데이트 안함 (Jetson 최적화)
-        self.ros_publish_skip_frames = 5  # ROS 발행 빈도 감소 (Jetson 최적화)
+        self.param_update_interval = Constants.ThrusterControl.PARAM_UPDATE_INTERVAL  # Jetson 최적화
+        self.ros_publish_skip_frames = Constants.ThrusterControl.ROS_PUBLISH_SKIP_FRAMES  # Jetson 최적화
         self.detected_objects = []
         self.raw_detections = []
 
@@ -394,13 +394,8 @@ class MissionLoopExecutor:
             self.ros_comm.publish_thrust_commands(0.0, 0.0)
 
     def _get_effective_mission(self) -> Optional[MissionType]:
-        """유효한 미션 타입 가져오기 (강제 모드 고려)"""
-        current = self.waypoint_manager.get_current_mission_type()
-        if current is None:
-            return None
-
-        forced = self.param_manager.get_forced_mission_type()
-        return forced if forced else current
+        """유효한 미션 타입 가져오기"""
+        return self.waypoint_manager.get_current_mission_type()
 
     def _update_parameters(self, mission_type: MissionType):
         """파라미터 업데이트"""
@@ -519,20 +514,11 @@ class MissionLoopExecutor:
 
     def _execute_obstacle_avoid(self) -> Tuple[float, float]:
         """장애물 회피 미션 실행"""
-        manual_target = None
-        if self.param_manager.is_force_obstacle_avoid():
-            if self.sensor_handler.manual_target_x and self.sensor_handler.manual_target_y:
-                manual_target = (
-                    self.sensor_handler.manual_target_x,
-                    self.sensor_handler.manual_target_y
-                )
-
         linear_vel, angular_vel = self.obstacle_avoid_executor.execute(
             self.sensor_handler.agent_position,
             self.sensor_handler.agent_heading,
             self.sensor_handler.lidar_distances,
-            self.sensor_handler.get_lidar_distance_at_angle,
-            manual_target
+            self.sensor_handler.get_lidar_distance_at_angle
         )
 
         return self._convert_to_thrust(linear_vel, angular_vel)
@@ -577,8 +563,9 @@ class MissionLoopExecutor:
         forward = linear_vel * thrust_scale
         turn = angular_vel * thrust_scale
 
-        left = np.clip(forward + turn, -2000, 2000)
-        right = np.clip(forward - turn, -2000, 2000)
+        tc = Constants.ThrusterControl
+        left = np.clip(forward + turn, tc.THRUST_MIN, tc.THRUST_MAX)
+        right = np.clip(forward - turn, tc.THRUST_MIN, tc.THRUST_MAX)
 
         return float(left), float(right)
 
