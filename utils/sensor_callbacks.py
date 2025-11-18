@@ -260,6 +260,39 @@ class SensorCallbackHandler:
             Constants.ANGULAR_VELOCITY_LIMIT[1]
         )
 
+    def px4_odometry_callback(self, msg) -> None:
+        """
+        PX4 Odometry 콜백 - 각속도와 heading 업데이트
+
+        VehicleOdometry 메시지에서:
+        - angular_velocity[2]: z축 각속도 (yaw rate, rad/s)
+        - q: quaternion (orientation)
+
+        Note: PX4 모드에서만 사용됨
+        """
+        import math
+
+        # 각속도 처리 (z축, rad/s → deg/s)
+        angular_velocity_z_rad = msg.angular_velocity[2]
+        angular_velocity_z_deg = np.degrees(angular_velocity_z_rad)
+        self.angular_velocity_y = np.clip(
+            angular_velocity_z_deg,
+            Constants.ANGULAR_VELOCITY_LIMIT[0],
+            Constants.ANGULAR_VELOCITY_LIMIT[1]
+        )
+
+        # Quaternion에서 Yaw 추출
+        # q = [w, x, y, z] (PX4 순서)
+        q = msg.q
+        # Yaw (z축 회전)
+        siny_cosp = 2.0 * (q[0] * q[3] + q[1] * q[2])
+        cosy_cosp = 1.0 - 2.0 * (q[2] * q[2] + q[3] * q[3])
+        yaw_rad = math.atan2(siny_cosp, cosy_cosp)
+        yaw_deg = np.degrees(yaw_rad)
+
+        # NED 좌표계로 정규화 (-180 ~ 180)
+        self.agent_heading = normalize_angle_180(yaw_deg)
+
     def lidar_callback(self, msg: LaserScan) -> None:
         """LiDAR 콜백 (필터링 포함)"""
         ranges = np.array(msg.ranges, dtype=np.float32)

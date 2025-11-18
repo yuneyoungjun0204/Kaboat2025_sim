@@ -12,6 +12,14 @@ from geometry_msgs.msg import Point
 from std_msgs.msg import Float64, Float64MultiArray, String, Bool
 from .config import Constants
 
+# PX4 메시지 (optional)
+try:
+    from px4_msgs.msg import VehicleOdometry
+    PX4_MSGS_AVAILABLE = True
+except ImportError:
+    PX4_MSGS_AVAILABLE = False
+    VehicleOdometry = None
+
 
 class ROSCommunicationManager:
     """
@@ -86,6 +94,22 @@ class ROSCommunicationManager:
                 Constants.Topics.WAYPOINT,
                 callbacks['waypoint'],
                 Constants.QueueSizes.DEFAULT
+            )
+
+        # PX4 Odometry 구독 (각속도, heading 등)
+        if 'px4_odometry' in callbacks and Constants.PX4.ENABLED and PX4_MSGS_AVAILABLE:
+            # PX4 QoS 설정
+            px4_qos = QoSProfile(
+                reliability=ReliabilityPolicy.BEST_EFFORT,
+                durability=DurabilityPolicy.TRANSIENT_LOCAL,
+                history=HistoryPolicy.KEEP_LAST,
+                depth=1
+            )
+            self.subscribers['px4_odometry'] = self.node.create_subscription(
+                VehicleOdometry,
+                Constants.Topics.PX4_VEHICLE_ODOMETRY,
+                callbacks['px4_odometry'],
+                px4_qos
             )
 
     def setup_publishers(self) -> None:

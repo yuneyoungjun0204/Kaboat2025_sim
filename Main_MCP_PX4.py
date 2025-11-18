@@ -25,10 +25,11 @@ import numpy as np
 
 # PX4 메시지
 try:
-    from px4_msgs.msg import VehicleGlobalPosition, VehicleLocalPosition
+    from px4_msgs.msg import VehicleGlobalPosition, VehicleLocalPosition, VehicleOdometry
     PX4_MSGS_AVAILABLE = True
 except ImportError:
     PX4_MSGS_AVAILABLE = False
+    VehicleOdometry = None
     print("Warning: px4_msgs not found. PX4 sensor subscription disabled.")
 
 from utils import Constants, VRXSystemFactory
@@ -154,6 +155,14 @@ class VRXMissionControllerPX4(Node):
             px4_qos
         )
 
+        # VehicleOdometry (각속도)
+        self.create_subscription(
+            VehicleOdometry,
+            '/fmu/out/vehicle_odometry',
+            self._px4_odometry_callback,
+            px4_qos
+        )
+
         # Livox LiDAR (PointCloud2)
         self.create_subscription(
             PointCloud2,
@@ -184,10 +193,26 @@ class VRXMissionControllerPX4(Node):
         # sensor_handler에 헤딩 업데이트 (도 단위)
         self.sensor_handler.agent_heading = self.px4_adapter.get_heading_deg()
 
-        # angular velocity 업데이트 (도/초)
-        # PX4에서는 직접적인 angular velocity가 없으므로 추정 필요
-        # 현재는 0으로 설정 (IMU에서 별도로 받을 수 있음)
-        # self.sensor_handler.angular_velocity_y = 0.0
+    def _px4_odometry_callback(self, msg):
+        """
+        PX4 Odometry 콜백 - 각속도 업데이트
+
+        VehicleOdometry 메시지에서 angular_velocity를 가져와서
+        sensor_handler에 업데이트합니다.
+        """
+        # 각속도 (body frame, rad/s)
+        # angular_velocity[0] = roll rate
+        # angular_velocity[1] = pitch rate
+        # angular_velocity[2] = yaw rate (z축)
+        angular_velocity_z_rad = msg.angular_velocity[2]
+
+        # rad/s → deg/s 변환 및 클리핑
+        angular_velocity_z_deg = np.degrees(angular_velocity_z_rad)
+        self.sensor_handler.angular_velocity_y = np.clip(
+            angular_velocity_z_deg,
+            Constants.ANGULAR_VELOCITY_LIMIT[0],
+            Constants.ANGULAR_VELOCITY_LIMIT[1]
+        )
 
     def _px4_lidar_callback(self, msg):
         """PX4 LiDAR (PointCloud2) 콜백"""

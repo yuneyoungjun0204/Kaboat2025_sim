@@ -411,6 +411,7 @@ class Constants:
         PX4_VEHICLE_GLOBAL_POSITION = '/fmu/out/vehicle_global_position'
         PX4_VEHICLE_LOCAL_POSITION = '/fmu/out/vehicle_local_position'
         PX4_POSITION_SETPOINT_TRIPLET = '/fmu/out/position_setpoint_triplet'
+        PX4_VEHICLE_ODOMETRY = '/fmu/out/vehicle_odometry'  # 각속도, 위치, 속도
 
 
 
