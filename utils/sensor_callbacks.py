@@ -200,6 +200,9 @@ class SensorCallbackHandler:
         self.manual_target_x = None
         self.manual_target_y = None
 
+        # 웨이포인트 관리자 (나중에 설정됨)
+        self.waypoint_manager = None
+
         # LiDAR 필터 초기화
         self.lidar_filter = None
         self.lidar_frame_count = 0  # 필터링 통계용 프레임 카운터
@@ -217,6 +220,10 @@ class SensorCallbackHandler:
                 f"Range: [{Constants.LIDAR_MIN_VALID_DISTANCE}, {Constants.LIDAR_MAX_VALID_DISTANCE}]m"
             )
 
+    def set_waypoint_manager(self, waypoint_manager):
+        """웨이포인트 관리자 설정"""
+        self.waypoint_manager = waypoint_manager
+
     def image_callback(self, msg: Image) -> None:
         """이미지 콜백"""
         try:
@@ -231,6 +238,12 @@ class SensorCallbackHandler:
             self.agent_position = np.array([gps_data['utm_y'], gps_data['utm_x']], dtype=np.float32)
             if not self.reference_point_set:
                 self.reference_point_set = True
+                # 웨이포인트 관리자에 초기 위치 설정 (웨이포인트 재계산)
+                if self.waypoint_manager is not None:
+                    self.waypoint_manager.set_initial_position(msg.latitude, msg.longitude)
+                    self.logger.info(
+                        f"초기 위치 설정: lat={msg.latitude:.8f}, lon={msg.longitude:.8f}"
+                    )
 
     def imu_callback(self, msg: Imu) -> None:
         """

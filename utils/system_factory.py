@@ -305,6 +305,9 @@ class VRXSystemFactory:
         # 8. 트래커
         tracker = self.create_tracker()
 
+        # sensor_handler에 waypoint_manager 설정 (GPS 콜백에서 초기 위치 설정용)
+        sensor_handler.set_waypoint_manager(waypoint_manager)
+
         components = {
             'depth_estimator': depth_estimator,
             'detection_system': detection_system,
@@ -369,6 +372,9 @@ class VRXSystemFactory:
 
         # 4. ONNX 컨트롤러
         onnx_controller = self.create_onnx_controller()
+
+        # sensor_handler에 waypoint_manager 설정 (GPS 콜백에서 초기 위치 설정용)
+        sensor_handler.set_waypoint_manager(waypoint_manager)
 
         components = {
             'sensor_handler': sensor_handler,

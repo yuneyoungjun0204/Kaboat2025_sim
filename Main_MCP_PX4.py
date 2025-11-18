@@ -40,6 +40,7 @@ from utils.mission_control import (
     ObstacleAvoidExecutor
 )
 from utils.px4_adapter import PX4SensorAdapter, CoordinateConverter
+from utils.waypoint_manager import gps_to_local
 
 
 class VRXMissionControllerPX4(Node):
@@ -175,15 +176,25 @@ class VRXMissionControllerPX4(Node):
 
     def _px4_global_position_callback(self, msg):
         """PX4 Global Position 콜백"""
-        # NED 좌표로 변환
-        ned_pos = self.px4_adapter.process_global_position(msg.lat, msg.lon, msg.alt)
+        # 미션 시작 시 첫 번째 현재 위치를 기준점으로 설정
+        if not self.waypoint_manager.is_initial_position_set():
+            self.waypoint_manager.set_initial_position(msg.lat, msg.lon)
+            self.get_logger().info(
+                f"초기 위치 설정: lat={msg.lat:.8f}, lon={msg.lon:.8f}"
+            )
 
-        # sensor_handler에 위치 업데이트
-        # UTM 좌표계로 변환 (기존 시스템과 호환)
-        self.sensor_handler.agent_position = np.array(
-            [ned_pos.east, ned_pos.north],  # [x, y] = [East, North]
-            dtype=np.float32
-        )
+        # 미션 시작 위치 기준으로 현재 위치를 로컬 좌표(m)로 변환
+        initial_pos = self.waypoint_manager.get_initial_position()
+        if initial_pos is not None:
+            ref_lat, ref_lon = initial_pos
+            x_local, y_local = gps_to_local(msg.lat, msg.lon, ref_lat, ref_lon)
+            self.sensor_handler.agent_position = np.array(
+                [x_local, y_local],  # [x, y] = [Easting, Northing]
+                dtype=np.float32
+            )
+        else:
+            # 초기 위치 미설정 시 (0, 0)으로 설정
+            self.sensor_handler.agent_position = np.array([0.0, 0.0], dtype=np.float32)
 
     def _px4_local_position_callback(self, msg):
         """PX4 Local Position 콜백"""

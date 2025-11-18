@@ -9,7 +9,7 @@ from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
 from sensor_msgs.msg import Image, LaserScan, NavSatFix, Imu
 from geometry_msgs.msg import Point
-from std_msgs.msg import Float64, Float64MultiArray, String, Bool
+from std_msgs.msg import Float64, Float64MultiArray, String, Bool, Int32
 from .config import Constants
 
 # PX4 메시지 (optional)
@@ -175,6 +175,11 @@ class ROSCommunicationManager:
         )
         self.publishers['desired_force_y'] = self.node.create_publisher(
             Float64, Constants.Topics.DESIRED_FORCE_Y, Constants.QueueSizes.CONTROL
+        )
+
+        # 장애물 회피용 퍼블리셔
+        self.publishers['avoid_yaw'] = self.node.create_publisher(
+            Int32, Constants.Topics.AVOID_YAW, Constants.QueueSizes.CONTROL
         )
 
         # PX4 브릿지 퍼블리셔
@@ -349,6 +354,18 @@ class ROSCommunicationManager:
         msg = Float64MultiArray()
         msg.data = [float(target_x), float(target_y)]
         self.publishers['los_target'].publish(msg)
+
+    def publish_avoid_yaw(self, value: int) -> None:
+        """
+        장애물 회피 yaw 상태 발행 (ONNX 모드가 아닐 때 0, 1 번갈아 발행)
+
+        Args:
+            value: 0 또는 1
+        """
+        from std_msgs.msg import Int32
+        msg = Int32()
+        msg.data = value
+        self.publishers['avoid_yaw'].publish(msg)
 
     def publish_thruster_positions(self, left_pos: float, right_pos: float) -> None:
         """

@@ -159,6 +159,9 @@ class ObstacleAvoidExecutor:
         self.ros_comm = ros_comm
         self.logger = logger
 
+        # avoid_yaw 토글 상태 (ONNX 모드가 아닐 때 0, 1 번갈아 발행)
+        self.avoid_yaw_toggle = 0
+
     def execute(
         self,
         agent_position: np.ndarray,
@@ -221,8 +224,12 @@ class ObstacleAvoidExecutor:
             }
             return [manual_wp], 0
 
-        # GPS 웨이포인트는 x, y가 반대로 저장되어 있으므로 다시 반대로
-        waypoints = [[wp['y'], wp['x']] if wp.get('is_gps', False) else [wp['x'], wp['y']] for wp in self.waypoint_manager.waypoints]
+        # 미션 시작 위치 기준으로 웨이포인트 좌표를 m 단위로 변환
+        waypoints = []
+        for i in range(len(self.waypoint_manager.waypoints)):
+            x, y = self.waypoint_manager.get_waypoint_relative_to_initial(i)
+            waypoints.append([y, x])  # [y, x] 형태로 저장 (기존 호환성)
+
         return waypoints, self.waypoint_manager.get_waypoint_index()
 
     def _get_onnx_control(self) -> Tuple[float, float]:
@@ -258,6 +265,11 @@ class ObstacleAvoidExecutor:
         mode = "DIRECT_CONTROL" if use_direct else "ONNX_MODEL"
         self.ros_comm.publish_control_mode(mode)
         self.ros_comm.publish_control_output(linear_vel, angular_vel)
+
+        # avoid_yaw 토픽 발행 (ONNX 모드가 아닐 때 0, 1 번갈아 발행)
+        if use_direct:
+            self.ros_comm.publish_avoid_yaw(self.avoid_yaw_toggle)
+            self.avoid_yaw_toggle = 1 - self.avoid_yaw_toggle  # 0 <-> 1 토글
 
 
 class MissionLoopExecutor:

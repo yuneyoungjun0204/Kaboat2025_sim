@@ -70,6 +70,11 @@ class WaypointManager:
         self.gps_reference_lat = Constants.GPS_REFERENCE_LAT
         self.gps_reference_lon = Constants.GPS_REFERENCE_LON
 
+        # 미션 시작 시 첫 번째 현재 위치를 기준점으로 저장
+        self.initial_position_lat = None
+        self.initial_position_lon = None
+        self.initial_position_set = False
+
     def add_waypoint(self, x: float, y: float, mission_type: MissionType,
                     radius: float = None, params: Optional[Dict] = None,
                     is_gps: bool = None):
@@ -259,3 +264,81 @@ class WaypointManager:
     def get_waypoint_mode_str(self) -> str:
         """현재 웨이포인트 모드 문자열 반환"""
         return "GPS 좌표" if self.waypoint_mode == 1 else "로컬 좌표"
+
+    def set_initial_position(self, lat: float, lon: float):
+        """
+        미션 시작 시 첫 번째 현재 위치를 기준점으로 설정
+        모든 GPS 웨이포인트의 x, y를 미션 시작 위치 기준으로 재계산
+
+        Args:
+            lat: 현재 위도
+            lon: 현재 경도
+        """
+        if not self.initial_position_set:
+            self.initial_position_lat = lat
+            self.initial_position_lon = lon
+            self.initial_position_set = True
+
+            # 모든 GPS 웨이포인트의 x, y를 미션 시작 위치 기준으로 재계산
+            self._recalculate_all_waypoints_from_initial()
+
+    def _recalculate_all_waypoints_from_initial(self):
+        """
+        모든 GPS 웨이포인트의 x, y를 미션 시작 위치 기준으로 재계산
+        """
+        if not self.initial_position_set:
+            return
+
+        for waypoint in self.waypoints:
+            if waypoint.get('is_gps', False):
+                # GPS 좌표를 미션 시작 위치 기준 로컬 좌표로 재계산
+                x_local, y_local = gps_to_local(
+                    waypoint['lat'], waypoint['lon'],
+                    self.initial_position_lat, self.initial_position_lon
+                )
+                waypoint['x'] = x_local
+                waypoint['y'] = y_local
+
+    def get_waypoint_relative_to_initial(self, waypoint_index: int = None) -> Tuple[float, float]:
+        """
+        현재 웨이포인트를 미션 시작 위치 기준 상대 좌표(m)로 반환
+
+        Args:
+            waypoint_index: 웨이포인트 인덱스 (None이면 현재 웨이포인트)
+
+        Returns:
+            (x, y): 미션 시작 위치 기준 상대 좌표 (미터)
+        """
+        if waypoint_index is None:
+            waypoint_index = self.current_waypoint_index
+
+        if waypoint_index < 0 or waypoint_index >= len(self.waypoints):
+            return 0.0, 0.0
+
+        waypoint = self.waypoints[waypoint_index]
+
+        # 미션 시작 위치가 설정되지 않은 경우 기존 방식 사용
+        if not self.initial_position_set:
+            return waypoint['x'], waypoint['y']
+
+        # GPS 좌표로 추가된 웨이포인트인 경우
+        if waypoint.get('is_gps', False):
+            # 미션 시작 위치를 기준으로 m 변환
+            x_local, y_local = gps_to_local(
+                waypoint['lat'], waypoint['lon'],
+                self.initial_position_lat, self.initial_position_lon
+            )
+            return x_local, y_local
+        else:
+            # 로컬 좌표로 추가된 경우 그대로 반환
+            return waypoint['x'], waypoint['y']
+
+    def is_initial_position_set(self) -> bool:
+        """미션 시작 위치가 설정되었는지 확인"""
+        return self.initial_position_set
+
+    def get_initial_position(self) -> Optional[Tuple[float, float]]:
+        """미션 시작 위치 반환 (lat, lon)"""
+        if self.initial_position_set:
+            return self.initial_position_lat, self.initial_position_lon
+        return None

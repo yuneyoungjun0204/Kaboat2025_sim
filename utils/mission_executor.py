@@ -149,27 +149,28 @@ class MissionExecutor:
         )
 
     def get_waypoint_positions(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """웨이포인트 위치 반환 (ONNX 제어용)"""
+        """웨이포인트 위치 반환 (ONNX 제어용) - 미션 시작 위치 기준 상대 좌표"""
         waypoints = self.waypoint_manager.waypoints
         current_idx = self.waypoint_manager.get_waypoint_index()
 
         zeros = np.zeros(2, dtype=np.float32)
 
         if current_idx < len(waypoints):
-            current = waypoints[current_idx]
-            current_target = np.array([current['x'], current['y']], dtype=np.float32)
+            # 미션 시작 위치 기준 상대 좌표 사용
+            x, y = self.waypoint_manager.get_waypoint_relative_to_initial(current_idx)
+            current_target = np.array([x, y], dtype=np.float32)
         else:
             current_target = zeros
 
         if current_idx > 0:
-            prev = waypoints[current_idx - 1]
-            previous_target = np.array([prev['x'], prev['y']], dtype=np.float32)
+            x, y = self.waypoint_manager.get_waypoint_relative_to_initial(current_idx - 1)
+            previous_target = np.array([x, y], dtype=np.float32)
         else:
             previous_target = zeros
 
         if current_idx + 1 < len(waypoints):
-            next_wp = waypoints[current_idx + 1]
-            next_target = np.array([next_wp['x'], next_wp['y']], dtype=np.float32)
+            x, y = self.waypoint_manager.get_waypoint_relative_to_initial(current_idx + 1)
+            next_target = np.array([x, y], dtype=np.float32)
         else:
             next_target = current_target.copy()
 
