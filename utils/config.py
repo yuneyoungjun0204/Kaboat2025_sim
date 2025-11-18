@@ -60,6 +60,35 @@ class Constants:
             raise FileNotFoundError(f"ONNX 모델을 찾을 수 없습니다: {cls.MODELS_DIR}")
 
     # ============================================================================
+    # PX4 통합 설정
+    # ============================================================================
+    class PX4:
+        """PX4/Pixhawk 연동 파라미터"""
+
+        # PX4 모드 활성화
+        ENABLED = True
+
+        # 제어 파라미터
+        MAX_VELOCITY = 2.0          # 최대 전진 속도 (m/s)
+        MAX_YAW_RATE = 1.0          # 최대 yaw rate (rad/s)
+        CONTROL_RATE_HZ = 50.0      # 제어 주기 (Hz)
+
+        # 좌표계 원점 (LLA to NED 변환용)
+        LAT_ORIGIN = -33.72259952421798   # Sydney Regatta Centre
+        LON_ORIGIN = 150.67390369752246
+        ALT_ORIGIN = 0.0
+
+        # 속도 스케일링
+        VELOCITY_SCALE = 2.0        # desired_speed → m/s 변환 계수
+        YAW_RATE_SCALE = 1.0        # desired_moment → rad/s 변환 계수
+
+        # Offboard 제어 설정
+        OFFBOARD_SETPOINT_COUNT = 10  # Offboard 모드 전환 전 setpoint 개수
+
+        # 위치 제어 전환 임계값
+        POSITION_CONTROL_DISTANCE = 5.0  # 이 거리 이하에서 위치 제어 (m)
+
+    # ============================================================================
     # ROS2 통신 설정
     # ============================================================================
     class QueueSizes:
@@ -126,7 +155,10 @@ class Constants:
         # (0, 0, 'PASS_BETWEEN_BUOYS', DEFAULT_WAYPOINT_RADIUS, {})
 
         # MODE=1 (GPS 좌표) 예시: (WAYPOINT_MODE를 1로 변경 후 사용)
+        # (-33.8575, 151.2160, 'DOCK_MODE', DEFAULT_WAYPOINT_RADIUS,  {'target_shape': 'red_square'}),
         (-33.721297465088334, 150.6739411790103, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {}),
+        (-33.8575, 151.2160, 'DOCK_MODE', DEFAULT_WAYPOINT_RADIUS,  {'target_shape': 'red_square'}),
+        (100, 10, 'ROTATION', DEFAULT_WAYPOINT_RADIUS, {'desired_angle': 70.0}),
         (-33.8575, 151.2160, 'CIRCLE_BUOY', DEFAULT_WAYPOINT_RADIUS, {'rotation_direction': 1}),
         (-33.8580, 151.2165, 'DOCK_MODE', DEFAULT_WAYPOINT_RADIUS, {'target_shape': 'red_square'}),
     ]
@@ -364,6 +396,21 @@ class Constants:
         # trajectory_viz용 추가 토픽
         CURRENT_MODE = '/vrx/current_mode'
         GOAL_CHECK_AREAS = '/vrx/goal_check_areas'
+
+        # ============================================================================
+        # PX4 브릿지 토픽 (Pixhawk 연결용)
+        # ============================================================================
+        # 기존 시스템 → PX4 브릿지 노드 (중간 인터페이스)
+        PX4_VELOCITY_YAW_CMD = '/px4_bridge/velocity_yaw_cmd'  # [u_d, yaw_d]
+        PX4_POSITION_ERROR = '/px4_bridge/position_error'      # [x_e, y_e]
+        PX4_CONTROL_FLAG = '/px4_bridge/control_flag'          # Bool
+
+        # PX4 직접 토픽 (px4_msgs)
+        PX4_OFFBOARD_CONTROL_MODE = '/fmu/in/offboard_control_mode'
+        PX4_TRAJECTORY_SETPOINT = '/fmu/in/trajectory_setpoint'
+        PX4_VEHICLE_GLOBAL_POSITION = '/fmu/out/vehicle_global_position'
+        PX4_VEHICLE_LOCAL_POSITION = '/fmu/out/vehicle_local_position'
+        PX4_POSITION_SETPOINT_TRIPLET = '/fmu/out/position_setpoint_triplet'
 
 
 

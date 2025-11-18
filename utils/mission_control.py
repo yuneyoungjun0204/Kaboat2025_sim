@@ -10,6 +10,7 @@ from typing import Tuple, Optional, Dict, Any, Callable
 import numpy as np
 
 from .detection_system import MissionType
+from .config import Constants
 
 
 class WaypointTransitionHandler:
@@ -319,6 +320,13 @@ class MissionLoopExecutor:
         self.thruster_positions = (None, None)  # (left_pos, right_pos)
         self.target_depth = None  # 목표 객체 depth
 
+        # PX4 명령 변환기
+        if Constants.PX4.ENABLED:
+            from .px4_adapter import PX4CommandConverter
+            self.px4_converter = PX4CommandConverter()
+        else:
+            self.px4_converter = None
+
         # Jetson 최적화: 초기 파라미터 한번만 설정
         self._initialize_parameters_once()
 
@@ -611,7 +619,16 @@ class MissionLoopExecutor:
             if sway_force is not None:
                 desired_force_y = float(np.clip(sway_force, -1.0, 1.0))
 
-        self.ros_comm.publish_desired_control(desired_speed, desired_moment, desired_force_y)
+        # 현재 yaw를 라디안으로 변환
+        current_yaw_rad = np.radians(self.sensor_handler.agent_heading)
+        is_dock_mode = (mission_type == MissionType.DOCK_MODE)
+
+        self.ros_comm.publish_desired_control(
+            desired_speed, desired_moment, desired_force_y,
+            current_yaw=current_yaw_rad, is_dock_mode=is_dock_mode
+        )
+
+        # PX4 브릿지 명령은 publish_desired_control 내에서 자동으로 발행됨
 
         # 스러스트 명령은 매번 발행 (중요)
         self.ros_comm.publish_thrust_commands(left, right)
