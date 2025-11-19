@@ -66,7 +66,7 @@ class Constants:
         PROJECT_ROOT = Path(__file__).parent.parent.absolute()
 
         # NanoOWL 경로
-        NANOOWL_DIR = Path('/home/yuneyoungjun/vrx_ws/src/vrx/vrx_env/nanoowl')
+        NANOOWL_DIR = Path('nanoowl')
 
         # 모델 디렉토리
         MODELS_DIR = PROJECT_ROOT / 'models' / 'correct_IMU' / 'gpu'
