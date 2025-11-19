@@ -296,7 +296,7 @@ class UnifiedPlotManager:
             self.dynamic_elements.append(arrow)
 
     def update_lidar(self, lidar_x: np.ndarray, lidar_y: np.ndarray,
-                     robot_pos: np.ndarray, heading: float):
+                     robot_pos: np.ndarray, heading: float, target_heading: float = None):
         """LiDAR 데이터 업데이트
 
         Args:
@@ -321,6 +321,17 @@ class UnifiedPlotManager:
             angles, ranges, c='red', marker='.', s=15, alpha=0.6
         )
         self.dynamic_elements.append(scatter)
+        # 현재 헤딩 (파란색 화살표)
+        max_range = Constants.Visualization.LIDAR_MAX_RANGE
+        current_arrow = self.ax_lidar_polar.annotate(
+            '', xy=(target_heading+0, max_range * 0.9),
+            xytext=(target_heading+0, 0),
+            arrowprops=dict(arrowstyle='->', color='blue', lw=3)
+        )
+        self.dynamic_elements.append(current_arrow)
+
+
+
 
     def update_obstacle_check_area(self, area_points: List[List[float]]):
         """장애물 검사 영역 시각화 (Scatter)
@@ -693,7 +704,7 @@ class UnifiedVizNode(Node):
 
         # 3. 직교좌표로 변환 (시각화용)
         # 각도 배열 생성 (-100도 ~ +100도)
-        angles_deg = np.arange(-100, 101, 1)+90  # 201개
+        angles_deg = np.arange(-100, 101, 1)  # 201개
         angles_rad = np.radians(angles_deg)
 
         # 유효한 데이터만 선택 (최대 거리가 아닌 것)
@@ -776,7 +787,7 @@ class UnifiedVizNode(Node):
             # 목표 헤딩 계산
             target_heading = None
             if self.current_heading is not None and abs(self.angular_velocity) > 0.01:
-                target_heading = self.current_heading + (self.angular_velocity * 60.0)
+                target_heading = self.current_heading - (self.angular_velocity * 60.0)
 
             # 1. 궤적 업데이트
             self.plot_manager.update_trajectory(
@@ -792,7 +803,8 @@ class UnifiedVizNode(Node):
                     self.plot_manager.update_lidar(
                         self.lidar_cartesian_y, self.lidar_cartesian_x,
                         [self.current_position[0],self.current_position[1]],
-                        self.current_heading
+                        self.current_heading,
+                        (self.angular_velocity * 1)
                     )
 
             # 3. 장애물 검사 영역
