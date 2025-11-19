@@ -203,6 +203,10 @@ class SensorCallbackHandler:
         # 웨이포인트 관리자 (나중에 설정됨)
         self.waypoint_manager = None
 
+        # PX4 모드용 초기 GPS 위치 (기준점)
+        self.initial_lat = None
+        self.initial_lon = None
+
         # LiDAR 필터 초기화
         self.lidar_filter = None
         self.lidar_frame_count = 0  # 필터링 통계용 프레임 카운터
@@ -319,65 +323,52 @@ class SensorCallbackHandler:
         from utils.waypoint_manager import gps_to_local
 
         # 미션 시작 시 첫 번째 현재 위치를 기준점으로 설정
-        if not self.reference_point_set:
+        if self.initial_lat is None:
+            self.initial_lat = msg.lat
+            self.initial_lon = msg.lon
             self.reference_point_set = True
+
+            self.logger.info(
+                f"PX4 GPS 초기 위치 설정: lat={msg.lat:.8f}, lon={msg.lon:.8f}"
+            )
+
+            # waypoint_manager에도 초기 위치 설정
             if self.waypoint_manager is not None:
                 self.waypoint_manager.set_initial_position(msg.lat, msg.lon)
-                self.logger.info(
-                    f"PX4 GPS 초기 위치 설정: lat={msg.lat:.8f}, lon={msg.lon:.8f}"
-                )
+                self.logger.info(f"waypoint_manager 초기 위치 설정 완료")
 
-        # 미션 시작 위치 기준으로 현재 위치를 로컬 좌표(m)로 변환
-        if self.waypoint_manager is not None:
-            initial_pos = self.waypoint_manager.get_initial_position()
-            if initial_pos is not None:
-                ref_lat, ref_lon = initial_pos
-                x_local, y_local = gps_to_local(msg.lat, msg.lon, ref_lat, ref_lon)
-                self.agent_position = np.array(
-                    [x_local, y_local],  # [x, y] = [Easting, Northing]
-                    dtype=np.float32
-                )
+                # 재계산된 웨이포인트 정보 로깅
+                for i, wp in enumerate(self.waypoint_manager.waypoints):
+                    self.logger.info(
+                        f"  웨이포인트 {i}: x={wp['x']:.2f}m, y={wp['y']:.2f}m, "
+                        f"미션={wp['mission_type'].name}"
+                    )
+            else:
+                self.logger.warn("waypoint_manager가 None입니다! 웨이포인트 재계산 불가")
+
+        # 초기 위치 기준으로 현재 위치를 로컬 좌표(m)로 변환
+        x_local, y_local = gps_to_local(msg.lat, msg.lon, self.initial_lat, self.initial_lon)
+        self.agent_position = np.array(
+            [x_local, y_local],  # [x, y] = [Easting, Northing]
+            dtype=np.float32
+        )
 
     def px4_local_position_callback(self, msg) -> None:
         """
-        PX4 VehicleLocalPosition 콜백 - 위치, 속도, 가속도, heading 업데이트
+        PX4 VehicleLocalPosition 콜백 - heading 업데이트만 담당
 
         VehicleLocalPosition 메시지에서:
-        - x, y, z: NED 좌표계 위치 (미터)
-        - vx, vy, vz: NED 좌표계 속도 (m/s)
-        - ax, ay, az: NED 좌표계 가속도 (m/s²)
         - heading: yaw 각도 (라디안)
-        - ref_lat, ref_lon, ref_alt: GPS 기준점
 
         Note: PX4 모드에서만 사용됨
+        Note: 위치 업데이트는 px4_global_position_callback에서 담당
+              (초기 GPS 위치를 기준점으로 사용하기 위함)
         """
-        import math
-
-        # 위치 업데이트 (NED 좌표계, 미터 단위)
-        # agent_position: [North(y), East(x)] 형식으로 저장
-        if msg.xy_valid:
-            self.agent_position = np.array([msg.x, msg.y], dtype=np.float32)
-
-        # Heading 업데이트
+        # Heading 업데이트만 수행
+        # 위치 업데이트는 px4_global_position_callback에서 처리
         if msg.heading_good_for_control:
             yaw_deg = np.degrees(msg.heading)
             self.agent_heading = normalize_angle_180(yaw_deg)
-
-        # 속도 정보 (필요시 활용 가능)
-        # self._velocity_ned = (msg.vx, msg.vy, msg.vz)
-
-        # 가속도 정보 (필요시 활용 가능)
-        # self._acceleration_ned = (msg.ax, msg.ay, msg.az)
-
-        # GPS 기준점 설정 (최초 1회)
-        if msg.xy_global and not self.reference_point_set:
-            self.reference_point_set = True
-            if self.waypoint_manager is not None:
-                self.waypoint_manager.set_initial_position(msg.ref_lat, msg.ref_lon)
-                if hasattr(self, 'logger') and self.logger:
-                    self.logger.info(
-                        f"PX4 Local Position 초기 기준점 설정: lat={msg.ref_lat:.8f}, lon={msg.ref_lon:.8f}"
-                    )
 
     def livox_imu_callback(self, msg: Imu) -> None:
         """

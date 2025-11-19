@@ -194,7 +194,7 @@ class Constants:
 
         # MODE=1 (GPS 좌표) 예시: (WAYPOINT_MODE를 1로 변경 후 사용)
         # (-33.8575, 151.2160, 'DOCK_MODE', DEFAULT_WAYPOINT_RADIUS,  {'target_shape': 'red_square'}),
-        (-33.721297465088334, 150.6739411790103, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {}),
+        (36.3960395, 127.400863, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {}),
         (-33.8575, 151.2160, 'DOCK_MODE', DEFAULT_WAYPOINT_RADIUS,  {'target_shape': 'red_square'}),
         (100, 10, 'ROTATION', DEFAULT_WAYPOINT_RADIUS, {'desired_angle': 70.0}),
         (-33.8575, 151.2160, 'CIRCLE_BUOY', DEFAULT_WAYPOINT_RADIUS, {'rotation_direction': 1}),
