@@ -364,11 +364,10 @@ class SensorCallbackHandler:
         Note: 위치 업데이트는 px4_global_position_callback에서 담당
               (초기 GPS 위치를 기준점으로 사용하기 위함)
         """
-        # Heading 업데이트만 수행
+        # Heading 업데이트 (heading_good_for_control과 관계없이 항상 업데이트)
         # 위치 업데이트는 px4_global_position_callback에서 처리
-        if msg.heading_good_for_control:
-            yaw_deg = np.degrees(msg.heading)
-            self.agent_heading = normalize_angle_180(yaw_deg)
+        yaw_deg = np.degrees(msg.heading)
+        self.agent_heading = normalize_angle_180(yaw_deg)
 
     def livox_imu_callback(self, msg: Imu) -> None:
         """

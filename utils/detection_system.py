@@ -93,7 +93,7 @@ class DetectionSystem:
             },
             MissionType.CIRCLE_BUOY: {
                 'queries': [
-                    "a blue cube"
+                    "a blue buoy",
                 ],
                 'label_mapping': {
                     0: "blue_buoy"

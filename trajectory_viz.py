@@ -507,6 +507,9 @@ class UnifiedVizNode(Node):
 
     def _setup_ros(self):
         """ROS2 구독자 및 퍼블리셔 설정"""
+        # 디버그: PX4 설정 상태 출력
+        self.get_logger().info(f"PX4.ENABLED: {Constants.PX4.ENABLED}, PX4_MSGS_AVAILABLE: {PX4_MSGS_AVAILABLE}")
+
         # LiDAR 센서를 위한 BEST_EFFORT QoS 프로파일 정의
         qos_sensor_data = QoSProfile(
             reliability=ReliabilityPolicy.BEST_EFFORT,
@@ -613,6 +616,7 @@ class UnifiedVizNode(Node):
             self.get_logger().info(
                 f"PX4 GPS 초기 위치 설정: lat={msg.lat:.8f}, lon={msg.lon:.8f}"
             )
+            self.get_logger().info("✓ px4_global_position_callback 첫 호출 성공")
 
         # 로컬 좌표로 변환
         x_local, y_local = gps_to_local(msg.lat, msg.lon, self.initial_lat, self.initial_lon)
@@ -631,18 +635,28 @@ class UnifiedVizNode(Node):
 
     def px4_local_position_callback(self, msg):
         """PX4 VehicleLocalPosition 콜백 - heading"""
-        if msg.heading_good_for_control:
-            # 라디안 → 도 변환 및 -180~180 정규화
-            heading_deg = np.degrees(msg.heading)
-            while heading_deg > 180:
-                heading_deg -= 360
-            while heading_deg < -180:
-                heading_deg += 360
-            self.current_heading = heading_deg
-            self.heading_history.append(self.current_heading)
+        # heading 항상 업데이트 (heading_good_for_control과 관계없이)
+        # 라디안 → 도 변환 및 -180~180 정규화
+        heading_deg = np.degrees(msg.heading)
+        while heading_deg > 180:
+            heading_deg -= 360
+        while heading_deg < -180:
+            heading_deg += 360
+
+        # 첫 호출 시 로깅
+        if self.current_heading is None:
+            self.get_logger().info(f"✓ px4_local_position_callback 첫 호출 성공: heading={heading_deg:.1f}°")
+
+        self.current_heading = heading_deg
+        self.heading_history.append(self.current_heading)
 
     def lidar_callback(self, msg):
         """LiDAR 데이터 콜백 (전처리 포함)"""
+        # 첫 호출 시 로깅
+        if not hasattr(self, '_lidar_callback_logged'):
+            self._lidar_callback_logged = True
+            self.get_logger().info(f"✓ lidar_callback 첫 호출 성공: {len(msg.ranges)} points")
+
         # sensor_callbacks.py와 동일한 전처리 로직 적용
         ranges = np.array(msg.ranges, dtype=np.float32)
         angle_min = msg.angle_min
@@ -697,12 +711,22 @@ class UnifiedVizNode(Node):
 
     def control_callback(self, msg):
         """제어 출력 콜백"""
+        # 첫 호출 시 로깅
+        if not hasattr(self, '_control_callback_logged'):
+            self._control_callback_logged = True
+            self.get_logger().info(f"✓ control_callback 첫 호출 성공")
+
         if len(msg.data) >= 2:
             self.linear_velocity = float(msg.data[0])
             self.angular_velocity = float(msg.data[1])
 
     def mode_callback(self, msg):
         """제어 모드 콜백"""
+        # 첫 호출 시 로깅
+        if not hasattr(self, '_mode_callback_logged'):
+            self._mode_callback_logged = True
+            self.get_logger().info(f"✓ mode_callback 첫 호출 성공: {msg.data}")
+
         self.control_mode = msg.data
 
     def los_callback(self, msg):

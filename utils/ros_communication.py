@@ -232,17 +232,16 @@ class ROSCommunicationManager:
             Int32, Constants.Topics.AVOID_YAW, Constants.QueueSizes.CONTROL
         )
 
-        # PX4 브릿지 퍼블리셔
-        if Constants.PX4.ENABLED:
-            self.publishers['px4_velocity_yaw'] = self.node.create_publisher(
-                Float64MultiArray, Constants.Topics.PX4_VELOCITY_YAW_CMD, Constants.QueueSizes.CONTROL
-            )
-            self.publishers['px4_position_error'] = self.node.create_publisher(
-                Float64MultiArray, Constants.Topics.PX4_POSITION_ERROR, Constants.QueueSizes.CONTROL
-            )
-            self.publishers['px4_control_flag'] = self.node.create_publisher(
-                Bool, Constants.Topics.PX4_CONTROL_FLAG, Constants.QueueSizes.CONTROL
-            )
+        # PX4 브릿지 퍼블리셔 (항상 활성화)
+        self.publishers['px4_velocity_yaw'] = self.node.create_publisher(
+            Float64MultiArray, Constants.Topics.PX4_VELOCITY_YAW_CMD, Constants.QueueSizes.CONTROL
+        )
+        self.publishers['px4_position_error'] = self.node.create_publisher(
+            Float64MultiArray, Constants.Topics.PX4_POSITION_ERROR, Constants.QueueSizes.CONTROL
+        )
+        self.publishers['px4_control_flag'] = self.node.create_publisher(
+            Bool, Constants.Topics.PX4_CONTROL_FLAG, Constants.QueueSizes.CONTROL
+        )
 
     def publish_thrust_commands(self, left_thrust: float, right_thrust: float) -> None:
         """
@@ -470,34 +469,33 @@ class ROSCommunicationManager:
         force_y_msg.data = float(desired_force_y)
         self.publishers['desired_force_y'].publish(force_y_msg)
 
-        # PX4 브릿지 명령 발행
-        if Constants.PX4.ENABLED:
-            import numpy as np
+        # PX4 브릿지 명령 발행 (항상 발행)
+        import numpy as np
+        import math
 
-            # desired_speed → velocity (m/s)
-            velocity = float(desired_speed) * Constants.PX4.VELOCITY_SCALE
-            velocity = np.clip(velocity, -Constants.PX4.MAX_VELOCITY, Constants.PX4.MAX_VELOCITY)
+        # desired_speed → velocity (m/s)
+        velocity = float(desired_speed) * Constants.PX4.VELOCITY_SCALE
+        velocity = np.clip(velocity, -Constants.PX4.MAX_VELOCITY, Constants.PX4.MAX_VELOCITY)
 
-            # desired_moment → 목표 yaw 계산 (현재 yaw + moment * scale)
-            yaw_delta = float(desired_moment) * Constants.PX4.YAW_RATE_SCALE * 0.02  # dt ≈ 0.02s (50Hz)
-            target_yaw = current_yaw + yaw_delta
-            # [-pi, pi] 범위로 정규화
-            import math
-            while target_yaw > math.pi:
-                target_yaw -= 2 * math.pi
-            while target_yaw < -math.pi:
-                target_yaw += 2 * math.pi
+        # desired_moment → 목표 yaw 계산 (현재 yaw + moment * scale)
+        yaw_delta = float(desired_moment) * Constants.PX4.YAW_RATE_SCALE * 0.02  # dt ≈ 0.02s (50Hz)
+        target_yaw = current_yaw + yaw_delta
+        # [-pi, pi] 범위로 정규화
+        while target_yaw > math.pi:
+            target_yaw -= 2 * math.pi
+        while target_yaw < -math.pi:
+            target_yaw += 2 * math.pi
 
-            # 도킹 미션: position_error와 velocity_yaw 둘 다 발행
-            if is_dock_mode and abs(desired_force_y) > 0.001:
-                # desired_force_y → y_error (m)
-                y_error = float(desired_force_y) * 1.0  # 1.0m 스케일
-                self.publish_px4_position_command(0.0, y_error)
-                # 동시에 velocity/yaw 명령도 발행
-                self.publish_px4_velocity_command(velocity, target_yaw)
-            else:
-                # 일반 모드: velocity/yaw만 발행
-                self.publish_px4_velocity_command(velocity, target_yaw)
+        # 도킹 미션: position_error와 velocity_yaw 둘 다 발행
+        if is_dock_mode and abs(desired_force_y) > 0.001:
+            # desired_force_y → y_error (m)
+            y_error = float(desired_force_y) * 1.0  # 1.0m 스케일
+            self.publish_px4_position_command(0.0, y_error)
+            # 동시에 velocity/yaw 명령도 발행
+            self.publish_px4_velocity_command(velocity, target_yaw)
+        else:
+            # 일반 모드: velocity/yaw만 발행
+            self.publish_px4_velocity_command(velocity, target_yaw)
 
     # =========================================================================
     # PX4 브릿지 퍼블리셔 메서드
@@ -505,15 +503,12 @@ class ROSCommunicationManager:
 
     def publish_px4_velocity_command(self, velocity: float, yaw: float) -> None:
         """
-        PX4 속도/yaw 명령 발행
+        PX4 속도/yaw 명령 발행 (항상 발행)
 
         Args:
             velocity: 전진 속도 (m/s)
             yaw: 목표 yaw (rad)
         """
-        if not Constants.PX4.ENABLED or 'px4_velocity_yaw' not in self.publishers:
-            return
-
         msg = Float64MultiArray()
         msg.data = [float(velocity), float(yaw)]
         self.publishers['px4_velocity_yaw'].publish(msg)
@@ -525,15 +520,12 @@ class ROSCommunicationManager:
 
     def publish_px4_position_command(self, x_error: float, y_error: float) -> None:
         """
-        PX4 위치 오차 명령 발행
+        PX4 위치 오차 명령 발행 (항상 발행)
 
         Args:
             x_error: X 방향 위치 오차 (m)
             y_error: Y 방향 위치 오차 (m)
         """
-        if not Constants.PX4.ENABLED or 'px4_position_error' not in self.publishers:
-            return
-
         msg = Float64MultiArray()
         msg.data = [float(x_error), float(y_error)]
         self.publishers['px4_position_error'].publish(msg)
@@ -552,7 +544,7 @@ class ROSCommunicationManager:
         use_position_control: bool = False
     ) -> None:
         """
-        PX4 통합 명령 발행
+        PX4 통합 명령 발행 (항상 발행)
 
         Args:
             velocity: 전진 속도 (m/s), 속도 제어 시 사용
@@ -561,9 +553,6 @@ class ROSCommunicationManager:
             y_error: Y 위치 오차 (m), 위치 제어 시 사용
             use_position_control: True=위치제어, False=속도제어
         """
-        if not Constants.PX4.ENABLED:
-            return
-
         if use_position_control:
             self.publish_px4_position_command(
                 x_error if x_error is not None else 0.0,

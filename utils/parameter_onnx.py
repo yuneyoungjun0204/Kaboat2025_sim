@@ -153,7 +153,7 @@ class ONNXSensorManager:
                 if np.isinf(distance) or np.isnan(distance) or distance >= self.MAX_LIDAR_DISTANCE:
                     raw_ranges[idx] = self.MAX_LIDAR_DISTANCE
                 else:
-                    raw_ranges[idx] = distance / self.lidar_scale_factor
+                    raw_ranges[idx] = distance * self.lidar_scale_factor
 
         self.lidar_distances = raw_ranges
 
