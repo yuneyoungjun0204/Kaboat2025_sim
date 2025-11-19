@@ -704,7 +704,7 @@ class UnifiedVizNode(Node):
 
         # 3. 직교좌표로 변환 (시각화용)
         # 각도 배열 생성 (-100도 ~ +100도)
-        angles_deg = np.arange(-100, 101, 1)  # 201개
+        angles_deg = np.arange(101, -100, -1)  # 201개
         angles_rad = np.radians(angles_deg)
 
         # 유효한 데이터만 선택 (최대 거리가 아닌 것)

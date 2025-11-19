@@ -245,7 +245,7 @@ class VRXMissionControllerPX4(Node):
         # Z축 각속도를 deg/s로 변환 후 클리핑
         angular_velocity_z_deg = np.degrees(msg.angular_velocity.z)
         self.sensor_handler.angular_velocity_y = np.clip(
-            angular_velocity_z_deg,
+            -angular_velocity_z_deg,
             Constants.ANGULAR_VELOCITY_LIMIT[0],
             Constants.ANGULAR_VELOCITY_LIMIT[1]
         )

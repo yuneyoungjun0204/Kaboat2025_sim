@@ -228,7 +228,7 @@ class ObstacleAvoidExecutor:
         waypoints = []
         for i in range(len(self.waypoint_manager.waypoints)):
             x, y = self.waypoint_manager.get_waypoint_relative_to_initial(i)
-            waypoints.append([y, x])  # [y, x] 형태로 저장 (기존 호환성)
+            waypoints.append([x, y])  # [y, x] 형태로 저장 (기존 호환성)
 
         return waypoints, self.waypoint_manager.get_waypoint_index()
 

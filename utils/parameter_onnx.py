@@ -147,7 +147,7 @@ class ONNXSensorManager:
         raw_ranges = np.full(self.LIDAR_SIZE, self.MAX_LIDAR_DISTANCE, dtype=np.float32)
 
         for i, distance in enumerate(ranges):
-            angle_deg = np.degrees(msg.angle_min + i * msg.angle_increment)
+            angle_deg = np.degrees(msg.angle_max - i * msg.angle_increment)
             idx = self._angle_to_index(angle_deg)
             if idx is not None:
                 if np.isinf(distance) or np.isnan(distance) or distance >= self.MAX_LIDAR_DISTANCE:
