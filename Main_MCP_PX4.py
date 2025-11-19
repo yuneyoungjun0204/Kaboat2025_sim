@@ -19,7 +19,7 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPo
 from rclpy.executors import MultiThreadedExecutor
 from geometry_msgs.msg import Point
 from cv_bridge import CvBridge
-from sensor_msgs.msg import Image, PointCloud2
+from sensor_msgs.msg import Image, PointCloud2, Imu
 from sensor_msgs_py import point_cloud2
 import numpy as np
 
@@ -172,6 +172,14 @@ class VRXMissionControllerPX4(Node):
             livox_qos
         )
 
+        # Livox IMU (각속도 데이터 - ONNX 모델용)
+        self.create_subscription(
+            Imu,
+            Constants.Topics.LIVOX_IMU,
+            self._livox_imu_callback,
+            livox_qos
+        )
+
         self.get_logger().info("PX4 sensor subscribers created")
 
     def _px4_global_position_callback(self, msg):
@@ -219,6 +227,23 @@ class VRXMissionControllerPX4(Node):
 
         # rad/s → deg/s 변환 및 클리핑
         angular_velocity_z_deg = np.degrees(angular_velocity_z_rad)
+        self.sensor_handler.angular_velocity_y = np.clip(
+            angular_velocity_z_deg,
+            Constants.ANGULAR_VELOCITY_LIMIT[0],
+            Constants.ANGULAR_VELOCITY_LIMIT[1]
+        )
+
+    def _livox_imu_callback(self, msg):
+        """
+        Livox IMU 콜백 - 각속도 업데이트 (ONNX 모델용)
+
+        Livox LiDAR 내장 IMU에서 각속도 데이터를 가져와서
+        sensor_handler에 업데이트합니다.
+
+        Note: PX4 Odometry와 독립적으로 동작하여 ONNX 모델 입력용으로 사용
+        """
+        # Z축 각속도를 deg/s로 변환 후 클리핑
+        angular_velocity_z_deg = np.degrees(msg.angular_velocity.z)
         self.sensor_handler.angular_velocity_y = np.clip(
             angular_velocity_z_deg,
             Constants.ANGULAR_VELOCITY_LIMIT[0],

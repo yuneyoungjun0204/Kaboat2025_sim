@@ -149,7 +149,7 @@ class Constants:
     MAX_LIDAR_DISTANCE = 100.0
     LIDAR_ANGLE_RANGE = (-100, 100)  # degrees
     LIDAR_SCALE_FACTOR = 1.0  # LiDAR 거리값 스케일 조정 (1.0 = 변환 없음)
-    LIDAR_OBSTACLE_COUNT_THRESHOLD = 2  # ONNX 모드 전환을 위한 최소 장애물 감지 개수
+    LIDAR_OBSTACLE_COUNT_THRESHOLD = 5  # ONNX 모드 전환을 위한 최소 장애물 감지 개수
 
     # LiDAR 필터링 설정
     LIDAR_FILTER_ENABLED = True  # 필터링 활성화 여부
@@ -401,8 +401,8 @@ class Constants:
         """ROS2 토픽명 관리"""
 
         # 센서 입력 토픽
-        CAMERA_IMAGE = '/wamv/sensors/cameras/front_left_camera_sensor/image_raw'
-        LIDAR_SCAN = '/wamv/sensors/lidars/lidar_wamv_sensor/scan'
+        CAMERA_IMAGE = '/image_raw'
+        LIDAR_SCAN = '/scan'
         GPS_FIX = '/wamv/sensors/gps/gps/fix'
         IMU_DATA = '/wamv/sensors/imu/imu/data'
 
@@ -453,6 +453,10 @@ class Constants:
         PX4_VEHICLE_LOCAL_POSITION = '/fmu/out/vehicle_local_position'
         PX4_POSITION_SETPOINT_TRIPLET = '/fmu/out/position_setpoint_triplet'
         PX4_VEHICLE_ODOMETRY = '/fmu/out/vehicle_odometry'  # 각속도, 위치, 속도
+        PX4_VEHICLE_LOCAL_POSITION_SUB = '/fmu/out/vehicle_local_position'  # NED 위치, 속도, 가속도, heading
+
+        # Livox LiDAR IMU 토픽 (각속도 데이터)
+        LIVOX_IMU = '/livox/imu'  # Livox LiDAR 내장 IMU
 
 
 
@@ -509,7 +513,7 @@ class Constants:
     class VisualizationParams:
         """시각화 시스템 파라미터"""
         # 탐지 임계값
-        DETECTION_THRESHOLD = 0.0085
+        DETECTION_THRESHOLD = 0.585
         MIN_BOX_AREA = 2
         MAX_BOX_AREA = 800000
         MIN_DEPTH_THRESHOLD = 0.12  # 최소 깊이 (미터)
@@ -530,9 +534,9 @@ class Constants:
         WINDOW_HEIGHT = 480
 
         # 색상 매핑 (BGR)
-        COLOR_RED_CONE = (0, 255, 255)
-        COLOR_GREEN_CONE = (0, 255, 255)
-        COLOR_BLUE_BUOY = (0, 255, 255)
+        COLOR_RED_CONE = (0, 0, 255)
+        COLOR_GREEN_CONE = (0, 255, 0)
+        COLOR_BLUE_BUOY = (255,0, 0)
         COLOR_ACCUMULATED_ANGLE = (0, 255, 255)  # 누적 각도 텍스트 색상
 
 

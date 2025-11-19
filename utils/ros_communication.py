@@ -11,14 +11,16 @@ from sensor_msgs.msg import Image, LaserScan, NavSatFix, Imu
 from geometry_msgs.msg import Point
 from std_msgs.msg import Float64, Float64MultiArray, String, Bool, Int32
 from .config import Constants
-
+from rclpy.qos import QoSProfile, ReliabilityPolicy
 # PX4 메시지 (optional)
 try:
-    from px4_msgs.msg import VehicleOdometry
+    from px4_msgs.msg import VehicleOdometry, VehicleLocalPosition, VehicleGlobalPosition
     PX4_MSGS_AVAILABLE = True
 except ImportError:
     PX4_MSGS_AVAILABLE = False
     VehicleOdometry = None
+    VehicleLocalPosition = None
+    VehicleGlobalPosition = None
 
 
 class ROSCommunicationManager:
@@ -60,14 +62,18 @@ class ROSCommunicationManager:
                 Constants.QueueSizes.SENSOR
             )
 
-        # LiDAR 구독
-        if 'lidar' in callbacks:
-            self.subscribers['lidar'] = self.node.create_subscription(
-                LaserScan,
-                Constants.Topics.LIDAR_SCAN,
-                callbacks['lidar'],
-                Constants.QueueSizes.SENSOR
-            )
+        lidar_qos_profile = QoSProfile(
+            depth=1, # 큐 사이즈는 LiDAR와 같은 센서 데이터의 경우 1~10 사이의 낮은 값이 일반적입니다.
+            reliability=ReliabilityPolicy.BEST_EFFORT, # 🚨 이 부분을 BEST_EFFORT로 변경
+            history=HistoryPolicy.KEEP_LAST # 최신 메시지만 유지
+        )
+
+        self.subscribers['lidar'] = self.node.create_subscription(
+            LaserScan,
+            Constants.Topics.LIDAR_SCAN,
+            callbacks['lidar'],
+            lidar_qos_profile  # 수정한 QoS 프로파일 적용
+        )
 
         # GPS 구독
         if 'gps' in callbacks:
@@ -109,6 +115,50 @@ class ROSCommunicationManager:
                 VehicleOdometry,
                 Constants.Topics.PX4_VEHICLE_ODOMETRY,
                 callbacks['px4_odometry'],
+                px4_qos
+            )
+
+        # PX4 VehicleLocalPosition 구독 (NED 위치, 속도, 가속도, heading)
+        if 'px4_local_position' in callbacks and Constants.PX4.ENABLED and PX4_MSGS_AVAILABLE:
+            px4_qos = QoSProfile(
+                reliability=ReliabilityPolicy.BEST_EFFORT,
+                durability=DurabilityPolicy.TRANSIENT_LOCAL,
+                history=HistoryPolicy.KEEP_LAST,
+                depth=1
+            )
+            self.subscribers['px4_local_position'] = self.node.create_subscription(
+                VehicleLocalPosition,
+                Constants.Topics.PX4_VEHICLE_LOCAL_POSITION_SUB,
+                callbacks['px4_local_position'],
+                px4_qos
+            )
+
+        # Livox LiDAR IMU 구독 (각속도 데이터)
+        if 'livox_imu' in callbacks:
+            livox_imu_qos = QoSProfile(
+                reliability=ReliabilityPolicy.BEST_EFFORT,
+                history=HistoryPolicy.KEEP_LAST,
+                depth=1
+            )
+            self.subscribers['livox_imu'] = self.node.create_subscription(
+                Imu,
+                Constants.Topics.LIVOX_IMU,
+                callbacks['livox_imu'],
+                livox_imu_qos
+            )
+
+        # PX4 VehicleGlobalPosition 구독 (GPS 대체)
+        if 'px4_global_position' in callbacks and Constants.PX4.ENABLED and PX4_MSGS_AVAILABLE:
+            px4_qos = QoSProfile(
+                reliability=ReliabilityPolicy.BEST_EFFORT,
+                durability=DurabilityPolicy.TRANSIENT_LOCAL,
+                history=HistoryPolicy.KEEP_LAST,
+                depth=1
+            )
+            self.subscribers['px4_global_position'] = self.node.create_subscription(
+                VehicleGlobalPosition,
+                Constants.Topics.PX4_VEHICLE_GLOBAL_POSITION,
+                callbacks['px4_global_position'],
                 px4_qos
             )
 

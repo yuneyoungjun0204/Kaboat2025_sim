@@ -75,14 +75,28 @@ class VRXMissionController(Node):
         self.get_logger().info("ROS2 통신 설정 중...")
         self.ros_comm = ROSCommunicationManager(self)
 
-        # 서브스크라이버 설정
-        self.ros_comm.setup_subscribers({
+        # 기본 서브스크라이버 콜백
+        callbacks = {
             'image': self.sensor_handler.image_callback,
             'lidar': self.sensor_handler.lidar_callback,
-            'gps': self.sensor_handler.gps_callback,
-            'imu': self.sensor_handler.imu_callback,
             'waypoint': self._waypoint_callback_wrapper
-        })
+        }
+
+        # PX4 모드일 때 픽스호크 센서 사용, 아니면 기존 센서 사용
+        if Constants.PX4.ENABLED:
+            # PX4 센서 구독 (GPS, IMU를 픽스호크에서 받음)
+            callbacks['px4_global_position'] = self.sensor_handler.px4_global_position_callback
+            callbacks['px4_local_position'] = self.sensor_handler.px4_local_position_callback
+            callbacks['livox_imu'] = self.sensor_handler.livox_imu_callback
+            self.get_logger().info("PX4 모드: VehicleGlobalPosition, VehicleLocalPosition, Livox IMU 구독 활성화")
+        else:
+            # 기존 센서 구독
+            callbacks['gps'] = self.sensor_handler.gps_callback
+            callbacks['imu'] = self.sensor_handler.imu_callback
+            self.get_logger().info("시뮬레이터 모드: 기존 GPS/IMU 구독 활성화")
+
+        # 서브스크라이버 설정
+        self.ros_comm.setup_subscribers(callbacks)
 
         # 퍼블리셔 설정
         self.ros_comm.setup_publishers()

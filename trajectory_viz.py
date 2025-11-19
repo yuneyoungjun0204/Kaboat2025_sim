@@ -21,6 +21,17 @@ from matplotlib.patches import Polygon, Circle, FancyArrow
 
 from utils import Constants, SensorDataManager
 from utils.sensor_callbacks import LidarFilter
+from utils.waypoint_manager import gps_to_local
+from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
+
+# PX4 메시지 (optional)
+try:
+    from px4_msgs.msg import VehicleGlobalPosition, VehicleLocalPosition
+    PX4_MSGS_AVAILABLE = True
+except ImportError:
+    PX4_MSGS_AVAILABLE = False
+    VehicleGlobalPosition = None
+    VehicleLocalPosition = None
 
 
 class CoordinateTransformer:
@@ -466,6 +477,10 @@ class UnifiedVizNode(Node):
         self.current_heading: Optional[float] = None
         self.axis_initialized = False
 
+        # PX4 모드용 초기 위치 (GPS 기준점)
+        self.initial_lat: Optional[float] = None
+        self.initial_lon: Optional[float] = None
+
         # 웨이포인트
         self.waypoints = []
         self.current_waypoint: Optional[List[float]] = None
@@ -492,10 +507,46 @@ class UnifiedVizNode(Node):
 
     def _setup_ros(self):
         """ROS2 구독자 및 퍼블리셔 설정"""
-        # 서브스크라이버
-        self.create_subscription(NavSatFix, Constants.Topics.GPS_FIX, self.gps_callback, 10)
-        self.create_subscription(Imu, Constants.Topics.IMU_DATA, self.imu_callback, 10)
-        self.create_subscription(LaserScan, Constants.Topics.LIDAR_SCAN, self.lidar_callback, 10)
+        # LiDAR 센서를 위한 BEST_EFFORT QoS 프로파일 정의
+        qos_sensor_data = QoSProfile(
+            reliability=ReliabilityPolicy.BEST_EFFORT,
+            history=HistoryPolicy.KEEP_LAST,
+            depth=1
+        )
+
+        # PX4 모드에 따라 GPS/IMU 구독 설정
+        if Constants.PX4.ENABLED and PX4_MSGS_AVAILABLE:
+            # PX4 QoS 프로파일
+            px4_qos = QoSProfile(
+                reliability=ReliabilityPolicy.BEST_EFFORT,
+                durability=DurabilityPolicy.TRANSIENT_LOCAL,
+                history=HistoryPolicy.KEEP_LAST,
+                depth=1
+            )
+            # PX4 토픽 구독
+            self.create_subscription(
+                VehicleGlobalPosition,
+                Constants.Topics.PX4_VEHICLE_GLOBAL_POSITION,
+                self.px4_global_position_callback,
+                px4_qos
+            )
+            self.create_subscription(
+                VehicleLocalPosition,
+                Constants.Topics.PX4_VEHICLE_LOCAL_POSITION,
+                self.px4_local_position_callback,
+                px4_qos
+            )
+            self.get_logger().info("PX4 모드: VehicleGlobalPosition, VehicleLocalPosition 구독")
+        else:
+            # 기존 시뮬레이터 토픽 구독
+            self.create_subscription(NavSatFix, Constants.Topics.GPS_FIX, self.gps_callback, 10)
+            self.create_subscription(Imu, Constants.Topics.IMU_DATA, self.imu_callback, 10)
+            self.get_logger().info("시뮬레이터 모드: 기존 GPS/IMU 구독")
+
+        # LiDAR 구독
+        self.create_subscription(LaserScan, Constants.Topics.LIDAR_SCAN, self.lidar_callback, qos_sensor_data)
+
+        # 공통 구독
         self.create_subscription(Float64MultiArray, Constants.Topics.CONTROL_OUTPUT, self.control_callback, 10)
         self.create_subscription(String, Constants.Topics.CONTROL_MODE, self.mode_callback, 10)
         self.create_subscription(Float64MultiArray, Constants.Topics.LOS_TARGET, self.los_callback, 10)
@@ -553,6 +604,43 @@ class UnifiedVizNode(Node):
         self.current_heading = imu_data['yaw_degrees']
         self.heading_history.append(self.current_heading)
 
+    def px4_global_position_callback(self, msg):
+        """PX4 VehicleGlobalPosition 콜백 - GPS 위치"""
+        # 첫 번째 위치를 기준점으로 설정
+        if self.initial_lat is None:
+            self.initial_lat = msg.lat
+            self.initial_lon = msg.lon
+            self.get_logger().info(
+                f"PX4 GPS 초기 위치 설정: lat={msg.lat:.8f}, lon={msg.lon:.8f}"
+            )
+
+        # 로컬 좌표로 변환
+        x_local, y_local = gps_to_local(msg.lat, msg.lon, self.initial_lat, self.initial_lon)
+        position = np.array([x_local, y_local])
+        self.current_position = position
+        self.position_history.append(position)
+
+        # 축 초기화
+        if not self.axis_initialized:
+            self.axis_initialized = True
+            margin_x = Constants.Visualization.AXIS_MARGIN_X
+            margin_y = Constants.Visualization.AXIS_MARGIN_Y
+            self.plot_manager.ax_main.set_xlim(-margin_x, margin_x)
+            self.plot_manager.ax_main.set_ylim(-margin_y, margin_y)
+            self.get_logger().info(f'📐 축 범위: N=±{margin_x}m, E=±{margin_y}m')
+
+    def px4_local_position_callback(self, msg):
+        """PX4 VehicleLocalPosition 콜백 - heading"""
+        if msg.heading_good_for_control:
+            # 라디안 → 도 변환 및 -180~180 정규화
+            heading_deg = np.degrees(msg.heading)
+            while heading_deg > 180:
+                heading_deg -= 360
+            while heading_deg < -180:
+                heading_deg += 360
+            self.current_heading = heading_deg
+            self.heading_history.append(self.current_heading)
+
     def lidar_callback(self, msg):
         """LiDAR 데이터 콜백 (전처리 포함)"""
         # sensor_callbacks.py와 동일한 전처리 로직 적용
@@ -577,7 +665,7 @@ class UnifiedVizNode(Node):
                     distance = Constants.MAX_LIDAR_DISTANCE
                 else:
                     # LIDAR_SCALE_FACTOR 적용
-                    distance = distance / Constants.LIDAR_SCALE_FACTOR
+                    distance = distance * Constants.LIDAR_SCALE_FACTOR
 
                 idx = int(angle_deg + 100)
                 idx = max(0, min(Constants.LIDAR_ARRAY_SIZE - 1, idx))

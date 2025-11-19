@@ -306,6 +306,96 @@ class SensorCallbackHandler:
         # NED 좌표계로 정규화 (-180 ~ 180)
         self.agent_heading = normalize_angle_180(yaw_deg)
 
+    def px4_global_position_callback(self, msg) -> None:
+        """
+        PX4 VehicleGlobalPosition 콜백 - GPS 위치 업데이트
+
+        VehicleGlobalPosition 메시지에서:
+        - lat, lon: 위도/경도 (degrees)
+        - alt: 고도 (meters)
+
+        Note: PX4 모드에서 기존 GPS 토픽 대신 사용됨
+        """
+        from utils.waypoint_manager import gps_to_local
+
+        # 미션 시작 시 첫 번째 현재 위치를 기준점으로 설정
+        if not self.reference_point_set:
+            self.reference_point_set = True
+            if self.waypoint_manager is not None:
+                self.waypoint_manager.set_initial_position(msg.lat, msg.lon)
+                self.logger.info(
+                    f"PX4 GPS 초기 위치 설정: lat={msg.lat:.8f}, lon={msg.lon:.8f}"
+                )
+
+        # 미션 시작 위치 기준으로 현재 위치를 로컬 좌표(m)로 변환
+        if self.waypoint_manager is not None:
+            initial_pos = self.waypoint_manager.get_initial_position()
+            if initial_pos is not None:
+                ref_lat, ref_lon = initial_pos
+                x_local, y_local = gps_to_local(msg.lat, msg.lon, ref_lat, ref_lon)
+                self.agent_position = np.array(
+                    [x_local, y_local],  # [x, y] = [Easting, Northing]
+                    dtype=np.float32
+                )
+
+    def px4_local_position_callback(self, msg) -> None:
+        """
+        PX4 VehicleLocalPosition 콜백 - 위치, 속도, 가속도, heading 업데이트
+
+        VehicleLocalPosition 메시지에서:
+        - x, y, z: NED 좌표계 위치 (미터)
+        - vx, vy, vz: NED 좌표계 속도 (m/s)
+        - ax, ay, az: NED 좌표계 가속도 (m/s²)
+        - heading: yaw 각도 (라디안)
+        - ref_lat, ref_lon, ref_alt: GPS 기준점
+
+        Note: PX4 모드에서만 사용됨
+        """
+        import math
+
+        # 위치 업데이트 (NED 좌표계, 미터 단위)
+        # agent_position: [North(y), East(x)] 형식으로 저장
+        if msg.xy_valid:
+            self.agent_position = np.array([msg.x, msg.y], dtype=np.float32)
+
+        # Heading 업데이트
+        if msg.heading_good_for_control:
+            yaw_deg = np.degrees(msg.heading)
+            self.agent_heading = normalize_angle_180(yaw_deg)
+
+        # 속도 정보 (필요시 활용 가능)
+        # self._velocity_ned = (msg.vx, msg.vy, msg.vz)
+
+        # 가속도 정보 (필요시 활용 가능)
+        # self._acceleration_ned = (msg.ax, msg.ay, msg.az)
+
+        # GPS 기준점 설정 (최초 1회)
+        if msg.xy_global and not self.reference_point_set:
+            self.reference_point_set = True
+            if self.waypoint_manager is not None:
+                self.waypoint_manager.set_initial_position(msg.ref_lat, msg.ref_lon)
+                if hasattr(self, 'logger') and self.logger:
+                    self.logger.info(
+                        f"PX4 Local Position 초기 기준점 설정: lat={msg.ref_lat:.8f}, lon={msg.ref_lon:.8f}"
+                    )
+
+    def livox_imu_callback(self, msg: Imu) -> None:
+        """
+        Livox LiDAR IMU 콜백 - 각속도 업데이트 (ONNX 모델용)
+
+        Livox LiDAR 내장 IMU에서 각속도 데이터를 가져옴
+        ONNX 모델 입력에 사용되는 angular_velocity_y (Z축 각속도) 업데이트
+
+        각속도: rad/s → deg/s, Z축 (+ = CCW, - = CW)
+        """
+        # Z축 각속도를 deg/s로 변환 후 클리핑
+        angular_velocity_z_deg = np.degrees(msg.angular_velocity.z)
+        self.angular_velocity_y = np.clip(
+            angular_velocity_z_deg,
+            Constants.ANGULAR_VELOCITY_LIMIT[0],
+            Constants.ANGULAR_VELOCITY_LIMIT[1]
+        )
+
     def lidar_callback(self, msg: LaserScan) -> None:
         """LiDAR 콜백 (필터링 포함)"""
         ranges = np.array(msg.ranges, dtype=np.float32)
@@ -328,7 +418,7 @@ class SensorCallbackHandler:
                 if np.isinf(distance) or np.isnan(distance) or distance >= Constants.MAX_LIDAR_DISTANCE:
                     distance = Constants.MAX_LIDAR_DISTANCE
                 else:
-                    distance = distance / Constants.LIDAR_SCALE_FACTOR
+                    distance = distance * Constants.LIDAR_SCALE_FACTOR
 
                 idx = int(angle_deg + 100)
                 idx = max(0, min(Constants.LIDAR_ARRAY_SIZE - 1, idx))
