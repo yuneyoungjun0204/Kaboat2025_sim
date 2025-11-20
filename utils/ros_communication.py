@@ -486,13 +486,14 @@ class ROSCommunicationManager:
         while target_yaw < -math.pi:
             target_yaw += 2 * math.pi
 
-        # 도킹 미션: position_error와 velocity_yaw 둘 다 발행
+        # 도킹 미션: position_error만 발행 (control_flag=True 유지)
         if is_dock_mode:
+            # desired_speed → x_error (m)
+            x_error = float(desired_speed) * 1.0  # 1.0m 스케일
             # desired_force_y → y_error (m)
             y_error = float(desired_force_y) * 1.0  # 1.0m 스케일
-            self.publish_px4_position_command(0.0, y_error)
-            # 동시에 velocity/yaw 명령도 발행
-            self.publish_px4_velocity_command(velocity, target_yaw)
+            self.publish_px4_position_command(x_error, y_error)
+            # 위치 제어 모드이므로 velocity/yaw 명령은 발행하지 않음
         else:
             # 일반 모드: velocity/yaw만 발행
             self.publish_px4_velocity_command(velocity, target_yaw)
