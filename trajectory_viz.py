@@ -55,24 +55,27 @@ class CoordinateTransformer:
         """LiDAR 데이터를 전역 NED 좌표로 변환
 
         Args:
-            lidar_x, lidar_y: LiDAR 센서 좌표계 데이터
+            lidar_x: LiDAR Forward (로봇 정면)
+            lidar_y: LiDAR Left (로봇 왼쪽)
             robot_pos: 로봇 위치 [North, East]
-            heading_deg: 로봇 헤딩 (도)
+            heading_deg: 로봇 헤딩 (도, NED: 0°=North, 시계방향)
 
         Returns:
             (north_coords, east_coords): NED 좌표
         """
-        # LiDAR 좌표계를 로봇 중심으로 회전 (90도 보정 포함)
+        # 1. LiDAR → Body frame (FRD) 변환
+        # LiDAR: Forward-Left 좌표계
+        # Body: Forward-Right-Down 좌표계
+        body_forward = lidar_x
+        body_right = -lidar_y  # Left → Right (부호 반전)
+
+        # 2. Body frame → Global NED 변환
+        # 로봇이 heading_deg만큼 회전되어 있음
         heading_rad = np.radians(heading_deg)
         cos_h, sin_h = np.cos(heading_rad), np.sin(heading_rad)
 
-        # LiDAR → Robot frame (90도 회전)
-        rotated_x = lidar_y
-        rotated_y = -lidar_x
-
-        # Robot frame → Global NED
-        north = robot_pos[0] + (rotated_x * cos_h - rotated_y * sin_h)
-        east = robot_pos[1] + (rotated_x * sin_h + rotated_y * cos_h)
+        north = robot_pos[0] + (body_forward * cos_h - body_right * sin_h)
+        east = robot_pos[1] + (body_forward * sin_h + body_right * cos_h)
 
         return north, east
 
@@ -83,15 +86,20 @@ class CoordinateTransformer:
 
         Args:
             pos: 위치 [North, East]
-            heading_deg: 헤딩 (도)
+            heading_deg: 헤딩 (도, NED: 0°=North, 90°=East, 시계방향)
             length: 화살표 길이
 
         Returns:
             arrow 함수용 파라미터 딕셔너리
         """
-        heading_rad = np.radians(heading_deg)
-        dx = length * np.cos(heading_rad)
-        dy = length * np.sin(heading_rad)
+        # NED 좌표계 → matplotlib 좌표계 변환
+        # NED: 0°=North(위), 90°=East(오른쪽), 시계방향
+        # matplotlib: 0°=East(오른쪽), 90°=North(위), 반시계방향
+        math_angle_deg = 90.0 - heading_deg
+        math_angle_rad = np.radians(math_angle_deg)
+
+        dx = length * np.cos(math_angle_rad)
+        dy = length * np.sin(math_angle_rad)
 
         return {
             'x': pos[0], 'y': pos[1],
@@ -194,10 +202,10 @@ class UnifiedPlotManager:
         self.ax_main.legend(loc='upper right', fontsize=9, framealpha=0.9)
 
     def _setup_lidar_polar_plot(self):
-        """LiDAR 극좌표 플롯 초기화 (NED 좌표계)"""
-        self.ax_lidar_polar.set_title('LiDAR Polar View (NED)', fontsize=14, fontweight='bold')
-        self.ax_lidar_polar.set_theta_zero_location('N')  # North = 0도
-        self.ax_lidar_polar.set_theta_direction(-1)  # 시계방향 (NED)
+        """LiDAR 극좌표 플롯 초기화 (Robot Frame)"""
+        self.ax_lidar_polar.set_title('LiDAR Polar View (Robot Frame)', fontsize=14, fontweight='bold')
+        self.ax_lidar_polar.set_theta_zero_location('N')  # 0도 = 로봇 정면 (위)
+        self.ax_lidar_polar.set_theta_direction(1)  # 반시계방향 (양수=왼쪽, 음수=오른쪽)
         self.ax_lidar_polar.set_ylim(0, Constants.Visualization.LIDAR_MAX_RANGE)
         self.ax_lidar_polar.grid(True, alpha=0.4)
 
@@ -704,7 +712,10 @@ class UnifiedVizNode(Node):
 
         # 3. 직교좌표로 변환 (시각화용)
         # 각도 배열 생성 (-100도 ~ +100도)
-        angles_deg = np.arange(101, -100, -1)  # 201개
+        # sensor_callbacks.py의 인덱싱 규칙: idx = angle_deg + 100
+        # 따라서 idx 0 = -100°, idx 100 = 0°, idx 200 = +100°
+        # 0도 = 정면(Forward), 양수 = 왼쪽(Left), 음수 = 오른쪽(Right)
+        angles_deg = np.arange(-100,101)  # [-100, -99, ..., 0, 1, ..., 100] (201개)
         angles_rad = np.radians(angles_deg)
 
         # 유효한 데이터만 선택 (최대 거리가 아닌 것)
@@ -712,13 +723,13 @@ class UnifiedVizNode(Node):
         valid_ranges = filtered_ranges[valid_mask]
         valid_angles = angles_rad[valid_mask]
 
-        # 직교좌표 변환
+        # 극좌표 → 직교좌표 변환 (LiDAR 좌표계: Forward-Left)
         if len(valid_ranges) > 0:
-            self.lidar_cartesian_y = valid_ranges * np.cos(valid_angles)
-            self.lidar_cartesian_x = valid_ranges * np.sin(valid_angles)
+            self.lidar_cartesian_y = valid_ranges * np.cos(valid_angles)  # Forward
+            self.lidar_cartesian_x = valid_ranges * np.sin(valid_angles)  # Left
         else:
-            self.lidar_cartesian_y = np.array([])
             self.lidar_cartesian_x = np.array([])
+            self.lidar_cartesian_y = np.array([])
 
     def control_callback(self, msg):
         """제어 출력 콜백"""
@@ -748,7 +759,11 @@ class UnifiedVizNode(Node):
             self.los_target = None
 
     def obstacle_callback(self, msg):
-        """장애물 체크 영역 콜백"""
+        """장애물 체크 영역 콜백
+
+        수신: [East0, North0, East1, North1, ...]
+        변환: [North, East] NED 좌표계로 저장
+        """
         self.obstacle_check_area = [
             [msg.data[i + 1], msg.data[i]]  # [North, East]
             for i in range(0, len(msg.data) - 1, 2)
@@ -801,8 +816,8 @@ class UnifiedVizNode(Node):
                 # 전처리된 LiDAR 데이터 사용
                 if len(self.lidar_cartesian_x) > 0:
                     self.plot_manager.update_lidar(
-                        self.lidar_cartesian_y, self.lidar_cartesian_x,
-                        [self.current_position[0],self.current_position[1]],
+                        self.lidar_cartesian_x, self.lidar_cartesian_y,  # Forward, Left
+                        [self.current_position[0], self.current_position[1]],
                         self.current_heading,
                         (self.angular_velocity * 1)
                     )

@@ -184,7 +184,7 @@ class Constants:
     # mission_type: 'PASS_BETWEEN_BUOYS', 'CIRCLE_BUOY', 'WAYPOINT_FOLLOW', 'OBSTACLE_AVOID', 'DOCK_MODE', 'ROTATION'
     PREDEFINED_WAYPOINTS = [
         # MODE=0 (로컬 좌표) 예시:
-        (150, -15, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS,{}),
+        (0, -100, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS,{}),
         (100, 10, 'DOCK_MODE', DEFAULT_WAYPOINT_RADIUS, {'target_shape': 'red_square'}),
         (160, 0, 'CIRCLE_BUOY', DEFAULT_WAYPOINT_RADIUS, {'rotation_direction': 1, 'circle_radius': 15.0}),
         (150, -15, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS,{}),
@@ -481,8 +481,8 @@ class Constants:
 
         # 축 범위 설정
         AXIS_MARGIN = 200.0
-        AXIS_MARGIN_X = 60.0
-        AXIS_MARGIN_Y = 180.0
+        AXIS_MARGIN_X = 180.0
+        AXIS_MARGIN_Y = 60.0
 
         # 배 크기 및 안전 여유
         BOAT_WIDTH = 5.0

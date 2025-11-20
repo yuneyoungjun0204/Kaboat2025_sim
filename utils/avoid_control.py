@@ -144,16 +144,17 @@ class ObstacleDetector:
         목표 방향각 계산 (북쪽 기준, 시계방향)
 
         Args:
-            current_pos: 현재 위치 [x, y] (x=Easting, y=Northing)
-            target_pos: 목표 위치 [x, y]
+            current_pos: 현재 위치 [North, East] (NED 좌표계)
+            target_pos: 목표 위치 [North, East]
 
         Returns:
-            방향각 (라디안, 북쪽=0, 동쪽=π/2)
+            방향각 (라디안, 북쪽=0, 동쪽=π/2, 시계방향)
         """
-        dx = target_pos[0] - current_pos[0]  # Easting 차이 (동쪽 방향)
-        dy = target_pos[1] - current_pos[1]  # Northing 차이 (북쪽 방향)
-        # atan2(x, y) = atan2(동쪽, 북쪽) = 북쪽 기준 시계방향 각도
-        return np.arctan2(dx, dy)
+        # NED 좌표계: [North, East]
+        d_north = target_pos[0] - current_pos[0]  # North 차이
+        d_east = target_pos[1] - current_pos[1]   # East 차이
+        # atan2(East, North) = 북쪽 기준 시계방향 각도
+        return np.arctan2(d_north, d_east)
 
     def calculate_distance(self, current_pos: np.ndarray, target_pos: np.ndarray) -> float:
         """목적지와 현재 위치 간의 거리 계산"""
@@ -215,11 +216,14 @@ class ObstacleDetector:
                 else:
                     search_distance = L
 
-            # 체크 영역 점 계산 (UTM 좌표)
-            world_angle = current_psi + np.radians(lidar_angle_deg)
-            check_x = current_pos[0] + search_distance * np.sin(world_angle)  # Easting
-            check_y = current_pos[1] + search_distance * np.cos(world_angle)  # Northing
-            check_area_points.extend([check_x, check_y])
+            # 체크 영역 점 계산 (NED 좌표계)
+            # world_angle: 북쪽 기준 시계방향 각도
+            world_angle = current_psi - np.radians(lidar_angle_deg)
+            # current_pos = [North, East]
+            check_north = current_pos[0] + search_distance * np.cos(world_angle)  # North
+            check_east = current_pos[1] + search_distance * np.sin(world_angle)   # East
+            # 발행 형식: [East, North]
+            check_area_points.extend([check_east, check_north])
 
             # LiDAR 거리 조회
             lidar_distance = get_lidar_distance_func(lidar_angle_deg)
@@ -248,11 +252,14 @@ class ObstacleDetector:
                 else:
                     search_distance = L_front
 
-            # 체크 영역 점 계산 (UTM 좌표) - 정면 검사 영역도 시각화에 추가
-            world_angle = current_psi + np.radians(lidar_angle_deg)
-            check_x = current_pos[0] + search_distance * np.sin(world_angle)  # Easting
-            check_y = current_pos[1] + search_distance * np.cos(world_angle)  # Northing
-            check_area_points.extend([check_x, check_y])
+            # 체크 영역 점 계산 (NED 좌표계) - 정면 검사 영역도 시각화에 추가
+            # world_angle: 북쪽 기준 시계방향 각도
+            world_angle = current_psi - np.radians(lidar_angle_deg)
+            # current_pos = [North, East]
+            check_north = current_pos[0] + search_distance * np.cos(world_angle)  # North
+            check_east = current_pos[1] + search_distance * np.sin(world_angle)   # East
+            # 발행 형식: [East, North]
+            check_area_points.extend([check_east, check_north])
 
             # LiDAR 거리 조회
             lidar_distance = get_lidar_distance_func(lidar_angle_deg)

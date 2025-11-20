@@ -54,6 +54,9 @@ class VRXMissionController(Node):
         self.get_logger().info("✓ 초기화 완료!")
         self.get_logger().info("=" * 80)
 
+
+
+
     def _assign_components(self, components: dict):
         """컴포넌트 할당"""
         # depth_estimator는 detection_system 내부에서만 사용되므로 별도 보관 불필요 (성능 최적화)
@@ -67,6 +70,9 @@ class VRXMissionController(Node):
         self.param_manager = components['param_manager']
         self.onnx_controller = components['onnx_controller']
         self.tracker = components['tracker']
+
+
+
 
     def _setup_ros_communication(self):
         """ROS2 통신 설정"""
@@ -103,6 +109,9 @@ class VRXMissionController(Node):
 
         self.get_logger().info("✓ ROS2 통신 설정 완료")
 
+
+
+
     def _setup_mission_executors(self):
         """미션 실행자들 설정"""
         # 웨이포인트 전환 핸들러
@@ -111,7 +120,6 @@ class VRXMissionController(Node):
             self.mission_manager,
             self.get_logger()
         )
-
         # 장애물 회피 실행자
         self.obstacle_avoid_executor = ObstacleAvoidExecutor(
             self.avoidance_controller,
@@ -122,7 +130,6 @@ class VRXMissionController(Node):
             self.ros_comm,
             self.get_logger()
         )
-
         # 메인 루프 실행자
         self.loop_executor = MissionLoopExecutor(
             self.waypoint_manager,
@@ -138,9 +145,11 @@ class VRXMissionController(Node):
             self.waypoint_transition_handler,
             self.get_logger()
         )
-
         # depth_estimator는 시각화에 사용하지 않으므로 전달 불필요 (성능 최적화)
         self.sensor_handler.bridge = self.bridge
+
+
+
 
     def _waypoint_callback_wrapper(self, msg: Point):
         """웨이포인트 콜백 래퍼"""
@@ -154,10 +163,8 @@ class VRXMissionController(Node):
             MissionType.PASS_BETWEEN_BUOYS,
             MissionType.OBSTACLE_AVOID
         ]
-
         waypoint_count = self.waypoint_manager.get_total_waypoints()
         mission_type = mission_sequence[min(waypoint_count, len(mission_sequence) - 1)]
-
         params = {}
         if mission_type == MissionType.CIRCLE_BUOY:
             params['rotation_direction'] = 1
@@ -171,13 +178,11 @@ class VRXMissionController(Node):
         self.get_logger().info(
             f"웨이포인트 추가: {mission_type.name} at ({msg.y:.1f}, {msg.x:.1f})"
         )
-
     def _log_header(self, message: str):
         """헤더 로그 출력"""
         self.get_logger().info("=" * 80)
         self.get_logger().info(message)
         self.get_logger().info("=" * 80)
-
     def destroy_node(self):
         """노드 종료"""
         self.ros_comm.publish_thrust_commands(0.0, 0.0)
@@ -185,10 +190,10 @@ class VRXMissionController(Node):
         super().destroy_node()
 
 
+
 def main(args=None):
     """메인 함수"""
     rclpy.init(args=args)
-
     try:
         node = VRXMissionController()
         rclpy.spin(node)
@@ -197,7 +202,5 @@ def main(args=None):
     finally:
         if rclpy.ok():
             rclpy.shutdown()
-
-
 if __name__ == '__main__':
     main()
