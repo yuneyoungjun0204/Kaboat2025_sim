@@ -47,7 +47,7 @@ class CoordinateTransformer:
         Returns:
             [North, East] 배열
         """
-        return np.array([gps_data['utm_x'], gps_data['utm_y']])
+        return np.array([gps_data['utm_y'], gps_data['utm_x']])
 
     @staticmethod
     def lidar_to_ned(lidar_x: np.ndarray, lidar_y: np.ndarray,
@@ -303,14 +303,24 @@ class UnifiedPlotManager:
             arrow = self.ax_main.arrow(**arrow_params, fc='lime', ec='green', zorder=9)
             self.dynamic_elements.append(arrow)
 
+
+
+    def calculate_range_theta(self, distance: float) -> float:
+        """배 폭을 고려한 탐색 각도 범위 계산"""
+        if distance < 0.1:
+            return np.pi / 4  # 기본 45도
+        return np.arctan2(Constants.BOAT_WIDTH / 2.0, distance)
     def update_lidar(self, lidar_x: np.ndarray, lidar_y: np.ndarray,
-                     robot_pos: np.ndarray, heading: float, target_heading: float = None):
+                     robot_pos: np.ndarray, heading: float, target_heading: float = None,
+                     obstacle_check_area: List[List[float]] = None):
         """LiDAR 데이터 업데이트
 
         Args:
             lidar_x, lidar_y: LiDAR 센서 좌표
             robot_pos: 로봇 위치 [North, East]
             heading: 로봇 헤딩 (도)
+            target_heading: 목표 헤딩 (도)
+            obstacle_check_area: 장애물 체크 영역 [[North, East], ...]
         """
         if len(lidar_x) == 0:
             return
@@ -329,14 +339,72 @@ class UnifiedPlotManager:
             angles, ranges, c='red', marker='.', s=15, alpha=0.6
         )
         self.dynamic_elements.append(scatter)
+
+        # Obstacle check points를 극좌표 플롯에 표시 (로봇 정면=0도 기준)
+        if obstacle_check_area is not None and len(obstacle_check_area) > 0:
+            area_array = np.array(obstacle_check_area)  # [[North, East], ...]
+
+            # 로봇 위치 기준 상대 좌표로 변환
+            relative_north = area_array[:, 0] - robot_pos[0]
+            relative_east = area_array[:, 1] - robot_pos[1]
+
+            # 거리 계산
+            check_ranges = np.sqrt(relative_north**2 + relative_east**2)
+
+            # 전역 좌표계에서의 각도 계산 (NED: 0도=북쪽, 시계방향)
+            global_angles = np.arctan2(relative_east, relative_north)
+
+            # 현재 헤딩을 빼서 로봇 기준 각도로 변환 (0도=로봇 정면)
+            heading_rad = np.radians(heading)
+            check_angles = global_angles - heading_rad
+            check_angles = check_angles
+            print(len(check_angles))
+            check_angles = []
+            ans=-np.pi/2
+            for i in range(181):
+                ans+=np.pi/180
+                check_angles.append(ans)
+            # print(check_angles)
+            check_ranges = []
+            # 2. 정면 긴급 장애물 검사
+            L_front = Constants.AvoidControl.L_FRONT
+            range_theta_front = self.calculate_range_theta(L_front)
+
+            for i in range(-90, 91):
+                lidar_angle_deg = float(i)
+
+                # 탐색 거리 결정
+                if abs(np.radians(i)) <= range_theta_front:
+                    search_distance = L_front
+                else:
+                    angle_rad = abs(np.radians(i))
+                    if angle_rad > 0.01:
+                        search_distance = (Constants.BOAT_WIDTH / 2.0) / np.sin(angle_rad)
+                        search_distance = min(search_distance, L_front)
+                    else:
+                        search_distance = L_front
+                check_ranges.append(search_distance)
+            print(len(check_ranges))
+
+            
+
+            # Polar plot에 표시 (0도=로봇 정면)
+            check_scatter = self.ax_lidar_polar.scatter(
+                check_angles, check_ranges,
+                c='orange', marker='x', s=80, alpha=0.8, linewidths=2.5,
+                zorder=10
+            )
+            self.dynamic_elements.append(check_scatter)
+
         # 현재 헤딩 (파란색 화살표)
-        max_range = Constants.Visualization.LIDAR_MAX_RANGE
-        current_arrow = self.ax_lidar_polar.annotate(
-            '', xy=(target_heading+0, max_range * 0.9),
-            xytext=(target_heading+0, 0),
-            arrowprops=dict(arrowstyle='->', color='blue', lw=3)
-        )
-        self.dynamic_elements.append(current_arrow)
+        if target_heading is not None:
+            max_range = Constants.Visualization.LIDAR_MAX_RANGE
+            current_arrow = self.ax_lidar_polar.annotate(
+                '', xy=(target_heading, max_range * 0.9),
+                xytext=(target_heading, 0),
+                arrowprops=dict(arrowstyle='->', color='blue', lw=3)
+            )
+            self.dynamic_elements.append(current_arrow)
 
 
 
@@ -352,13 +420,14 @@ class UnifiedPlotManager:
 
         area_array = np.array(area_points)
 
-        # 점들만 간단하게 표시
-        scatter = self.ax_main.scatter(
-            area_array[:, 0], area_array[:, 1],
-            c='orange', marker='x', s=60, alpha=0.7, linewidths=2,
-            zorder=5
-        )
-        self.dynamic_elements.append(scatter)
+        # # 점들만 간단하게 표시
+        # # matplotlib scatter(x, y): x축=North, y축=East
+        # scatter = self.ax_main.scatter(
+        #     area_array[:, 0], area_array[:, 1],  # [North, East]
+        #     c='orange', marker='x', s=60, alpha=0.7, linewidths=2,
+        #     zorder=5
+        # )
+        # self.dynamic_elements.append(scatter)
 
     def update_goal_check_areas(self, goal_areas: List[dict]):
         """Goal 체크 영역 시각화
@@ -387,7 +456,7 @@ class UnifiedPlotManager:
         """
         # 마커
         marker = self.ax_main.scatter(
-            [los_target[0]], [los_target[1]],
+            [los_target[1]], [los_target[0]],
             c='magenta', marker='D', s=150, alpha=0.9,
             edgecolors='darkmagenta', linewidths=2, zorder=8
         )
@@ -395,8 +464,8 @@ class UnifiedPlotManager:
 
         # 연결선
         line, = self.ax_main.plot(
-            [robot_pos[0], los_target[0]],
             [robot_pos[1], los_target[1]],
+            [robot_pos[0], los_target[0]],
             'm--', alpha=0.7, linewidth=2.5, zorder=7
         )
         self.dynamic_elements.append(line)
@@ -819,7 +888,8 @@ class UnifiedVizNode(Node):
                         self.lidar_cartesian_x, self.lidar_cartesian_y,  # Forward, Left
                         [self.current_position[0], self.current_position[1]],
                         self.current_heading,
-                        (self.angular_velocity * 1)
+                        (self.angular_velocity * 1),
+                        self.obstacle_check_area  # 극좌표 플롯에 표시
                     )
 
             # 3. 장애물 검사 영역

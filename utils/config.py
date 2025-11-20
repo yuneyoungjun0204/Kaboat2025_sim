@@ -184,7 +184,7 @@ class Constants:
     # mission_type: 'PASS_BETWEEN_BUOYS', 'CIRCLE_BUOY', 'WAYPOINT_FOLLOW', 'OBSTACLE_AVOID', 'DOCK_MODE', 'ROTATION'
     PREDEFINED_WAYPOINTS = [
         # MODE=0 (로컬 좌표) 예시:
-        (0, -100, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS,{}),
+        (100, 0, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS,{}),
         (100, 10, 'DOCK_MODE', DEFAULT_WAYPOINT_RADIUS, {'target_shape': 'red_square'}),
         (160, 0, 'CIRCLE_BUOY', DEFAULT_WAYPOINT_RADIUS, {'rotation_direction': 1, 'circle_radius': 15.0}),
         (150, -15, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS,{}),
@@ -248,9 +248,9 @@ class Constants:
     # ============================================================================
     # 장애물 회피 설정
     # ============================================================================
-    BOAT_WIDTH = 6.5
-    BOAT_HEIGHT = 20.0
-    LOS_DELTA = 25.0
+    BOAT_WIDTH = 8.0
+    BOAT_HEIGHT = 25.0
+    LOS_DELTA = 35.0
     LOS_LOOKAHEAD_MIN = 20.0
     LOS_LOOKAHEAD_MAX = 40.0
     FILTER_ALPHA = 0.4

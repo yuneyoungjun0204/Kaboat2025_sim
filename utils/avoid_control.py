@@ -200,39 +200,38 @@ class ObstacleDetector:
         # 1. LOS target으로 가는 경로 체크
         # 상대 각도를 중심으로 배 폭만큼의 범위를 체크
         num_rays = 181  # -90 ~ 90도
-        for i in range(-90, 91):
-            # 로봇 기준 각도 (LiDAR 좌표계)
-            lidar_angle_deg = np.degrees(relative_angle) + i
+        # for i in range(-90, 91):
+        #     # 로봇 기준 각도 (LiDAR 좌표계)
+        #     lidar_angle_deg = np.degrees(relative_angle) + i
 
-            # 탐색 거리 결정
-            if abs(np.radians(i)) <= range_theta:
-                search_distance = L  # 경로 중심부는 목표까지 거리
-            else:
-                # 경로 양옆은 배 폭 기준
-                angle_rad = abs(np.radians(i))
-                if angle_rad > 0.01:
-                    search_distance = (self.boat_width / 2.0) / np.sin(angle_rad)
-                    search_distance = min(search_distance, L)
-                else:
-                    search_distance = L
+        #     # 탐색 거리 결정
+        #     if abs(np.radians(i)) <= range_theta:
+        #         search_distance = L  # 경로 중심부는 목표까지 거리
+        #     else:
+        #         # 경로 양옆은 배 폭 기준
+        #         angle_rad = abs(np.radians(i))
+        #         if angle_rad > 0.01:
+        #             search_distance = (self.boat_width / 2.0) / np.sin(angle_rad)
+        #             search_distance = min(search_distance, L)
+        #         else:
+        #             search_distance = L
 
-            # 체크 영역 점 계산 (NED 좌표계)
-            # world_angle: 북쪽 기준 시계방향 각도
-            world_angle = current_psi - np.radians(lidar_angle_deg)
-            # current_pos = [North, East]
-            check_north = current_pos[0] + search_distance * np.cos(world_angle)  # North
-            check_east = current_pos[1] + search_distance * np.sin(world_angle)   # East
-            # 발행 형식: [East, North]
-            check_area_points.extend([check_east, check_north])
+            # # 체크 영역 점 계산 (NED 좌표계)
+            # world_angle = current_psi + np.radians(lidar_angle_deg)
+            # # current_pos = [North, East]
+            # check_north = current_pos[0] + search_distance * np.cos(world_angle)  # North
+            # check_east = current_pos[1] + search_distance * np.sin(world_angle)   # East
+            # # 발행 형식: [East, North] (trajectory_viz에서 순서를 바꿔서 받음)
+            # check_area_points.extend([check_east, check_north])
 
-            # LiDAR 거리 조회
-            lidar_distance = get_lidar_distance_func(lidar_angle_deg)
-            if lidar_distance > self.max_lidar_distance or lidar_distance < 0.0 or np.isinf(lidar_distance):
-                lidar_distance = self.max_lidar_distance
+            # # LiDAR 거리 조회
+            # lidar_distance = get_lidar_distance_func(lidar_angle_deg)
+            # if lidar_distance > self.max_lidar_distance or lidar_distance < 0.0 or np.isinf(lidar_distance):
+            #     lidar_distance = self.max_lidar_distance
 
-            # 장애물 감지 (개수 카운팅)
-            if lidar_distance < search_distance:
-                obstacle_count += 1
+            # # 장애물 감지 (개수 카운팅)
+            # if lidar_distance < search_distance:
+            #     obstacle_count += 1
 
         # 2. 정면 긴급 장애물 검사
         L_front = Constants.AvoidControl.L_FRONT
@@ -253,13 +252,12 @@ class ObstacleDetector:
                     search_distance = L_front
 
             # 체크 영역 점 계산 (NED 좌표계) - 정면 검사 영역도 시각화에 추가
-            # world_angle: 북쪽 기준 시계방향 각도
-            world_angle = current_psi - np.radians(lidar_angle_deg)
+            world_angle = current_psi + np.radians(lidar_angle_deg)
             # current_pos = [North, East]
             check_north = current_pos[0] + search_distance * np.cos(world_angle)  # North
             check_east = current_pos[1] + search_distance * np.sin(world_angle)   # East
-            # 발행 형식: [East, North]
-            check_area_points.extend([check_east, check_north])
+            # 발행 형식: [East, North] (trajectory_viz에서 순서를 바꿔서 받음)
+            check_area_points.extend([check_north, check_east])
 
             # LiDAR 거리 조회
             lidar_distance = get_lidar_distance_func(lidar_angle_deg)
