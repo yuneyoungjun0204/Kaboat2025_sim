@@ -184,7 +184,7 @@ class Constants:
     # mission_type: 'PASS_BETWEEN_BUOYS', 'CIRCLE_BUOY', 'WAYPOINT_FOLLOW', 'OBSTACLE_AVOID', 'DOCK_MODE', 'ROTATION'
     PREDEFINED_WAYPOINTS = [
         # MODE=0 (로컬 좌표) 예시:
-        (100, 0, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS,{}),
+        (100, 0, 'DOCK_MODE', DEFAULT_WAYPOINT_RADIUS,{}),
         (100, 10, 'DOCK_MODE', DEFAULT_WAYPOINT_RADIUS, {'target_shape': 'red_square'}),
         (160, 0, 'CIRCLE_BUOY', DEFAULT_WAYPOINT_RADIUS, {'rotation_direction': 1, 'circle_radius': 15.0}),
         (150, -15, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS,{}),
@@ -347,7 +347,7 @@ class Constants:
     DOCK_MAX_SWAY_THRUST = 500.0  # 최대 횡방향 추력
     DOCK_MAX_YAW_THRUST = 200.0  # 최대 회전 추력
     DOCK_BASE_SURGE = 0.1  # 기본 전진 속도 (0-1)
-    DOCK_DEPTH_THRESHOLD = 0.6  # Depth 임계값 (가까움, 0-1 스케일)
+    DOCK_DEPTH_THRESHOLD = 2.6  # Depth 임계값 (가까움, 0-1 스케일)
     DOCK_APPROACH_TIME = 1.0  # 직진 접근 시간 (초)
     DOCK_REVERSE_TIME = 20.0  # 후진 시간 (초)
     DOCK_APPROACH_SPEED = 0.2  # 최종 접근 속도

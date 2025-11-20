@@ -487,7 +487,7 @@ class ROSCommunicationManager:
             target_yaw += 2 * math.pi
 
         # 도킹 미션: position_error와 velocity_yaw 둘 다 발행
-        if is_dock_mode and abs(desired_force_y) > 0.001:
+        if is_dock_mode:
             # desired_force_y → y_error (m)
             y_error = float(desired_force_y) * 1.0  # 1.0m 스케일
             self.publish_px4_position_command(0.0, y_error)
