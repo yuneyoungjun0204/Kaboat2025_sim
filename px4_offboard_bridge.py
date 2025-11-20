@@ -279,8 +279,8 @@ class PX4OffboardBridge(Node):
 
         # 속도 설정 (NED 프레임)
         # velocity는 전진 속도, yaw 방향을 고려하여 NED로 변환
-        vx = velocity * np.cos(yaw)  # North 방향 속도
-        vy = velocity * np.sin(yaw)  # East 방향 속도
+        vx = velocity 
+        vy = 0.0
         vz = 0.0                     # Down 방향 속도 (수상정은 0)
 
         msg.velocity = [vx, vy, vz]

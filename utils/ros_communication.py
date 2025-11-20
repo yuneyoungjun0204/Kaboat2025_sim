@@ -475,7 +475,7 @@ class ROSCommunicationManager:
 
         # desired_speed → velocity (m/s)
         velocity = float(desired_speed) * Constants.PX4.VELOCITY_SCALE
-        velocity = np.clip(velocity, -Constants.PX4.MAX_VELOCITY, Constants.PX4.MAX_VELOCITY)
+        velocity = np.clip(velocity, Constants.PX4.MIN_VELOCITY, Constants.PX4.MAX_VELOCITY)
 
         # desired_moment → 목표 yaw 계산 (현재 yaw + moment * scale)
         yaw_delta = float(desired_moment) * Constants.PX4.YAW_RATE_SCALE * 0.02  # dt ≈ 0.02s (50Hz)

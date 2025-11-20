@@ -108,6 +108,7 @@ class Constants:
 
         # 제어 파라미터
         MAX_VELOCITY = 2.0          # 최대 전진 속도 (m/s)
+        MIN_VELOCITY = 0.2
         MAX_YAW_RATE = 1.0          # 최대 yaw rate (rad/s)
         CONTROL_RATE_HZ = 50.0      # 제어 주기 (Hz)
 
@@ -117,7 +118,7 @@ class Constants:
         ALT_ORIGIN = 0.0
 
         # 속도 스케일링
-        VELOCITY_SCALE = 2.0        # desired_speed → m/s 변환 계수
+        VELOCITY_SCALE = 1.0        # desired_speed → m/s 변환 계수
         YAW_RATE_SCALE = 1.0        # desired_moment → rad/s 변환 계수
 
         # Offboard 제어 설정
@@ -184,7 +185,7 @@ class Constants:
     # mission_type: 'PASS_BETWEEN_BUOYS', 'CIRCLE_BUOY', 'WAYPOINT_FOLLOW', 'OBSTACLE_AVOID', 'DOCK_MODE', 'ROTATION'
     PREDEFINED_WAYPOINTS = [
         # MODE=0 (로컬 좌표) 예시:
-        (100, 0, 'DOCK_MODE', DEFAULT_WAYPOINT_RADIUS,{}),
+        (100, 0, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS,{}),
         (100, 10, 'DOCK_MODE', DEFAULT_WAYPOINT_RADIUS, {'target_shape': 'red_square'}),
         (160, 0, 'CIRCLE_BUOY', DEFAULT_WAYPOINT_RADIUS, {'rotation_direction': 1, 'circle_radius': 15.0}),
         (150, -15, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS,{}),
