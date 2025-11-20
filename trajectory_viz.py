@@ -323,7 +323,7 @@ class UnifiedPlotManager:
 
         # 극좌표 플롯 업데이트
         ranges = np.sqrt(lidar_x**2 + lidar_y**2)
-        angles = np.arctan2(lidar_y, lidar_x)
+        angles = np.arctan2(lidar_x, lidar_y)
 
         scatter = self.ax_lidar_polar.scatter(
             angles, ranges, c='red', marker='.', s=15, alpha=0.6
