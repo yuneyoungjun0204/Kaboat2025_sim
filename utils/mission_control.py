@@ -397,9 +397,8 @@ class MissionLoopExecutor:
             # 6. 제어 명령 발행
             self._publish_commands(left_thrust, right_thrust, mission_type)
 
-            # 7. 시각화 (부표 미션 및 도킹 미션)
-            if mission_type in [MissionType.PASS_BETWEEN_BUOYS, MissionType.CIRCLE_BUOY, MissionType.DOCK_MODE]:
-                self._visualize(mission_type)
+            # 7. 시각화 (모든 미션에서 활성화)
+            self._visualize(mission_type)
 
         except Exception as e:
             self.logger.error(f"제어 루프 오류: {e}")
@@ -656,7 +655,18 @@ class MissionLoopExecutor:
 
     def _visualize(self, mission_type: MissionType):
         """시각화"""
+        # 이미지가 없으면 대기 메시지 표시
         if self.sensor_handler.current_image is None:
+            # 검은 화면에 대기 메시지 표시
+            import cv2
+            import numpy as np
+            waiting_image = np.zeros((480, 640, 3), dtype=np.uint8)
+            cv2.putText(waiting_image, "Waiting for camera image...", (50, 240),
+                       cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), 2)
+            cv2.putText(waiting_image, f"Mission: {mission_type.name}", (50, 280),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+            cv2.imshow(Constants.VisualizationParams.WINDOW_NAME, waiting_image)
+            cv2.waitKey(1)
             return
 
         # 탐지 결과만 시각화 (깊이 맵 시각화 제거로 성능 향상)
@@ -666,6 +676,9 @@ class MissionLoopExecutor:
         if mission_type.name == "DOCK_MODE":
             accumulated_angle = self.mission_manager.get_dock_accumulated_angle()
 
+        # Depth map 가져오기 (있는 경우)
+        depth_map = getattr(self.detection_system, 'last_depth_map', None)
+
         self.visualization.visualize_detections(
             self.sensor_handler.current_image, self.detected_objects,
             mission_type.name, self.waypoint_manager.get_waypoint_index(),
@@ -673,5 +686,6 @@ class MissionLoopExecutor:
             raw_detections=self.raw_detections,
             bridge=None,  # ROS 이미지 발행 비활성화
             viz_image_pub=None,  # ROS 이미지 발행 비활성화
-            accumulated_angle=accumulated_angle
+            accumulated_angle=accumulated_angle,
+            depth_map=depth_map  # Depth map 전달
         )

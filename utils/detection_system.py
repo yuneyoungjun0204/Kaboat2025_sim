@@ -67,6 +67,9 @@ class DetectionSystem:
         self.spatial_smoothing = spatial_smoothing
         self.spatial_kernel_size = spatial_kernel_size
 
+        # Depth map 캐싱 (시각화용)
+        self.last_depth_map = None
+
         # NanoOWL 초기화
         self._init_nanoowl()
 
@@ -157,6 +160,9 @@ class DetectionSystem:
         depth_map = self.depth_estimator.estimate_depth(image)
         if depth_map is None:
             return []
+
+        # 시각화를 위해 depth_map 저장
+        self.last_depth_map = depth_map
 
         # Jetson 최적화: PIL 변환 없이 직접 RGB로 변환
         frame_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)

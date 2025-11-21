@@ -43,9 +43,22 @@ class VisualizationSystem:
             "blue_buoy": vp.COLOR_BLUE_BUOY
         }
 
-        # 시각화 창 생성
+        # 시각화 창 생성 및 초기화
         cv2.namedWindow(vp.WINDOW_NAME, cv2.WINDOW_NORMAL)
         cv2.resizeWindow(vp.WINDOW_NAME, vp.WINDOW_WIDTH, vp.WINDOW_HEIGHT)
+
+        # Depth map 창도 미리 생성
+        cv2.namedWindow("Depth Map", cv2.WINDOW_NORMAL)
+        cv2.resizeWindow("Depth Map", 640, 480)
+
+        # 초기 화면 표시 (검은 화면)
+        initial_image = np.zeros((vp.WINDOW_HEIGHT, vp.WINDOW_WIDTH, 3), dtype=np.uint8)
+        cv2.putText(initial_image, "VRX Mission Control Initialized", (50, 240),
+                   cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), 2)
+        cv2.putText(initial_image, "Waiting for data...", (50, 280),
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+        cv2.imshow(vp.WINDOW_NAME, initial_image)
+        cv2.waitKey(1)
 
     # Jetson 최적화: 트랙바 시스템 완전 제거 (고정 파라미터 사용)
     def update_parameters_from_trackbars(self) -> Dict:
@@ -81,14 +94,33 @@ class VisualizationSystem:
             'rotation_default_angle': Constants.ROTATION_DEFAULT_TARGET
         }
 
-    # visualize_depth_map 메서드 제거 (성능 최적화)
-    # 깊이 맵 시각화는 사용되지 않으므로 제거됨
+    def visualize_depth_map(self, depth_map: np.ndarray, window_name: str = "Depth Map"):
+        """
+        깊이 맵 시각화
+
+        Args:
+            depth_map: 깊이 맵 (0-1 정규화된 numpy 배열)
+            window_name: 창 이름
+        """
+        if depth_map is None:
+            return
+
+        # 깊이 맵을 컬러맵으로 변환 (더 보기 좋게)
+        depth_colormap = cv2.applyColorMap(
+            (depth_map * 255).astype(np.uint8),
+            cv2.COLORMAP_INFERNO  # 또는 COLORMAP_JET, COLORMAP_TURBO
+        )
+
+        # 화면 표시
+        cv2.imshow(window_name, depth_colormap)
+        cv2.waitKey(1)
 
     def visualize_detections(self, image: np.ndarray, detections: List[Dict],
                             mission_name: str, waypoint_index: int, total_waypoints: int,
                             raw_detections: Optional[List[Dict]] = None,
                             bridge=None, viz_image_pub=None,
-                            accumulated_angle: Optional[float] = None):
+                            accumulated_angle: Optional[float] = None,
+                            depth_map: Optional[np.ndarray] = None):
         """
         탐지 결과 시각화 (Jetson 최적화: 정보 텍스트 제거, 박스만 표시)
 
@@ -135,10 +167,17 @@ class VisualizationSystem:
 
         # 화면 표시
         cv2.imshow(Constants.VisualizationParams.WINDOW_NAME, vis_image)
+
+        # Depth map 시각화 (선택적)
+        if depth_map is not None:
+            self.visualize_depth_map(depth_map)
+
         cv2.waitKey(1)
 
     # _draw_dashed_rectangle 및 _draw_dashed_line 메서드 제거 (사용되지 않음, Jetson 최적화)
 
     def cleanup(self):
         """시각화 창 정리"""
+        cv2.destroyWindow(Constants.VisualizationParams.WINDOW_NAME)
+        cv2.destroyWindow("Depth Map")
         cv2.destroyAllWindows()

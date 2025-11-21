@@ -62,18 +62,23 @@ class ROSCommunicationManager:
                 Constants.QueueSizes.SENSOR
             )
 
-        lidar_qos_profile = QoSProfile(
-            depth=1, # 큐 사이즈는 LiDAR와 같은 센서 데이터의 경우 1~10 사이의 낮은 값이 일반적입니다.
-            reliability=ReliabilityPolicy.BEST_EFFORT, # 🚨 이 부분을 BEST_EFFORT로 변경
-            history=HistoryPolicy.KEEP_LAST # 최신 메시지만 유지
-        )
+        # LiDAR 구독 (선택적)
+        if 'lidar' in callbacks:
+            try:
+                lidar_qos_profile = QoSProfile(
+                    depth=1,
+                    reliability=ReliabilityPolicy.BEST_EFFORT,
+                    history=HistoryPolicy.KEEP_LAST
+                )
 
-        self.subscribers['lidar'] = self.node.create_subscription(
-            LaserScan,
-            Constants.Topics.LIDAR_SCAN,
-            callbacks['lidar'],
-            lidar_qos_profile  # 수정한 QoS 프로파일 적용
-        )
+                self.subscribers['lidar'] = self.node.create_subscription(
+                    LaserScan,
+                    Constants.Topics.LIDAR_SCAN,
+                    callbacks['lidar'],
+                    lidar_qos_profile
+                )
+            except Exception as e:
+                self.node.get_logger().warn(f"⚠️ LiDAR 구독 실패: {e}. 계속 진행합니다.")
 
         # GPS 구독
         if 'gps' in callbacks:

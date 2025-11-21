@@ -104,7 +104,7 @@ class Constants:
         """PX4/Pixhawk 연동 파라미터"""
 
         # PX4 모드 활성화
-        ENABLED = True
+        ENABLED = False
 
         # 제어 파라미터
         MAX_VELOCITY = 2.0          # 최대 전진 속도 (m/s)
@@ -185,7 +185,7 @@ class Constants:
     # mission_type: 'PASS_BETWEEN_BUOYS', 'CIRCLE_BUOY', 'WAYPOINT_FOLLOW', 'OBSTACLE_AVOID', 'DOCK_MODE', 'ROTATION'
     PREDEFINED_WAYPOINTS = [
         # MODE=0 (로컬 좌표) 예시:
-        (100, 0, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS,{}),
+        (100, 0, 'PASS_BETWEEN_BUOYS', DEFAULT_WAYPOINT_RADIUS,{}),
         (100, 10, 'DOCK_MODE', DEFAULT_WAYPOINT_RADIUS, {'target_shape': 'red_square'}),
         (160, 0, 'CIRCLE_BUOY', DEFAULT_WAYPOINT_RADIUS, {'rotation_direction': 1, 'circle_radius': 15.0}),
         (150, -15, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS,{}),
@@ -404,8 +404,8 @@ class Constants:
         """ROS2 토픽명 관리"""
 
         # 센서 입력 토픽
-        CAMERA_IMAGE = '/image_raw'
-        LIDAR_SCAN = '/scan'
+        CAMERA_IMAGE = '/wamv/sensors/cameras/front_left_camera_sensor/image_raw'
+        LIDAR_SCAN = '/wamv/sensors/lidars/lidar_wamv_sensor/scan'
         GPS_FIX = '/wamv/sensors/gps/gps/fix'
         IMU_DATA = '/wamv/sensors/imu/imu/data'
 
@@ -516,7 +516,7 @@ class Constants:
     class VisualizationParams:
         """시각화 시스템 파라미터"""
         # 탐지 임계값
-        DETECTION_THRESHOLD = 0.005
+        DETECTION_THRESHOLD = 0.00014
         MIN_BOX_AREA = 2
         MAX_BOX_AREA = 800000
         MIN_DEPTH_THRESHOLD = 0.12  # 최소 깊이 (미터)
