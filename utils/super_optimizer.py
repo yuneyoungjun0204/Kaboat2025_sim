@@ -443,7 +443,7 @@ def create_super_optimizer(preset='balanced'):
             'enable_pinned_memory': True,
             'enable_cuda_preprocess': True,
             'enable_batch_process': True,  # Batch Processing 활성화
-            'batch_size': 8,  # 배치 크기 설정 (4 → 6으로 증가)
+            'batch_size': 32,  # 배치 크기 설정
             'compile_mode': 'reduce-overhead'
         }
     }
@@ -486,7 +486,7 @@ if __name__ == "__main__":
     model = DummyModel()
 
     # 최적화 적용
-    optimizer = create_super_optimizer(preset='jetson_turbo')
+    optimizer = create_super_optimizer(preset='max_speed')
     optimized_model = optimizer.optimize_model(model)
 
     print("\n통계:", optimizer.get_stats())

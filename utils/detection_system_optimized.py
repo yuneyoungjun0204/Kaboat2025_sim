@@ -119,8 +119,8 @@ class OptimizedDetectionSystem:
         max_depth=50.0,
         spatial_smoothing=True,
         spatial_kernel_size=5,
-        detection_frame_skip=2,  # Detection은 2프레임마다
-        depth_frame_skip=3,      # Depth는 3프레임마다
+        detection_frame_skip=4,  # Detection은 2프레임마다
+        depth_frame_skip=8,      # Depth는 3프레임마다
         use_async=True,          # 비동기 처리 사용
         use_nanoowl=True,        # NanoOWL 사용 (False면 생략 가능)
         roi_enabled=False,       # ROI 처리 사용

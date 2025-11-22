@@ -62,22 +62,77 @@ class VRXSystemFactory:
         - ✅ Mixed Precision (FP16 AMP): 1.5-2배 속도 향상
         - ✅ CUDA 가속 전처리: 2-3배 전처리 속도 향상
         - ✅ Zero-copy Pinned Memory: CPU-GPU 전송 2-3배 향상
+        - ✅ TensorRT FP16: 엔진이 있으면 자동 사용 (2-4배 추가 향상)
 
         Returns:
             UltraDepthEstimator: Ultra 최적화된 깊이 추정기 인스턴스
         """
         self.logger.info("🚀 Ultra 최적화 깊이 추정기 초기화 중...")
 
+        # TensorRT 엔진 경로 확인
+        from pathlib import Path
+        project_root = Path(__file__).parent.parent
+        engine_path = project_root / "depth_model.engine"
+        onnx_path = project_root / "depth_model.onnx"
+        use_tensorrt = engine_path.exists()
+        
+        # 엔진이 없으면 자동으로 변환 시도
+        if not use_tensorrt:
+            self.logger.info("   → TensorRT 엔진 없음 - 자동 변환 시도 중...")
+            try:
+                # OptimizedDepthEstimator로 ONNX 변환
+                from .depth_estimation_optimized import OptimizedDepthEstimator
+                temp_estimator = OptimizedDepthEstimator(
+                    model_type="DPT_Hybrid",
+                    input_size=256,
+                    use_tensorrt=False,
+                    device=self.device
+                )
+                
+                # ONNX 변환
+                if not onnx_path.exists():
+                    self.logger.info("   → ONNX 변환 중...")
+                    temp_estimator.export_to_onnx(str(onnx_path))
+                    self.logger.info(f"   ✅ ONNX 변환 완료: {onnx_path}")
+                
+                # TensorRT 엔진 생성 시도
+                self.logger.info("   → TensorRT 엔진 생성 시도 중...")
+                temp_estimator.export_to_tensorrt(str(onnx_path), str(engine_path))
+                
+                if engine_path.exists():
+                    use_tensorrt = True
+                    self.logger.info(f"   ✅ TensorRT 엔진 생성 완료: {engine_path}")
+                else:
+                    self.logger.warn("   ⚠️ TensorRT 엔진 생성 실패 - PyTorch 모드로 실행")
+                    self.logger.warn(f"   → 수동 변환: python3 convert_to_tensorrt.py")
+            except ImportError:
+                self.logger.warn("   ⚠️ TensorRT Python API 미설치 - PyTorch 모드로 실행")
+                self.logger.warn(f"   → TensorRT 사용하려면: python3 convert_to_tensorrt.py")
+            except Exception as e:
+                self.logger.warn(f"   ⚠️ 자동 변환 실패: {e}")
+                self.logger.warn(f"   → PyTorch 모드로 실행")
+                self.logger.warn(f"   → 수동 변환: python3 convert_to_tensorrt.py")
+        
+        if use_tensorrt:
+            self.logger.info(f"🔥 TensorRT 엔진 발견: {engine_path}")
+            self.logger.info("   → TensorRT FP16 모드로 실행 (2-4배 추가 속도 향상)")
+
         # Ultra Depth Estimator 생성 (balanced 프리셋 권장)
         estimator = create_ultra_depth_estimator(
-            preset='balanced',  # 'fast', 'balanced', 'quality'
-            input_size=256,
+            preset='fast',  # 최대 성능 프리셋
+            input_size=128,
+            use_tensorrt=use_tensorrt,
+            engine_path=str(engine_path) if use_tensorrt else None,
             enable_profiling=False,  # 성능 측정이 필요하면 True
             device=self.device
         )
 
-        self.logger.info("✅ Ultra 깊이 추정기 초기화 완료!")
-        self.logger.info("   → 예상 성능: 15-25 FPS (기존 5-8 FPS 대비 3-5배 향상)")
+        if use_tensorrt:
+            self.logger.info("✅ Ultra 깊이 추정기 초기화 완료 (TensorRT FP16)!")
+            self.logger.info("   → 예상 성능: 30-50 FPS (TensorRT 사용 시)")
+        else:
+            self.logger.info("✅ Ultra 깊이 추정기 초기화 완료!")
+            self.logger.info("   → 예상 성능: 15-25 FPS (PyTorch 모드)")
         return estimator
 
     def create_detection_system(

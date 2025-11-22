@@ -383,7 +383,7 @@ def create_ultra_depth_estimator(
     presets = {
         'fast': {
             'model_type': 'MiDaS_small',
-            'input_size': 192,
+            'input_size': 32,
             'optimization_preset': 'max_speed'
         },
         'balanced': {
