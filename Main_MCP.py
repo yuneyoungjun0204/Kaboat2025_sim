@@ -20,6 +20,7 @@ from utils.mission_control import (
     WaypointTransitionHandler,
     ObstacleAvoidExecutor
 )
+from utils.jetson_optimizer import setup_jetson
 
 
 class VRXMissionController(Node):
@@ -28,6 +29,9 @@ class VRXMissionController(Node):
     def __init__(self):
         super().__init__('vrx_mission_controller')
         self._log_header("VRX 통합 미션 제어 시스템 초기화")
+
+        # 🚀 Jetson 최적화 적용 (CUDA, cuDNN, 메모리)
+        setup_jetson()
 
         # 기본 설정
         self.bridge = CvBridge()

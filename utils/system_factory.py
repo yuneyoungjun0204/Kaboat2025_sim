@@ -12,6 +12,7 @@ from cv_bridge import CvBridge
 
 from .config import Constants
 from .depth_estimation import MiDaSHybridDepthEstimator
+from .depth_estimation_optimized import OptimizedDepthEstimator
 from .detection_system import DetectionSystem
 from .sensor_preprocessing import SensorDataManager
 from .sensor_callbacks import SensorCallbackHandler
@@ -51,21 +52,26 @@ class VRXSystemFactory:
         self.logger = logger
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    def create_depth_estimator(self) -> MiDaSHybridDepthEstimator:
+    def create_depth_estimator(self) -> OptimizedDepthEstimator:
         """
-        깊이 추정기 생성
+        최적화된 깊이 추정기 생성 (TensorRT + FP16)
 
         Returns:
-            MiDaSHybridDepthEstimator: 깊이 추정기 인스턴스
+            OptimizedDepthEstimator: 최적화된 깊이 추정기 인스턴스
         """
-        self.logger.info("깊이 추정기 초기화 중...")
-        estimator = MiDaSHybridDepthEstimator()
-        self.logger.info("✓ 깊이 추정기 초기화 완료")
+        self.logger.info("최적화된 깊이 추정기 초기화 중...")
+        estimator = OptimizedDepthEstimator(
+            model_type="DPT_Hybrid",
+            input_size=256,  # 256x256 for speed
+            use_tensorrt=False,  # TensorRT는 변환 필요 시 True
+            device=self.device
+        )
+        self.logger.info("✓ 최적화된 깊이 추정기 초기화 완료 (FP16, 256x256)")
         return estimator
 
     def create_detection_system(
         self,
-        depth_estimator: Optional[MiDaSHybridDepthEstimator] = None,
+        depth_estimator: Optional[OptimizedDepthEstimator] = None,
         enable_preprocessing: bool = True
     ) -> DetectionSystem:
         """
