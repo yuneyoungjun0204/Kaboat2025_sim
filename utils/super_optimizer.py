@@ -443,7 +443,7 @@ def create_super_optimizer(preset='balanced'):
             'enable_pinned_memory': True,
             'enable_cuda_preprocess': True,
             'enable_batch_process': True,  # Batch Processing 활성화
-            'batch_size': 4,  # 배치 크기 설정
+            'batch_size': 8,  # 배치 크기 설정 (4 → 6으로 증가)
             'compile_mode': 'reduce-overhead'
         }
     }
