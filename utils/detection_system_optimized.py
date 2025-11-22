@@ -153,11 +153,28 @@ class OptimizedDetectionSystem:
         self.last_detections = []
         self.last_depth_map = None
 
+        # 전처리기 (Detection용과 Depth용 분리)
+        self.image_preprocessor = None
+        self.depth_preprocessor = None
+
         # 비동기 처리
         self.use_async = use_async
         if self.use_async:
             self.depth_worker = AsyncWorker("DepthEstimator", self._estimate_depth_async)
             self.depth_worker.start()
+
+        # Mixed Precision (FP16) 설정 (config 기반)
+        try:
+            from .config import Constants
+            self.use_amp = torch.cuda.is_available() and Constants.OptimizationConfig.USE_MIXED_PRECISION
+        except:
+            self.use_amp = torch.cuda.is_available()
+
+        if self.use_amp:
+            self.amp_dtype = torch.float16
+            print("✅ Mixed Precision (FP16) 활성화")
+        else:
+            print("⏭️  Mixed Precision 비활성화")
 
         # NanoOWL 초기화 (선택적)
         if self.use_nanoowl:
@@ -172,7 +189,7 @@ class OptimizedDetectionSystem:
         print(f"   - ROI 처리: {roi_enabled}")
 
     def _init_nanoowl(self):
-        """NanoOWL 초기화"""
+        """NanoOWL 초기화 + torch.compile 최적화"""
         try:
             sys.path.insert(0, str(Constants.Paths.NANOOWL_DIR))
             from nanoowl.owl_predictor import OwlPredictor
@@ -183,6 +200,42 @@ class OptimizedDetectionSystem:
                 device=self.device,
                 image_encoder_engine=None
             )
+
+            # 🚀 torch.compile 최적화 적용 (PyTorch 2.0+, config 기반)
+            use_torch_compile = True
+            try:
+                from .config import Constants
+                use_torch_compile = Constants.OptimizationConfig.USE_TORCH_COMPILE
+            except:
+                pass
+
+            if use_torch_compile and hasattr(torch, 'compile'):
+                try:
+                    print("🔥 torch.compile 적용 중...")
+                    # Image encoder만 compile (가장 무거운 부분)
+                    if hasattr(self.predictor, 'encode_image'):
+                        original_encode = self.predictor.encode_image
+                        self.predictor.encode_image = torch.compile(
+                            original_encode,
+                            mode="reduce-overhead",  # Jetson에 최적화된 모드
+                            fullgraph=False,         # 부분 그래프 컴파일 허용
+                            dynamic=True             # 동적 shape 지원
+                        )
+                        print("✅ torch.compile 적용 완료 (Image Encoder)")
+                    else:
+                        print("⚠️ encode_image 메서드 없음 - 전체 predictor compile")
+                        self.predictor = torch.compile(
+                            self.predictor,
+                            mode="reduce-overhead",
+                            fullgraph=False,
+                            dynamic=True
+                        )
+                except Exception as e:
+                    print(f"⚠️ torch.compile 실패 (정상 모드로 진행): {e}")
+            elif not use_torch_compile:
+                print("⏭️  torch.compile 비활성화 (config 설정)")
+            else:
+                print("⚠️ PyTorch 2.0+ 필요 (torch.compile 미지원)")
 
             # 미션별 쿼리 정의
             self.detection_queries = {
@@ -250,16 +303,28 @@ class OptimizedDetectionSystem:
         ]:
             return []
 
-        # === 1. Depth 처리 (비동기 + Frame skip) ===
+        # 원본 이미지 저장
+        original_image = image
+        original_h, original_w = image.shape[:2]
+
+        # === 1. Depth 전처리 (저해상도) ===
+        depth_image = image
+        depth_metadata = None
+        if self.depth_preprocessor:
+            depth_image, depth_metadata = self.depth_preprocessor.preprocess(image)
+            if depth_image is None:
+                return []
+
+        # === 2. Depth 처리 (비동기 + Frame skip) ===
         self.depth_frame_count += 1
 
         if self.depth_frame_count % self.depth_frame_skip == 0:
             if self.use_async:
                 # 비동기로 Depth 추정 제출
-                self.depth_worker.submit(image.copy())
+                self.depth_worker.submit(depth_image.copy())
             else:
                 # 동기로 Depth 추정
-                self.last_depth_map = self.depth_estimator.estimate_depth(image)
+                self.last_depth_map = self.depth_estimator.estimate_depth(depth_image)
 
         # 비동기 결과 확인
         if self.use_async:
@@ -271,18 +336,31 @@ class OptimizedDetectionSystem:
         if depth_map is None:
             return []
 
-        # === 2. Detection 처리 (Frame skip) ===
+        # Depth 스케일 계산 (original → depth map)
+        depth_h, depth_w = depth_map.shape[:2]
+        depth_scale_x = depth_w / original_w
+        depth_scale_y = depth_h / original_h
+
+        # === 3. Detection 처리 (Frame skip) ===
         self.detection_frame_count += 1
 
         if self.detection_frame_count % self.detection_frame_skip != 0:
             # 이전 결과 반환 (depth는 업데이트)
-            return self._update_detections_depth(self.last_detections, depth_map)
+            return self._update_detections_depth(self.last_detections, depth_map, depth_scale_x, depth_scale_y)
 
         if not self.use_nanoowl:
             return []
 
+        # === 4. Detection 전처리 (원본 또는 약간 축소) ===
+        detection_image = original_image
+        detection_metadata = None
+        if self.image_preprocessor:
+            detection_image, detection_metadata = self.image_preprocessor.preprocess(original_image)
+            if detection_image is None:
+                return []
+
         # ROI 적용
-        process_image, roi_offset = self._apply_roi(image)
+        process_image, roi_offset = self._apply_roi(detection_image)
 
         # RGB 변환
         frame_rgb = cv2.cvtColor(process_image, cv2.COLOR_BGR2RGB)
@@ -293,13 +371,22 @@ class OptimizedDetectionSystem:
         if query_info is None:
             return []
 
-        # NanoOWL 탐지
-        output = self.predictor.predict(
-            image=image_pil,
-            text=query_info['queries'],
-            text_encodings=query_info['text_encodings'],
-            threshold=self.detection_threshold
-        )
+        # NanoOWL 탐지 (Mixed Precision 적용)
+        if self.use_amp:
+            with torch.cuda.amp.autocast(dtype=self.amp_dtype):
+                output = self.predictor.predict(
+                    image=image_pil,
+                    text=query_info['queries'],
+                    text_encodings=query_info['text_encodings'],
+                    threshold=self.detection_threshold
+                )
+        else:
+            output = self.predictor.predict(
+                image=image_pil,
+                text=query_info['queries'],
+                text_encodings=query_info['text_encodings'],
+                threshold=self.detection_threshold
+            )
 
         # 결과 파싱
         detections = []
@@ -316,23 +403,41 @@ class OptimizedDetectionSystem:
             y1 += roi_offset[1]
             y2 += roi_offset[1]
 
-            # 박스 크기 필터링
-            area = (x2 - x1) * (y2 - y1)
+            # === Detection 좌표 → 원본 좌표 변환 ===
+            if detection_metadata:
+                # Detection 이미지 좌표를 원본 좌표로 복원
+                scale_x_inv = 1.0 / detection_metadata['scale_x']
+                scale_y_inv = 1.0 / detection_metadata['scale_y']
+                x1_orig = int(x1 * scale_x_inv)
+                y1_orig = int(y1 * scale_y_inv)
+                x2_orig = int(x2 * scale_x_inv)
+                y2_orig = int(y2 * scale_y_inv)
+                cx_orig = (x1_orig + x2_orig) // 2
+                cy_orig = (y1_orig + y2_orig) // 2
+            else:
+                # Detection이 원본 해상도
+                x1_orig, y1_orig, x2_orig, y2_orig = x1, y1, x2, y2
+                cx_orig = (x1 + x2) // 2
+                cy_orig = (y1 + y2) // 2
+
+            # 박스 크기 필터링 (원본 좌표 기준)
+            area = (x2_orig - x1_orig) * (y2_orig - y1_orig)
             if not (self.min_box_area <= area <= self.max_box_area):
                 continue
 
-            # 중심점 계산
-            cx, cy = (x1 + x2) // 2, (y1 + y2) // 2
-            cx = max(0, min(depth_map.shape[1] - 1, cx))
-            cy = max(0, min(depth_map.shape[0] - 1, cy))
+            # === 원본 좌표 → Depth map 좌표 변환 ===
+            cx_depth = int(cx_orig * depth_scale_x)
+            cy_depth = int(cy_orig * depth_scale_y)
+            cx_depth = max(0, min(depth_map.shape[1] - 1, cx_depth))
+            cy_depth = max(0, min(depth_map.shape[0] - 1, cy_depth))
 
-            # Depth 추출
+            # Depth 추출 (Spatial smoothing)
             if self.spatial_smoothing:
                 depth = smooth_depth_spatially(
-                    depth_map, cx, cy, kernel_size=self.spatial_kernel_size
+                    depth_map, cx_depth, cy_depth, kernel_size=self.spatial_kernel_size
                 )
             else:
-                depth = depth_map[cy, cx]
+                depth = depth_map[cy_depth, cx_depth]
 
             # 깊이 필터링
             if not (self.min_depth_threshold <= depth <= self.max_depth_threshold):
@@ -340,11 +445,12 @@ class OptimizedDetectionSystem:
 
             label = query_info['label_mapping'].get(label_idx, "unknown")
 
+            # 최종 결과는 원본 해상도 좌표 사용
             detections.append({
                 "label": label,
                 "confidence": score,
-                "bbox": [x1, y1, x2, y2],
-                "center": (cx, cy),
+                "bbox": [x1_orig, y1_orig, x2_orig, y2_orig],
+                "center": (cx_orig, cy_orig),
                 "depth": float(depth)
             })
 
@@ -356,25 +462,37 @@ class OptimizedDetectionSystem:
 
         return detections
 
-    def _update_detections_depth(self, detections: List[Dict], depth_map: np.ndarray) -> List[Dict]:
-        """이전 Detection 결과의 Depth만 업데이트"""
+    def _update_detections_depth(self, detections: List[Dict], depth_map: np.ndarray,
+                                  depth_scale_x: float, depth_scale_y: float) -> List[Dict]:
+        """
+        이전 Detection 결과의 Depth만 업데이트
+
+        Args:
+            detections: 이전 Detection 결과
+            depth_map: Depth map
+            depth_scale_x: 원본 → Depth map X 스케일
+            depth_scale_y: 원본 → Depth map Y 스케일
+        """
         if not detections or depth_map is None:
             return detections
 
         updated = []
         for det in detections:
             det_copy = det.copy()
-            cx, cy = det['center']
+            cx_orig, cy_orig = det['center']
 
-            cx = max(0, min(depth_map.shape[1] - 1, cx))
-            cy = max(0, min(depth_map.shape[0] - 1, cy))
+            # 원본 좌표 → Depth map 좌표 변환
+            cx_depth = int(cx_orig * depth_scale_x)
+            cy_depth = int(cy_orig * depth_scale_y)
+            cx_depth = max(0, min(depth_map.shape[1] - 1, cx_depth))
+            cy_depth = max(0, min(depth_map.shape[0] - 1, cy_depth))
 
             if self.spatial_smoothing:
                 depth = smooth_depth_spatially(
-                    depth_map, cx, cy, kernel_size=self.spatial_kernel_size
+                    depth_map, cx_depth, cy_depth, kernel_size=self.spatial_kernel_size
                 )
             else:
-                depth = depth_map[cy, cx]
+                depth = depth_map[cy_depth, cy_depth]
 
             det_copy['depth'] = float(depth)
             updated.append(det_copy)
@@ -419,6 +537,17 @@ class OptimizedDetectionSystem:
             self.detection_frame_skip = detection_frame_skip
         if depth_frame_skip is not None:
             self.depth_frame_skip = depth_frame_skip
+
+    def set_preprocessors(self, image_preprocessor=None, depth_preprocessor=None):
+        """
+        전처리기 설정 (Detection용과 Depth용 분리)
+
+        Args:
+            image_preprocessor: Detection용 전처리기 (고해상도)
+            depth_preprocessor: Depth용 전처리기 (저해상도 - 4배 축소)
+        """
+        self.image_preprocessor = image_preprocessor
+        self.depth_preprocessor = depth_preprocessor
 
     def cleanup(self):
         """리소스 정리"""

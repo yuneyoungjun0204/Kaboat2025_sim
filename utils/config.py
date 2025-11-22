@@ -404,7 +404,7 @@ class Constants:
         """ROS2 토픽명 관리"""
 
         # 센서 입력 토픽
-        CAMERA_IMAGE = '/camera/image_rect'
+        CAMERA_IMAGE = '/image_raw'
         LIDAR_SCAN = '/scan'
         GPS_FIX = '/wamv/sensors/gps/gps/fix'
         IMU_DATA = '/wamv/sensors/imu/imu/data'
@@ -516,7 +516,7 @@ class Constants:
     class VisualizationParams:
         """시각화 시스템 파라미터"""
         # 탐지 임계값
-        DETECTION_THRESHOLD = 0.00004
+        DETECTION_THRESHOLD = 0.0000004
         MIN_BOX_AREA = 2
         MAX_BOX_AREA = 800000
         MIN_DEPTH_THRESHOLD = 0.12  # 최소 깊이 (미터)
@@ -760,3 +760,220 @@ class Constants:
             print(f"\n✅ 설정 검증 통과")
 
         print("=" * 70)
+    # ============================================================================
+    # 🚀 성능 최적화 설정 (Performance Optimization Settings)
+    # ============================================================================
+    class OptimizationConfig:
+        """
+        모든 최적화 설정을 중앙에서 관리
+
+        ⚠️ 성능 vs 정확도 트레이드오프:
+        - 최적화를 많이 켤수록 → 속도 ↑, 탐지력 ↓
+        - 최적화를 끌수록 → 속도 ↓, 탐지력 ↑
+        """
+
+        # ========================================================================
+        # 1. 파이썬 모듈 선택 (어떤 구현체를 사용할지)
+        # ========================================================================
+
+        # Depth Estimation 모듈 선택
+        # - 'ultra': UltraDepthEstimator (최고 성능, TensorRT 지원)
+        # - 'optimized': OptimizedDepthEstimator (빠름, 기본 최적화)
+        # - 'standard': MiDaSHybridDepthEstimator (느림, 가장 정확)
+        DEPTH_MODULE = 'ultra'
+
+        # Detection System 모듈 선택
+        # - 'optimized': OptimizedDetectionSystem (빠름, 멀티스레딩)
+        # - 'standard': DetectionSystem (느림, 기본)
+        DETECTION_MODULE = 'optimized'
+
+        # ========================================================================
+        # 2. Jetson 하드웨어 최적화
+        # ========================================================================
+
+        # Jetson 전력 모드 최적화 (MAXN 모드)
+        JETSON_POWER_OPTIMIZATION = True  # nvpmodel -m 0, jetson_clocks
+
+        # CUDA 최적화
+        CUDA_OPTIMIZATION = True  # cuDNN benchmark, TF32, 캐시 최적화
+
+        # PyTorch 최적화
+        PYTORCH_OPTIMIZATION = True  # JIT, gradient 비활성화, 메모리 최적화
+
+        # ========================================================================
+        # 3. Detection 최적화 설정
+        # ========================================================================
+
+        # Frame Skip (프레임 건너뛰기)
+        # - 1: 모든 프레임 처리 (느림, 정확)
+        # - 2: 50% 프레임 처리 (균형)
+        # - 3: 33% 프레임 처리 (빠름, 부정확)
+        DETECTION_FRAME_SKIP = 1  # ⚠️ 1로 설정하면 모든 프레임 탐지 (정확도 최대)
+
+        # Depth Frame Skip
+        DEPTH_FRAME_SKIP = 1  # ⚠️ 1로 설정하면 모든 프레임 depth 계산
+
+        # 비동기 처리 (멀티스레딩)
+        USE_ASYNC_DEPTH = True  # Depth를 백그라운드에서 처리 (속도 향상)
+
+        # NanoOWL 사용 여부
+        USE_NANOOWL = True  # False면 Detection 비활성화 (OBSTACLE_AVOID만 사용)
+
+        # torch.compile 최적화 (PyTorch 2.0+)
+        USE_TORCH_COMPILE = True  # NanoOWL Image Encoder 컴파일 (30-100% 속도 향상)
+
+        # Mixed Precision (FP16)
+        USE_MIXED_PRECISION = True  # FP16 AMP (1.5-2배 속도 향상)
+
+        # ROI (Region of Interest) 처리
+        USE_ROI = False  # True면 특정 영역만 처리 (속도 향상)
+        ROI_BOUNDS = None  # (x1, y1, x2, y2) 또는 None
+
+        # ========================================================================
+        # 4. Detection 파라미터 (탐지 임계값 및 필터)
+        # ========================================================================
+
+        # ⚠️ 이 값들이 탐지 성능에 가장 큰 영향을 미침!
+
+        # Detection Threshold (신뢰도 임계값)
+        # - 낮을수록 더 많이 탐지 (0.0001-0.01 권장)
+        # - 기존 config.py의 0.0000004는 너무 낮아서 무시되고 있었음
+        DETECTION_THRESHOLD = 0.0000000065  # ⚠️ 탐지율 ↑ 원하면 0.001-0.003으로 낮춤
+
+        # Box 크기 필터 (픽셀² 단위)
+        # - 원본 해상도 (1280x720) 기준
+        MIN_BOX_AREA = 500  # ⚠️ 작은 객체도 탐지하려면 100-200으로 낮춤
+        MAX_BOX_AREA = 80000  # 너무 큰 객체 필터링
+
+        # Depth 필터 (0-1 스케일, 0=가까움, 1=멀리)
+        MIN_DEPTH_THRESHOLD = 0.0  # 최소 깊이
+        MAX_DEPTH_THRESHOLD = 50.0  # 최대 깊이 (50.0 = 거의 무제한)
+
+        # ========================================================================
+        # 5. 해상도 설정 (Resolution Settings)
+        # ========================================================================
+
+        # 이미지 전처리 활성화
+        ENABLE_PREPROCESSING = True
+
+        # Detection 입력 해상도
+        # - None: 원본 해상도 사용 (1280x720, 가장 정확)
+        # - 'balanced': 640x480 (균형)
+        # - 'max_speed': 416x320 (빠름)
+        DETECTION_RESOLUTION = None  # ⚠️ None = 원본 (탐지력 최대)
+
+        # Depth 입력 해상도 (Depth는 해상도 낮춰도 괜찮음)
+        # - 'balanced': 640x480
+        # - 'max_speed': 416x320 (4배 축소, 권장)
+        DEPTH_RESOLUTION = 'max_speed'  # 4배 축소 (속도 ↑)
+
+        # Depth 모델 내부 처리 해상도
+        # - 256: 빠름 (권장)
+        # - 384: 느림, 정확
+        # - 512: 매우 느림, 매우 정확
+        DEPTH_MODEL_INPUT_SIZE = 256  # MiDaS 모델 입력 크기
+
+        # ========================================================================
+        # 6. Depth 처리 최적화
+        # ========================================================================
+
+        # TensorRT 사용 (Jetson에서 5-10배 속도 향상)
+        USE_TENSORRT = True  # engine 파일이 있을 때만 동작
+        TENSORRT_ENGINE_PATH = "/home/ansl/Real_ka/Kaboat2025_sim/depth_fp16.engine"
+
+        # Spatial Smoothing (공간적 depth 스무딩)
+        SPATIAL_SMOOTHING_ENABLED = True
+        SPATIAL_KERNEL_SIZE = 31  # 커널 크기 (홀수, 5-31 권장)
+
+        # Temporal Filtering (시간적 depth 필터링)
+        TEMPORAL_FILTER_ALPHA = 0.3  # EMA smoothing (0.2-0.4 권장)
+
+        # ========================================================================
+        # 7. 성능 프로파일 (Performance Profiles)
+        # ========================================================================
+
+        @classmethod
+        def apply_profile(cls, profile: str):
+            """
+            프리셋 프로파일 적용
+
+            Args:
+                profile: 'max_accuracy', 'balanced', 'max_speed'
+            """
+            if profile == 'max_accuracy':
+                # 최고 정확도 (느림)
+                cls.DETECTION_FRAME_SKIP = 1
+                cls.DEPTH_FRAME_SKIP = 1
+                cls.DETECTION_THRESHOLD = 0.001  # 낮춤
+                cls.MIN_BOX_AREA = 1  # 낮춤
+                cls.DETECTION_RESOLUTION = None  # 원본
+                cls.DEPTH_MODEL_INPUT_SIZE = 384
+                cls.USE_TORCH_COMPILE = False
+                cls.USE_MIXED_PRECISION = False
+                print("✅ 프로파일 적용: max_accuracy (탐지력 최대)")
+
+            elif profile == 'balanced':
+                # 균형 (기본값)
+                cls.DETECTION_FRAME_SKIP = 1
+                cls.DEPTH_FRAME_SKIP = 1
+                cls.DETECTION_THRDETECTION_THRESHOLDESHOLD = 0.003
+                cls.MIN_BOX_AREA = 3
+                cls.DETECTION_RESOLUTION = None
+                cls.DEPTH_MODEL_INPUT_SIZE = 256
+                cls.USE_TORCH_COMPILE = True
+                cls.USE_MIXED_PRECISION = True
+                print("✅ 프로파일 적용: balanced (균형)")
+
+            elif profile == 'max_speed':
+                # 최고 속도 (부정확)
+                cls.DETECTION_FRAME_SKIP = 3
+                cls.DEPTH_FRAME_SKIP = 2
+                cls.DETECTION_THRESHOLD = 0.00000065  # 높음
+                cls.MIN_BOX_AREA = 5  # 높음
+                cls.DETECTION_RESOLUTION = 'max_speed'
+                cls.DEPTH_MODEL_INPUT_SIZE = 256
+                cls.USE_TORCH_COMPILE = True
+                cls.USE_MIXED_PRECISION = True
+                print("✅ 프로파일 적용: max_speed (속도 최대)")
+
+            else:
+                raise ValueError(f"Unknown profile: {profile}")
+
+        # ========================================================================
+        # 8. 해상도 매핑 정보 (Resolution Mapping Info)
+        # ========================================================================
+
+        @classmethod
+        def print_resolution_info(cls):
+            """해상도 및 매핑 정보 출력"""
+            print("\n" + "=" * 70)
+            print("📐 해상도 및 매핑 정보")
+            print("=" * 70)
+            print(f"원본 이미지: 1280x720")
+            print(f"Detection 입력: {cls.DETECTION_RESOLUTION or '1280x720 (원본)'}")
+            print(f"Depth 전처리 입력: {cls.DEPTH_RESOLUTION} (416x320)")
+            print(f"Depth 모델 내부 처리: {cls.DEPTH_MODEL_INPUT_SIZE}x{cls.DEPTH_MODEL_INPUT_SIZE}")
+            print(f"Depth 최종 출력: 1280x720 (bilinear upscale)")
+            print()
+            print("🔗 좌표 매핑 순서:")
+            print("  1. Detection bbox (원본 좌표) → 중심점 계산")
+            print("  2. 원본 좌표 → Depth map 좌표 변환 (스케일 계산)")
+            print("  3. Depth map에서 깊이 추출 (spatial smoothing 적용)")
+            print("  4. 최종 결과는 모두 원본 해상도 좌표로 반환")
+            print("=" * 70 + "\n")
+
+
+# ============================================================================
+# 🎯 프로파일 자동 적용 (선택 사항)
+# ============================================================================
+# 아래 주석을 해제하여 프로파일을 자동으로 적용할 수 있습니다.
+# 프로파일 종류: 'max_accuracy', 'balanced', 'max_speed'
+
+# Constants.OptimizationConfig.apply_profile('balanced')  # 균형 (권장)
+Constants.OptimizationConfig.apply_profile('max_accuracy')  # 탐지력 최대
+# Constants.OptimizationConfig.apply_profile('max_speed')  # 속도 최대
+
+# ============================================================================
+# 설정 검증 및 정보 출력 (선택 사항)
+# ============================================================================
+# Constants.OptimizationConfig.print_resolution_info()  # 해상도 정보 출력

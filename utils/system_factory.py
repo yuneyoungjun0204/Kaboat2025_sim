@@ -14,7 +14,7 @@ from .config import Constants
 from .depth_estimation import MiDaSHybridDepthEstimator
 from .depth_estimation_optimized import OptimizedDepthEstimator
 from .depth_estimation_ultra import UltraDepthEstimator, create_ultra_depth_estimator
-from .detection_system import DetectionSystem
+from .detection_system_optimized import OptimizedDetectionSystem
 from .sensor_preprocessing import SensorDataManager
 from .sensor_callbacks import SensorCallbackHandler
 from .avoid_control import AvoidanceController
@@ -53,76 +53,133 @@ class VRXSystemFactory:
         self.logger = logger
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    def create_depth_estimator(self) -> UltraDepthEstimator:
+    def create_depth_estimator(self):
         """
-        🚀 Ultra 최적화 깊이 추정기 생성 (3-5배 빠름!)
+        🚀 깊이 추정기 생성 (config 설정 기반)
 
-        적용된 최적화:
-        - ✅ Torch.compile (PyTorch 2.0+): 30-100% 속도 향상
-        - ✅ Mixed Precision (FP16 AMP): 1.5-2배 속도 향상
-        - ✅ CUDA 가속 전처리: 2-3배 전처리 속도 향상
-        - ✅ Zero-copy Pinned Memory: CPU-GPU 전송 2-3배 향상
+        config.py의 OptimizationConfig 설정에 따라 모듈 선택:
+        - 'ultra': UltraDepthEstimator (최고 성능, TensorRT 지원)
+        - 'optimized': OptimizedDepthEstimator (빠름, 기본 최적화)
+        - 'standard': MiDaSHybridDepthEstimator (느림, 가장 정확)
 
         Returns:
-            UltraDepthEstimator: Ultra 최적화된 깊이 추정기 인스턴스
+            깊이 추정기 인스턴스
         """
-        self.logger.info("🚀 Ultra 최적화 깊이 추정기 초기화 중...")
+        opt = Constants.OptimizationConfig
 
-        # Ultra Depth Estimator 생성 (balanced 프리셋 권장)
-        estimator = create_ultra_depth_estimator(
-            preset='balanced',  # 'fast', 'balanced', 'quality'
-            input_size=256,
-            enable_profiling=False,  # 성능 측정이 필요하면 True
-            device=self.device
-        )
+        self.logger.info(f"🚀 깊이 추정기 초기화 중... (모듈: {opt.DEPTH_MODULE})")
 
-        self.logger.info("✅ Ultra 깊이 추정기 초기화 완료!")
-        self.logger.info("   → 예상 성능: 15-25 FPS (기존 5-8 FPS 대비 3-5배 향상)")
+        if opt.DEPTH_MODULE == 'ultra':
+            # Ultra Depth Estimator
+            from pathlib import Path
+            use_tensorrt = opt.USE_TENSORRT and Path(opt.TENSORRT_ENGINE_PATH).exists()
+
+            if use_tensorrt:
+                self.logger.info("🔥 TensorRT FP16 엔진 발견! (5-10배 속도 향상)")
+            else:
+                self.logger.info("⚠️ TensorRT 엔진 없음 - PyTorch 모드 사용")
+
+            estimator = create_ultra_depth_estimator(
+                preset='balanced',  # 'fast', 'balanced', 'quality'
+                input_size=opt.DEPTH_MODEL_INPUT_SIZE,
+                enable_profiling=False,
+                device=self.device,
+                use_tensorrt=use_tensorrt,
+                engine_path=opt.TENSORRT_ENGINE_PATH if use_tensorrt else None
+            )
+
+        elif opt.DEPTH_MODULE == 'optimized':
+            # Optimized Depth Estimator
+            estimator = OptimizedDepthEstimator(
+                model_type="DPT_Hybrid",
+                input_size=opt.DEPTH_MODEL_INPUT_SIZE,
+                use_tensorrt=opt.USE_TENSORRT,
+                engine_path=opt.TENSORRT_ENGINE_PATH if opt.USE_TENSORRT else None,
+                device=self.device
+            )
+
+        elif opt.DEPTH_MODULE == 'standard':
+            # Standard Depth Estimator
+            self.logger.info("⚠️ Standard 모드 - 느리지만 가장 정확함")
+            estimator = MiDaSHybridDepthEstimator(device=self.device)
+
+        else:
+            raise ValueError(f"Unknown DEPTH_MODULE: {opt.DEPTH_MODULE}")
+
+        self.logger.info("✅ 깊이 추정기 초기화 완료!")
         return estimator
 
     def create_detection_system(
         self,
-        depth_estimator: Optional[UltraDepthEstimator] = None,
-        enable_preprocessing: bool = True
-    ) -> DetectionSystem:
+        depth_estimator = None,
+        enable_preprocessing: bool = None
+    ):
         """
-        객체 탐지 시스템 생성
+        객체 탐지 시스템 생성 (config 설정 기반)
 
         Args:
             depth_estimator: 깊이 추정기 (None이면 자동 생성)
-            enable_preprocessing: 이미지 전처리 활성화 (Depth만 4배 축소)
+            enable_preprocessing: 이미지 전처리 활성화 (None이면 config 설정 사용)
 
         Returns:
-            DetectionSystem: 객체 탐지 시스템 인스턴스
+            객체 탐지 시스템 인스턴스
         """
-        self.logger.info("객체 탐지 시스템 초기화 중...")
+        opt = Constants.OptimizationConfig
+
+        self.logger.info(f"🚀 객체 탐지 시스템 초기화 중... (모듈: {opt.DETECTION_MODULE})")
+
         if depth_estimator is None:
             depth_estimator = self.create_depth_estimator()
 
-        detection_system = DetectionSystem(
+        if enable_preprocessing is None:
+            enable_preprocessing = opt.ENABLE_PREPROCESSING
+
+        # 🎯 config 기반 파라미터 설정
+        detection_system = OptimizedDetectionSystem(
             depth_estimator,
             device=self.device,
-            spatial_smoothing=Constants.VisualizationParams.SPATIAL_SMOOTHING_ENABLED,
-            spatial_kernel_size=Constants.VisualizationParams.SPATIAL_KERNEL_SIZE
+            detection_threshold=opt.DETECTION_THRESHOLD,
+            min_box_area=opt.MIN_BOX_AREA,
+            max_box_area=opt.MAX_BOX_AREA,
+            min_depth=opt.MIN_DEPTH_THRESHOLD,
+            max_depth=opt.MAX_DEPTH_THRESHOLD,
+            spatial_smoothing=opt.SPATIAL_SMOOTHING_ENABLED,
+            spatial_kernel_size=opt.SPATIAL_KERNEL_SIZE,
+            detection_frame_skip=opt.DETECTION_FRAME_SKIP,
+            depth_frame_skip=opt.DEPTH_FRAME_SKIP,
+            use_async=opt.USE_ASYNC_DEPTH,
+            use_nanoowl=opt.USE_NANOOWL,
+            roi_enabled=opt.USE_ROI,
+            roi_bounds=opt.ROI_BOUNDS
         )
 
-        # 전처리기 설정 (Detection: 원본, Depth: 4배 축소)
+        # 전처리기 설정
         if enable_preprocessing:
-            # Detection용: 원본 유지 (또는 약간 축소)
-            image_preprocessor = None  # 원본 사용
+            # Detection용 전처리기
+            image_preprocessor = None
+            if opt.DETECTION_RESOLUTION is not None:
+                image_preprocessor = create_preprocessor(opt.DETECTION_RESOLUTION)
+                self.logger.info(f"✓ Detection 전처리: {opt.DETECTION_RESOLUTION}")
+            else:
+                self.logger.info("✓ Detection 입력: 원본 해상도 (1280x720)")
 
-            # Depth용: 4배 축소 (1280x720 → 320x180)
-            depth_preprocessor = create_preprocessor('max_speed')  # 416x320
+            # Depth용 전처리기
+            depth_preprocessor = None
+            if opt.DEPTH_RESOLUTION is not None:
+                depth_preprocessor = create_preprocessor(opt.DEPTH_RESOLUTION)
+                self.logger.info(f"✓ Depth 전처리: {opt.DEPTH_RESOLUTION}")
 
             detection_system.set_preprocessors(
                 image_preprocessor=image_preprocessor,
                 depth_preprocessor=depth_preprocessor
             )
-            self.logger.info("✓ 전처리 활성화: Detection=원본(1280x720), Depth=저해상도(416x320, 4배 축소)")
 
-        self.logger.info("✓ 객체 탐지 시스템 초기화 완료 "
-                        f"(Spatial smoothing: {Constants.VisualizationParams.SPATIAL_SMOOTHING_ENABLED}, "
-                        f"Kernel size: {Constants.VisualizationParams.SPATIAL_KERNEL_SIZE})")
+        self.logger.info(f"✓ 객체 탐지 시스템 초기화 완료")
+        self.logger.info(f"  - Detection threshold: {opt.DETECTION_THRESHOLD}")
+        self.logger.info(f"  - Box area: {opt.MIN_BOX_AREA} - {opt.MAX_BOX_AREA}")
+        self.logger.info(f"  - Frame skip: Detection={opt.DETECTION_FRAME_SKIP}, Depth={opt.DEPTH_FRAME_SKIP}")
+        self.logger.info(f"  - Spatial smoothing: {opt.SPATIAL_SMOOTHING_ENABLED} (kernel={opt.SPATIAL_KERNEL_SIZE})")
+
         return detection_system
 
     def create_sensor_system(self) -> Tuple[SensorDataManager, SensorCallbackHandler]:
