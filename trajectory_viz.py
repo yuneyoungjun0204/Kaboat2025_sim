@@ -22,6 +22,7 @@ from matplotlib.patches import Polygon, Circle, FancyArrow
 from utils import Constants, SensorDataManager
 from utils.sensor_callbacks import LidarFilter
 from utils.waypoint_manager import gps_to_local
+from utils.sensor_preprocessing import normalize_angle_180
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
 
 # PX4 메시지 (optional)
@@ -563,6 +564,7 @@ class UnifiedVizNode(Node):
         # 상태 변수들
         self.current_position: Optional[np.ndarray] = None
         self.current_heading: Optional[float] = None
+        self.previous_heading: Optional[float] = None  # 이전 헤딩 (급격한 변화 방지용)
         self.axis_initialized = False
 
         # PX4 모드용 초기 위치 (GPS 기준점)
@@ -692,7 +694,25 @@ class UnifiedVizNode(Node):
     def imu_callback(self, msg):
         """IMU 데이터 콜백"""
         imu_data = self.sensor_manager.process_imu_data(msg)
-        self.current_heading = imu_data['yaw_degrees']
+        heading_deg = imu_data['yaw_degrees']
+        
+        # 급격한 변화 방지
+        if self.previous_heading is not None:
+            heading_diff = heading_deg - self.previous_heading
+            
+            # 180도 이상 차이나면 반대 방향으로 넘어간 것으로 간주
+            if heading_diff > 180:
+                heading_diff -= 360
+            elif heading_diff < -180:
+                heading_diff += 360
+            
+            # 급격한 변화 (90도 이상) 필터링
+            if abs(heading_diff) > 90:
+                heading_deg = self.previous_heading + np.sign(heading_diff) * min(abs(heading_diff), 10.0)
+                heading_deg = normalize_angle_180(heading_deg)
+        
+        self.previous_heading = self.current_heading
+        self.current_heading = heading_deg
         self.heading_history.append(self.current_heading)
 
     def px4_global_position_callback(self, msg):
@@ -723,18 +743,56 @@ class UnifiedVizNode(Node):
 
     def px4_local_position_callback(self, msg):
         """PX4 VehicleLocalPosition 콜백 - heading"""
-        # heading 항상 업데이트 (heading_good_for_control과 관계없이)
-        # 라디안 → 도 변환 및 -180~180 정규화
-        heading_deg = np.degrees(msg.heading)
-        while heading_deg > 180:
-            heading_deg -= 360
-        while heading_deg < -180:
-            heading_deg += 360
-
+        # 원본 라디안 값 저장
+        heading_rad_raw = msg.heading
+        
+        # 라디안 → 도 변환 (0~360도 범위)
+        heading_deg_raw = np.degrees(heading_rad_raw)
+        
+        # 0~360도 범위로 정규화 (음수 각도 처리)
+        while heading_deg_raw < 0:
+            heading_deg_raw += 360
+        while heading_deg_raw >= 360:
+            heading_deg_raw -= 360
+        
+        # -180~180도 범위로 변환 (NED 좌표계: 0=North, 시계방향)
+        # 0~180도: 그대로 사용
+        # 180~360도: -180~0도로 변환
+        if heading_deg_raw > 180:
+            heading_deg = heading_deg_raw - 360
+        else:
+            heading_deg = heading_deg_raw
+        
+        # 급격한 변화 방지 (180도 근처에서 -180도로 넘어가는 경우 등)
+        if self.previous_heading is not None:
+            heading_diff = heading_deg - self.previous_heading
+            
+            # 180도 이상 차이나면 반대 방향으로 넘어간 것으로 간주
+            if heading_diff > 180:
+                heading_diff -= 360
+            elif heading_diff < -180:
+                heading_diff += 360
+            
+            # 급격한 변화 (90도 이상) 필터링
+            if abs(heading_diff) > 90:
+                # 이전 값 유지하거나 작은 변화만 적용
+                heading_deg = self.previous_heading + np.sign(heading_diff) * min(abs(heading_diff), 10.0)
+                heading_deg = normalize_angle_180(heading_deg)
+                self.get_logger().warn(
+                    f"⚠️ 급격한 헤딩 변화 감지: {self.previous_heading:.1f}° → {heading_deg:.1f}° "
+                    f"(원본 라디안: {heading_rad_raw:.4f} rad, 원본 도: {heading_deg_raw:.1f}°, "
+                    f"변환 후: {heading_deg:.1f}°), 필터링 적용"
+                )
+        
         # 첫 호출 시 로깅
         if self.current_heading is None:
-            self.get_logger().info(f"✓ px4_local_position_callback 첫 호출 성공: heading={heading_deg:.1f}°")
+            self.get_logger().info(
+                f"✓ px4_local_position_callback 첫 호출 성공: "
+                f"원본={heading_rad_raw:.4f} rad ({heading_deg_raw:.1f}°), "
+                f"변환 후={heading_deg:.1f}°"
+            )
 
+        self.previous_heading = self.current_heading
         self.current_heading = heading_deg
         self.heading_history.append(self.current_heading)
 

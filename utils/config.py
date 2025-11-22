@@ -565,7 +565,8 @@ class Constants:
         # ObstacleDetector 파라미터
         OBSTACLE_BOAT_WIDTH = 2.2     # 배 폭 (미터) - 장애물 검사용
         OBSTACLE_BOAT_HEIGHT = 50.0   # 배 높이/길이 (미터)
-        OBSTACLE_COUNT_THRESHOLD = 5  # ONNX 모드 전환 최소 감지 개수
+        OBSTACLE_COUNT_THRESHOLD = 8  # ONNX 모드 전환 최소 감지 개수
+        OBSTACLE_COUNT_THRESHOLD_OFF = 4  # DIRECT 모드로 복귀하는 장애물 개수 (히스테리시스)
 
         # DirectController 속도 임계값 (거리별 선속도)
         DIRECT_SPEED_FAR_DISTANCE = 20.0   # 먼 거리 기준 (미터)

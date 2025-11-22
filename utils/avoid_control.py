@@ -116,7 +116,8 @@ class LOSGuidance:
 class ObstacleDetector:
     """장애물 감지 시스템"""
 
-    def __init__(self, boat_width=None, boat_height=None, max_lidar_distance=None, obstacle_count_threshold=None):
+    def __init__(self, boat_width=None, boat_height=None, max_lidar_distance=None, 
+                 obstacle_count_threshold=None, obstacle_count_threshold_off=None):
         """
         Args:
             boat_width: 배 폭 (미터) - None이면 config에서 로드
@@ -129,6 +130,7 @@ class ObstacleDetector:
         self.boat_height = boat_height if boat_height is not None else ac.OBSTACLE_BOAT_HEIGHT
         self.max_lidar_distance = max_lidar_distance if max_lidar_distance is not None else Constants.MAX_LIDAR_DISTANCE
         self.obstacle_count_threshold = obstacle_count_threshold if obstacle_count_threshold is not None else ac.OBSTACLE_COUNT_THRESHOLD
+        self.obstacle_count_threshold_off = obstacle_count_threshold_off if obstacle_count_threshold_off is not None else ac.OBSTACLE_COUNT_THRESHOLD_OFF
 
     @staticmethod
     def normalize_angle(angle: float) -> float:
@@ -268,10 +270,8 @@ class ObstacleDetector:
             if lidar_distance < search_distance:
                 obstacle_count += 1
 
-        # 임계값과 비교하여 장애물 존재 여부 결정
-        obstacle_found = obstacle_count >= self.obstacle_count_threshold
-
-        return obstacle_found, check_area_points
+        # 장애물 개수 반환 (히스테리시스 로직은 상위에서 처리)
+        return obstacle_count, check_area_points
 
 
 class DirectController:
@@ -395,9 +395,18 @@ class AvoidanceController:
         Note:
             모든 파라미터가 None이면 Constants.AvoidControl에서 기본값을 로드합니다.
         """
+        ac = Constants.AvoidControl
         self.los_guidance = LOSGuidance(los_delta, los_lookahead_min, los_lookahead_max)
-        self.obstacle_detector = ObstacleDetector(boat_width, boat_height, max_lidar_distance, obstacle_count_threshold)
+        # ObstacleDetector에 threshold_off도 전달
+        obstacle_count_threshold_off = ac.OBSTACLE_COUNT_THRESHOLD_OFF
+        self.obstacle_detector = ObstacleDetector(
+            boat_width, boat_height, max_lidar_distance, 
+            obstacle_count_threshold, obstacle_count_threshold_off
+        )
         self.low_pass_filter = LowPassFilter(filter_alpha)
+        
+        # 히스테리시스: 현재 제어 모드 상태 저장 (채터링 방지)
+        self.current_mode_is_onnx = False  # False=DIRECT, True=ONNX
 
     def get_los_target(self, current_pos: np.ndarray, waypoints: List,
                       current_target_index: int) -> np.ndarray:
@@ -437,22 +446,35 @@ class AvoidanceController:
                                        agent_heading: float, lidar_distances: np.ndarray,
                                        get_lidar_distance_func, onnx_control_func) -> Tuple[bool, float, float, List[float]]:
         """
-        장애물을 확인하고 제어 명령 계산
+        장애물을 확인하고 제어 명령 계산 (히스테리시스 적용)
 
         Returns:
             (use_direct_control, linear_velocity, angular_velocity, check_area_points)
         """
-        # 장애물 검사
-        has_obstacles, check_area_points = self.obstacle_detector.check_obstacles(
+        # 장애물 검사 (장애물 개수 반환)
+        obstacle_count, check_area_points = self.obstacle_detector.check_obstacles(
             current_pos, los_target, agent_heading, lidar_distances, get_lidar_distance_func
         )
 
-        if has_obstacles:
-            # 장애물이 있으면 ONNX 모델 사용
+        # 히스테리시스 로직: 채터링 방지
+        # ONNX 모드로 전환: 장애물 개수 >= threshold
+        # DIRECT 모드로 전환: 장애물 개수 < threshold_off
+        if self.current_mode_is_onnx:
+            # 현재 ONNX 모드: threshold_off 이하로 내려가야 DIRECT로 전환
+            if obstacle_count < self.obstacle_detector.obstacle_count_threshold_off:
+                self.current_mode_is_onnx = False
+        else:
+            # 현재 DIRECT 모드: threshold 이상 올라가야 ONNX로 전환
+            if obstacle_count >= self.obstacle_detector.obstacle_count_threshold:
+                self.current_mode_is_onnx = True
+
+        # 제어 모드에 따라 명령 계산
+        if self.current_mode_is_onnx:
+            # ONNX 모델 사용
             linear_velocity, angular_velocity = onnx_control_func()
             use_direct_control = False
         else:
-            # 장애물이 없으면 직접 제어 (LOS guidance)
+            # 직접 제어 (LOS guidance)
             linear_velocity, angular_velocity = DirectController.calculate_control(
                 current_pos, los_target, agent_heading
             )

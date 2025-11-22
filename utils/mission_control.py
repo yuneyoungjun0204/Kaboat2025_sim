@@ -655,6 +655,10 @@ class MissionLoopExecutor:
 
     def _visualize(self, mission_type: MissionType):
         """시각화"""
+        # OBSTACLE_AVOID 미션일 때는 이미지 창에 plot하지 않음
+        if mission_type == MissionType.OBSTACLE_AVOID:
+            return
+        
         # 이미지가 없으면 대기 메시지 표시
         if self.sensor_handler.current_image is None:
             # 검은 화면에 대기 메시지 표시
