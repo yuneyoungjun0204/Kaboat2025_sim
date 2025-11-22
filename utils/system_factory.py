@@ -24,6 +24,7 @@ from .parameter_manager import ParameterManager
 from .onnx_controller import ONNXController
 from .imm_pdaf_tracker import create_tracker
 from .ros_communication import ROSCommunicationManager
+from .image_preprocessor import create_preprocessor
 
 
 class VRXSystemFactory:
@@ -64,13 +65,15 @@ class VRXSystemFactory:
 
     def create_detection_system(
         self,
-        depth_estimator: Optional[MiDaSHybridDepthEstimator] = None
+        depth_estimator: Optional[MiDaSHybridDepthEstimator] = None,
+        enable_preprocessing: bool = True
     ) -> DetectionSystem:
         """
         객체 탐지 시스템 생성
 
         Args:
             depth_estimator: 깊이 추정기 (None이면 자동 생성)
+            enable_preprocessing: 이미지 전처리 활성화 (Depth만 4배 축소)
 
         Returns:
             DetectionSystem: 객체 탐지 시스템 인스턴스
@@ -85,6 +88,21 @@ class VRXSystemFactory:
             spatial_smoothing=Constants.VisualizationParams.SPATIAL_SMOOTHING_ENABLED,
             spatial_kernel_size=Constants.VisualizationParams.SPATIAL_KERNEL_SIZE
         )
+
+        # 전처리기 설정 (Detection: 원본, Depth: 4배 축소)
+        if enable_preprocessing:
+            # Detection용: 원본 유지 (또는 약간 축소)
+            image_preprocessor = None  # 원본 사용
+
+            # Depth용: 4배 축소 (1280x720 → 320x180)
+            depth_preprocessor = create_preprocessor('max_speed')  # 416x320
+
+            detection_system.set_preprocessors(
+                image_preprocessor=image_preprocessor,
+                depth_preprocessor=depth_preprocessor
+            )
+            self.logger.info("✓ 전처리 활성화: Detection=원본(1280x720), Depth=저해상도(416x320, 4배 축소)")
+
         self.logger.info("✓ 객체 탐지 시스템 초기화 완료 "
                         f"(Spatial smoothing: {Constants.VisualizationParams.SPATIAL_SMOOTHING_ENABLED}, "
                         f"Kernel size: {Constants.VisualizationParams.SPATIAL_KERNEL_SIZE})")

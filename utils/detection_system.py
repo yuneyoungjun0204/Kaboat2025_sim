@@ -70,6 +70,12 @@ class DetectionSystem:
         # Depth map 캐싱 (시각화용)
         self.last_depth_map = None
 
+        # 이미지 전처리기 분리
+        # image_preprocessor: Detection용 (원본 또는 약간 축소)
+        # depth_preprocessor: Depth용 (많이 축소 - 4배)
+        self.image_preprocessor = None
+        self.depth_preprocessor = None
+
         # NanoOWL 초기화
         self._init_nanoowl()
 
@@ -138,6 +144,17 @@ class DetectionSystem:
         if max_depth is not None:
             self.max_depth_threshold = max_depth
 
+    def set_preprocessors(self, image_preprocessor=None, depth_preprocessor=None):
+        """
+        전처리기 설정 (Detection용과 Depth용 분리)
+
+        Args:
+            image_preprocessor: Detection용 전처리기 (고해상도)
+            depth_preprocessor: Depth용 전처리기 (저해상도 - 4배 축소)
+        """
+        self.image_preprocessor = image_preprocessor
+        self.depth_preprocessor = depth_preprocessor
+
     def detect_objects(self, image: np.ndarray, mission_type: MissionType) -> List[Dict]:
         """
         객체 탐지 수행 (Jetson 최적화)
@@ -156,16 +173,41 @@ class DetectionSystem:
         if mission_type not in [MissionType.PASS_BETWEEN_BUOYS, MissionType.CIRCLE_BUOY, MissionType.DOCK_MODE]:
             return []
 
-        # 깊이 맵 추정
-        depth_map = self.depth_estimator.estimate_depth(image)
+        # 원본 이미지 저장
+        original_image = image
+        original_h, original_w = image.shape[:2]
+
+        # === 1. Depth 전처리 (저해상도) ===
+        depth_image = image
+        depth_metadata = None
+        if self.depth_preprocessor:
+            depth_image, depth_metadata = self.depth_preprocessor.preprocess(image)
+            if depth_image is None:
+                return []
+
+        # 깊이 맵 추정 (저해상도 이미지 사용)
+        depth_map = self.depth_estimator.estimate_depth(depth_image)
         if depth_map is None:
             return []
 
         # 시각화를 위해 depth_map 저장
         self.last_depth_map = depth_map
 
+        # Depth 스케일 계산 (original → depth map)
+        depth_h, depth_w = depth_map.shape[:2]
+        depth_scale_x = depth_w / original_w
+        depth_scale_y = depth_h / original_h
+
+        # === 2. Detection 전처리 (원본 또는 약간 축소) ===
+        detection_image = original_image
+        detection_metadata = None
+        if self.image_preprocessor:
+            detection_image, detection_metadata = self.image_preprocessor.preprocess(original_image)
+            if detection_image is None:
+                return []
+
         # Jetson 최적화: PIL 변환 없이 직접 RGB로 변환
-        frame_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        frame_rgb = cv2.cvtColor(detection_image, cv2.COLOR_BGR2RGB)
         image_pil = PILImage.fromarray(frame_rgb)
 
         # 현재 미션에 맞는 쿼리 선택
@@ -190,23 +232,41 @@ class DetectionSystem:
 
             x1, y1, x2, y2 = [int(b) for b in bbox]
 
-            # 박스 크기 필터링
-            area = (x2 - x1) * (y2 - y1)
+            # === Detection 좌표 → 원본 좌표 변환 ===
+            if detection_metadata:
+                # Detection 이미지 좌표를 원본 좌표로 복원
+                scale_x_inv = 1.0 / detection_metadata['scale_x']
+                scale_y_inv = 1.0 / detection_metadata['scale_y']
+                x1_orig = int(x1 * scale_x_inv)
+                y1_orig = int(y1 * scale_y_inv)
+                x2_orig = int(x2 * scale_x_inv)
+                y2_orig = int(y2 * scale_y_inv)
+                cx_orig = (x1_orig + x2_orig) // 2
+                cy_orig = (y1_orig + y2_orig) // 2
+            else:
+                # Detection이 원본 해상도
+                x1_orig, y1_orig, x2_orig, y2_orig = x1, y1, x2, y2
+                cx_orig = (x1 + x2) // 2
+                cy_orig = (y1 + y2) // 2
+
+            # 박스 크기 필터링 (원본 좌표 기준)
+            area = (x2_orig - x1_orig) * (y2_orig - y1_orig)
             if not (self.min_box_area <= area <= self.max_box_area):
                 continue
 
-            # 중심점에서 깊이 추출 (spatial smoothing 적용)
-            cx, cy = (x1 + x2) // 2, (y1 + y2) // 2
-            cx = max(0, min(depth_map.shape[1] - 1, cx))
-            cy = max(0, min(depth_map.shape[0] - 1, cy))
+            # === 원본 좌표 → Depth map 좌표 변환 ===
+            cx_depth = int(cx_orig * depth_scale_x)
+            cy_depth = int(cy_orig * depth_scale_y)
+            cx_depth = max(0, min(depth_map.shape[1] - 1, cx_depth))
+            cy_depth = max(0, min(depth_map.shape[0] - 1, cy_depth))
 
             # Spatial smoothing으로 주변 영역 평균 사용 (노이즈 감소)
             if self.spatial_smoothing:
                 depth = smooth_depth_spatially(
-                    depth_map, cx, cy, kernel_size=self.spatial_kernel_size
+                    depth_map, cx_depth, cy_depth, kernel_size=self.spatial_kernel_size
                 )
             else:
-                depth = depth_map[cy, cx]
+                depth = depth_map[cy_depth, cx_depth]
 
             # 깊이 필터링
             if not (self.min_depth_threshold <= depth <= self.max_depth_threshold):
@@ -214,11 +274,12 @@ class DetectionSystem:
 
             label = query_info['label_mapping'].get(label_idx, "unknown")
 
+            # 최종 결과는 원본 해상도 좌표 사용
             detections.append({
                 "label": label,
                 "confidence": score,
-                "bbox": [x1, y1, x2, y2],
-                "center": (cx, cy),
+                "bbox": [x1_orig, y1_orig, x2_orig, y2_orig],
+                "center": (cx_orig, cy_orig),
                 "depth": float(depth)
             })
 

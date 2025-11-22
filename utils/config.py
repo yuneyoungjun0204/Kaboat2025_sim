@@ -404,8 +404,8 @@ class Constants:
         """ROS2 토픽명 관리"""
 
         # 센서 입력 토픽
-        CAMERA_IMAGE = '/wamv/sensors/cameras/front_left_camera_sensor/image_raw'
-        LIDAR_SCAN = '/wamv/sensors/lidars/lidar_wamv_sensor/scan'
+        CAMERA_IMAGE = '/image_raw'
+        LIDAR_SCAN = '/scan'
         GPS_FIX = '/wamv/sensors/gps/gps/fix'
         IMU_DATA = '/wamv/sensors/imu/imu/data'
 
