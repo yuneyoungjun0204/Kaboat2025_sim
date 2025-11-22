@@ -21,6 +21,10 @@ except ImportError:
     VehicleOdometry = None
     VehicleLocalPosition = None
     VehicleGlobalPosition = None
+    import warnings
+    if Constants.PX4.ENABLED:
+        warnings.warn("⚠️ px4_msgs 패키지가 설치되지 않았습니다. PX4 토픽을 구독할 수 없습니다.")
+        warnings.warn("   설치 방법: pip install px4-msgs 또는 apt install ros-humble-px4-msgs")
 
 
 class ROSCommunicationManager:
@@ -125,6 +129,7 @@ class ROSCommunicationManager:
 
         # PX4 VehicleLocalPosition 구독 (NED 위치, 속도, 가속도, heading)
         if 'px4_local_position' in callbacks and Constants.PX4.ENABLED and PX4_MSGS_AVAILABLE:
+            self.node.get_logger().info(f"📡 PX4 VehicleLocalPosition 구독: {Constants.Topics.PX4_VEHICLE_LOCAL_POSITION_SUB}")
             px4_qos = QoSProfile(
                 reliability=ReliabilityPolicy.BEST_EFFORT,
                 durability=DurabilityPolicy.TRANSIENT_LOCAL,
@@ -140,6 +145,7 @@ class ROSCommunicationManager:
 
         # Livox LiDAR IMU 구독 (각속도 데이터)
         if 'livox_imu' in callbacks:
+            self.node.get_logger().info(f"📡 Livox IMU 구독: {Constants.Topics.LIVOX_IMU}")
             livox_imu_qos = QoSProfile(
                 reliability=ReliabilityPolicy.BEST_EFFORT,
                 history=HistoryPolicy.KEEP_LAST,
@@ -154,6 +160,7 @@ class ROSCommunicationManager:
 
         # PX4 VehicleGlobalPosition 구독 (GPS 대체)
         if 'px4_global_position' in callbacks and Constants.PX4.ENABLED and PX4_MSGS_AVAILABLE:
+            self.node.get_logger().info(f"📡 PX4 VehicleGlobalPosition 구독: {Constants.Topics.PX4_VEHICLE_GLOBAL_POSITION}")
             px4_qos = QoSProfile(
                 reliability=ReliabilityPolicy.BEST_EFFORT,
                 durability=DurabilityPolicy.TRANSIENT_LOCAL,

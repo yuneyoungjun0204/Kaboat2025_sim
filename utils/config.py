@@ -103,8 +103,9 @@ class Constants:
     class PX4:
         """PX4/Pixhawk 연동 파라미터"""
 
-        # PX4 모드 활성화
-        ENABLED = False
+        # PX4 모드 활성화 (CURRENT_ENVIRONMENT에 따라 자동 설정)
+        # REAL_PX4 환경이면 자동으로 True로 설정됨
+        ENABLED = (CURRENT_ENVIRONMENT == Environment.REAL_PX4)
 
         # 제어 파라미터
         MAX_VELOCITY = 2.0          # 최대 전진 속도 (m/s)
@@ -185,7 +186,7 @@ class Constants:
     # mission_type: 'PASS_BETWEEN_BUOYS', 'CIRCLE_BUOY', 'WAYPOINT_FOLLOW', 'OBSTACLE_AVOID', 'DOCK_MODE', 'ROTATION'
     PREDEFINED_WAYPOINTS = [
         # MODE=0 (로컬 좌표) 예시:
-        (100, 0, 'PASS_BETWEEN_BUOYS', DEFAULT_WAYPOINT_RADIUS,{}),
+        (100, 0, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS,{}),
         (100, 10, 'DOCK_MODE', DEFAULT_WAYPOINT_RADIUS, {'target_shape': 'red_square'}),
         (160, 0, 'CIRCLE_BUOY', DEFAULT_WAYPOINT_RADIUS, {'rotation_direction': 1, 'circle_radius': 15.0}),
         (150, -15, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS,{}),
@@ -404,7 +405,7 @@ class Constants:
         """ROS2 토픽명 관리"""
 
         # 센서 입력 토픽
-        CAMERA_IMAGE = '/camera/image_rect'
+        CAMERA_IMAGE = '/image_raw'
         LIDAR_SCAN = '/scan'
         GPS_FIX = '/wamv/sensors/gps/gps/fix'
         IMU_DATA = '/wamv/sensors/imu/imu/data'
