@@ -4,11 +4,14 @@ Jetson Orin Nano 런타임 최적화
 - CUDA 최적화
 - PyTorch 최적화
 - 메모리 최적화
+- Jetson 파워 모드 설정 (nvpmodel, jetson_clocks)
 """
 
 import os
 import torch
 import gc
+import subprocess
+import shutil
 
 
 class JetsonOptimizer:
@@ -80,6 +83,72 @@ class JetsonOptimizer:
         print("  ✅ 메모리 최적화 완료")
 
     @staticmethod
+    def setup_power_mode():
+        """Jetson 파워 모드 설정 (MAXN 모드)"""
+        print("⚡ Jetson 파워 모드 설정 중...")
+        
+        # nvpmodel 명령어 확인
+        nvpmodel_path = shutil.which('nvpmodel')
+        jetson_clocks_path = shutil.which('jetson_clocks')
+        
+        if not nvpmodel_path:
+            print("  ⚠️ nvpmodel을 찾을 수 없습니다. 수동으로 실행하세요: sudo nvpmodel -m 0")
+        else:
+            try:
+                # 현재 모드 확인
+                result = subprocess.run(
+                    ['nvpmodel', '-q'],
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                if result.returncode == 0:
+                    print(f"  📊 현재 전력 모드:\n{result.stdout}")
+                
+                # MAXN 모드 설정 (모드 0)
+                # sudo 권한이 필요할 수 있으므로 시도
+                result = subprocess.run(
+                    ['sudo', 'nvpmodel', '-m', '0'],
+                    capture_output=True,
+                    text=True,
+                    timeout=10
+                )
+                if result.returncode == 0:
+                    print("  ✅ MAXN 모드 (최대 성능) 활성화 완료")
+                else:
+                    print(f"  ⚠️ nvpmodel 설정 실패 (sudo 권한 필요할 수 있음): {result.stderr}")
+                    print("  💡 수동 실행: sudo nvpmodel -m 0")
+            except subprocess.TimeoutExpired:
+                print("  ⚠️ nvpmodel 명령 타임아웃")
+            except Exception as e:
+                print(f"  ⚠️ nvpmodel 실행 오류: {e}")
+                print("  💡 수동 실행: sudo nvpmodel -m 0")
+        
+        if not jetson_clocks_path:
+            print("  ⚠️ jetson_clocks를 찾을 수 없습니다. 수동으로 실행하세요: sudo jetson_clocks")
+        else:
+            try:
+                # jetson_clocks 실행 (최대 클럭 설정)
+                result = subprocess.run(
+                    ['sudo', 'jetson_clocks'],
+                    capture_output=True,
+                    text=True,
+                    timeout=10
+                )
+                if result.returncode == 0:
+                    print("  ✅ Jetson clocks (최대 클럭) 활성화 완료")
+                else:
+                    print(f"  ⚠️ jetson_clocks 실행 실패 (sudo 권한 필요할 수 있음): {result.stderr}")
+                    print("  💡 수동 실행: sudo jetson_clocks")
+            except subprocess.TimeoutExpired:
+                print("  ⚠️ jetson_clocks 명령 타임아웃")
+            except Exception as e:
+                print(f"  ⚠️ jetson_clocks 실행 오류: {e}")
+                print("  💡 수동 실행: sudo jetson_clocks")
+        
+        print("  ✅ 파워 모드 설정 완료")
+
+    @staticmethod
     def print_device_info():
         """디바이스 정보 출력"""
         print("\n" + "=" * 60)
@@ -119,6 +188,9 @@ class JetsonOptimizer:
         print("🚀 Jetson Orin Nano 최적화 시작")
         print("=" * 60 + "\n")
 
+        # 파워 모드 설정 (먼저 실행)
+        JetsonOptimizer.setup_power_mode()
+        print()
         JetsonOptimizer.setup_cuda_optimizations()
         print()
         JetsonOptimizer.setup_pytorch_optimizations()

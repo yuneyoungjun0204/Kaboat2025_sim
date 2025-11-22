@@ -26,9 +26,12 @@ import warnings
 import platform
 
 # PyTorch 2.0+ torch.compile 지원 확인
-# Jetson/ARM 플랫폼에서는 Triton이 지원되지 않으므로 torch.compile 비활성화
+# ⚠️ 중요: Triton 컴파일러는 ARM 아키텍처를 지원하지 않음
+# Jetson Orin Nano (ARM64/aarch64)에서는 torch.compile의 Inductor 백엔드가 
+# 내부적으로 Triton을 필요로 하여 작동하지 않습니다.
+# 따라서 ARM 플랫폼에서는 torch.compile을 비활성화하는 것이 권장됩니다.
 IS_ARM = platform.machine().lower() in ['aarch64', 'arm64', 'armv8']
-TORCH_COMPILE_AVAILABLE = hasattr(torch, 'compile') and not IS_ARM
+TORCH_COMPILE_AVAILABLE = hasattr(torch, 'compile') and not IS_ARM  # ARM에서는 비활성화
 PYTORCH_AO_AVAILABLE = False
 CUDA_AVAILABLE = torch.cuda.is_available()
 
@@ -213,7 +216,11 @@ class SuperOptimizer:
         compile_mode='reduce-overhead' # 'default', 'reduce-overhead', 'max-autotune'
     ):
         self.enable_int8_quant = enable_int8_quant
+        # ARM 플랫폼에서는 torch.compile을 강제로 비활성화
         self.enable_torch_compile = enable_torch_compile and TORCH_COMPILE_AVAILABLE
+        if IS_ARM and self.enable_torch_compile:
+            # 추가 안전장치: ARM에서는 무조건 비활성화
+            self.enable_torch_compile = False
         self.enable_amp = enable_amp and CUDA_AVAILABLE
         self.enable_sparsity = enable_sparsity and PYTORCH_AO_AVAILABLE
         self.enable_pinned_memory = enable_pinned_memory and CUDA_AVAILABLE
@@ -256,6 +263,7 @@ class SuperOptimizer:
         print(f"  {'✓' if self.enable_torch_compile else '✗'} Torch.compile (PyTorch 2.0+): {self.enable_torch_compile}")
         if IS_ARM and not self.enable_torch_compile:
             print(f"    → Jetson/ARM에서는 Triton 미지원으로 비활성화됨")
+            print(f"    → 대신 AMP, CUDA Preprocessing 등 다른 최적화 사용")
         print(f"  {'✓' if self.enable_amp else '✗'} Mixed Precision (AMP): {self.enable_amp}")
         print(f"  {'✓' if self.enable_sparsity else '✗'} 2:4 Sparsity: {self.enable_sparsity}")
         print(f"  {'✓' if self.enable_int8_quant else '✗'} INT8 Quantization: {self.enable_int8_quant}")
@@ -297,23 +305,34 @@ class SuperOptimizer:
                 print(f"  ⚠️ Sparsity 적용 실패: {e}")
 
         # 2. INT8 Quantization (선택)
+        # 주의: PyTorch의 quantize_dynamic은 CPU 전용이며, CUDA에서는 quantized engine이 필요
+        # Jetson에서는 AMP (Mixed Precision)가 더 효과적이므로 INT8은 비활성화 권장
         if self.enable_int8_quant:
             print("🔧 INT8 Dynamic Quantization 적용 중...")
-            try:
-                # PyTorch Dynamic Quantization (간단한 방법)
-                optimized_model = torch.quantization.quantize_dynamic(
-                    optimized_model,
-                    {torch.nn.Linear, torch.nn.Conv2d},
-                    dtype=torch.qint8
-                )
-                self.stats['optimizations_applied'].append('int8_quant')
-                print("  ✓ INT8 Quantization 적용 완료 (2-4배 속도 향상)")
-            except Exception as e:
-                print(f"  ⚠️ INT8 Quantization 실패: {e}")
+            if self.device.type == 'cuda':
+                print("  ⚠️ CUDA에서는 PyTorch INT8 Quantization이 제한적입니다.")
+                print("  → AMP (Mixed Precision)가 더 효과적입니다.")
+                print("  → TensorRT INT8을 사용하려면 별도 엔진 변환이 필요합니다.")
+                # CUDA에서는 INT8 quantization을 건너뛰고 AMP에 의존
+                print("  → INT8 Quantization 건너뜀 (AMP 사용)")
+            else:
+                try:
+                    # CPU에서만 작동하는 Dynamic Quantization
+                    optimized_model = torch.quantization.quantize_dynamic(
+                        optimized_model,
+                        {torch.nn.Linear, torch.nn.Conv2d},
+                        dtype=torch.qint8
+                    )
+                    self.stats['optimizations_applied'].append('int8_quant')
+                    print("  ✓ INT8 Quantization 적용 완료 (2-4배 속도 향상)")
+                except Exception as e:
+                    print(f"  ⚠️ INT8 Quantization 실패: {e}")
 
         # 3. torch.compile (PyTorch 2.0+)
-        # ARM/Jetson에서는 Triton 백엔드가 지원되지 않아 자동으로 비활성화됨
-        if self.enable_torch_compile and TORCH_COMPILE_AVAILABLE:
+        # ⚠️ Jetson/ARM에서는 Triton 미지원으로 torch.compile 사용 불가
+        # 대신 AMP, CUDA Preprocessing, TensorRT 등 다른 최적화 사용 권장
+        # 추가 안전장치: ARM에서는 절대 실행하지 않음
+        if self.enable_torch_compile and TORCH_COMPILE_AVAILABLE and not IS_ARM:
             print(f"🔧 torch.compile 적용 중 (mode: {self.compile_mode})...")
             try:
                 optimized_model = torch.compile(
@@ -328,7 +347,8 @@ class SuperOptimizer:
                 print(f"  → Eager 모드로 계속 진행합니다.")
         elif self.enable_torch_compile and IS_ARM:
             print("⚠️  torch.compile 건너뜀 (Jetson/ARM에서는 Triton 미지원)")
-            print("  → AMP, CUDA 전처리 등 다른 최적화로 충분한 성능 확보")
+            print("  → AMP, CUDA 전처리, TensorRT 등 다른 최적화로 충분한 성능 확보")
+            print("  → 현재 활성화된 최적화: AMP, CUDA Preprocessing, Pinned Memory")
 
         self.stats['compile_time'] = time.time() - start_time
         print(f"\n✅ 모델 최적화 완료 (소요 시간: {self.stats['compile_time']:.2f}s)")
@@ -416,13 +436,14 @@ def create_super_optimizer(preset='balanced'):
             'compile_mode': 'default'
         },
         'jetson_turbo': {
-            'enable_int8_quant': False,  # TensorRT로 따로 처리
-            'enable_torch_compile': True,
-            'enable_amp': True,
-            'enable_sparsity': False,
+            'enable_int8_quant': False,  # CUDA에서는 제한적, AMP로 대체
+            'enable_torch_compile': False,  # Jetson/ARM에서는 Triton 미지원으로 비활성화
+            'enable_amp': True,  # Mixed Precision (FP16) - 가장 효과적
+            'enable_sparsity': True,  # 2:4 Sparsity 활성화 (PyTorch AO 필요)
             'enable_pinned_memory': True,
             'enable_cuda_preprocess': True,
-            'enable_batch_process': False,
+            'enable_batch_process': True,  # Batch Processing 활성화
+            'batch_size': 4,  # 배치 크기 설정
             'compile_mode': 'reduce-overhead'
         }
     }

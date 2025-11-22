@@ -14,7 +14,7 @@ from geometry_msgs.msg import Point
 from cv_bridge import CvBridge
 
 from utils import Constants, VRXSystemFactory
-from utils.detection_system import MissionType
+from utils.detection_system_optimized import MissionType
 from utils.mission_control import (
     MissionLoopExecutor,
     WaypointTransitionHandler,

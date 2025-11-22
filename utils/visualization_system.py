@@ -168,9 +168,9 @@ class VisualizationSystem:
         # 화면 표시
         cv2.imshow(Constants.VisualizationParams.WINDOW_NAME, vis_image)
 
-        # Depth map 시각화 비활성화 (성능 최적화)
-        # if depth_map is not None:
-        #     self.visualize_depth_map(depth_map)
+        # Depth map 시각화 활성화
+        if depth_map is not None:
+            self.visualize_depth_map(depth_map)
 
         cv2.waitKey(1)
 
