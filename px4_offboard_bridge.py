@@ -26,7 +26,7 @@ from threading import Lock
 import numpy as np
 
 from std_msgs.msg import Bool, Float64MultiArray
-from px4_msgs.msg import OffboardControlMode, TrajectorySetpoint
+from px4_msgs.msg import OffboardControlMode, TrajectorySetpoint, VehicleLocalPosition
 
 
 class PX4OffboardBridge(Node):
@@ -49,6 +49,14 @@ class PX4OffboardBridge(Node):
 
     def __init__(self):
         super().__init__('px4_offboard_bridge')
+
+        self.qos_profile = QoSProfile(
+            reliability=ReliabilityPolicy.BEST_EFFORT,
+            durability=DurabilityPolicy.TRANSIENT_LOCAL,
+            history=HistoryPolicy.KEEP_LAST,
+            depth=10
+        )
+
 
         # === QoS 프로파일 설정 ===
         # PX4는 RELIABLE + TRANSIENT_LOCAL 사용
@@ -84,6 +92,7 @@ class PX4OffboardBridge(Node):
 
             # 명령 수신 플래그
             self.command_received = False
+            self.yaw=0.0
 
         # === 구독자 설정 ===
         self.create_subscription(
@@ -107,6 +116,13 @@ class PX4OffboardBridge(Node):
             self.standard_qos
         )
 
+        self.create_subscription(
+            VehicleLocalPosition,
+            '/fmu/out/vehicle_local_position',
+            self.yaw_calback,
+            self.qos_profile
+        )
+
         # === 퍼블리셔 설정 ===
         self.offboard_control_mode_pub = self.create_publisher(
             OffboardControlMode,
@@ -119,6 +135,11 @@ class PX4OffboardBridge(Node):
             '/fmu/in/trajectory_setpoint',
             self.px4_qos
         )
+        # self.trajectory_setpoint_pub = self.create_publisher(
+        #     TrajectorySetpoint,
+        #     '/fmu/out/trajectory_setpoint',
+        #     self.px4_qos
+        # )
 
         # === 타이머 설정 (50Hz) ===
         timer_period = 1.0 / self.PUBLISH_RATE_HZ
@@ -187,6 +208,14 @@ class PX4OffboardBridge(Node):
             self.x_error = float(msg.data[0])
             self.y_error = float(msg.data[1])
             self.command_received = True
+
+    # =========================================================================
+    # 메인 퍼블리시 함수
+    # =========================================================================
+
+
+    def yaw_calback(self, msg: VehicleLocalPosition):
+        self.yaw=msg.heading
 
     # =========================================================================
     # 메인 퍼블리시 함수
@@ -274,23 +303,20 @@ class PX4OffboardBridge(Node):
         """
         msg = TrajectorySetpoint()
 
-        # 위치는 사용하지 않음 (NaN)
-        msg.position = [self.NAN, self.NAN, self.NAN]
-
-        # 속도 설정 (NED 프레임)
+        # 위치는 사용하지 않음 (NaN)RELIABILITY
         # velocity는 전진 속도, yaw 방향을 고려하여 NED로 변환
         vx = velocity 
         vy = 0.0
         vz = 0.0                     # Down 방향 속도 (수상정은 0)
 
-        msg.velocity = [vx, vy, vz]
+        msg.velocity = [vx, 0.0, 0.0]
 
         # 가속도는 사용하지 않음 (NaN)
-        msg.acceleration = [self.NAN, self.NAN, self.NAN]
+        msg.acceleration = [0.0, 0.0, 0.0]
 
         # Yaw 설정
-        msg.yaw = yaw  # [-π, π]
-        msg.yawspeed = self.NAN
+        msg.yaw = 1000*yaw+self.yaw  # [-π, π]
+        msg.yawspeed = 0.0
 
         msg.timestamp = timestamp
 
@@ -331,14 +357,15 @@ class PX4OffboardBridge(Node):
         msg.position = [x_error, y_error, 0.0]  # [North, East, Down]
 
         # 속도는 feedforward로 사용 (여기서는 사용 안 함)
-        msg.velocity = [self.NAN, self.NAN, self.NAN]
+        # msg.velocity = [self.NAN, self.NAN, self.NAN]
+        msg.velocity = [0.0, 0.0, 0.0]
 
         # 가속도는 사용하지 않음
-        msg.acceleration = [self.NAN, self.NAN, self.NAN]
+        msg.acceleration = [0.0, 0.0, 0.0]
 
         # Yaw 설정
         msg.yaw = yaw
-        msg.yawspeed = self.NAN
+        msg.yawspeed = 0.0
 
         msg.timestamp = timestamp
 

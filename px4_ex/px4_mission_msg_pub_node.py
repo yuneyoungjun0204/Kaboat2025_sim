@@ -62,37 +62,37 @@ class MissionMsgPublisherforPx4(Node):
         self.trajectory_setpoint_publisher = self.create_publisher(
             TrajectorySetpoint, self.TOPIC_TRAJECTORY_SETPOINT, px4_qos)
 
-        # Create subscribers
-        self.create_subscription(Bool, self.TOPIC_CONTROL_FLAG, self.control_flag_callback, 1)
-        self.create_subscription(Float64MultiArray, self.TOPIC_WP_CMD, self.wp_cmd_callback, 1)
-        self.create_subscription(Float64MultiArray, self.TOPIC_PC_CMD, self.pc_cmd_callback, 1)
+        # # Create subscribers
+        # self.create_subscription(Bool, self.TOPIC_CONTROL_FLAG, self.control_flag_callback, 1)
+        # self.create_subscription(Float64MultiArray, self.TOPIC_WP_CMD, self.wp_cmd_callback, 1)
+        # self.create_subscription(Float64MultiArray, self.TOPIC_PC_CMD, self.pc_cmd_callback, 1)
         
         # Timer for periodic message publishing (uses parameter value)
         self.timer = self.create_timer(timer_period, self.timer_callback)
         self.get_logger().info(f"Mission message publisher for PX4 has been initialized with {1.0/timer_period:.1f} Hz rate.")
 
-    # --- Subscriber Callbacks ---
-    def control_flag_callback(self, msg):
-        with self.data_lock:
-            self.ctrl_flag = msg.data
+    # # --- Subscriber Callbacks ---
+    # def control_flag_callback(self, msg):
+    #     with self.data_lock:
+    #         self.ctrl_flag = msg.data
 
-    def wp_cmd_callback(self, msg):
-        with self.data_lock:
-            self.u_d = msg.data[0]
-            self.yaw_d = msg.data[1]
+    # def wp_cmd_callback(self, msg):
+    #     with self.data_lock:
+    #         self.u_d = msg.data[0]
+    #         self.yaw_d = msg.data[1]
 
-    def pc_cmd_callback(self, msg):
-        with self.data_lock:
-            self.x_e_d = msg.data[0]
-            self.y_e_d = msg.data[1]
+    # def pc_cmd_callback(self, msg):
+    #     with self.data_lock:
+    #         self.x_e_d = msg.data[0]
+    #         self.y_e_d = msg.data[1]
 
 
     def publish_offboard_control_mode(self, timestamp: int):
         """Publishes the OffboardControlMode message."""
         msg = OffboardControlMode()
-        with self.data_lock:
-            msg.position = self.ctrl_flag
-        
+        # with self.data_lock:
+        #     msg.position = self.ctrl_flag
+        msg.position = False
         msg.attitude = False
         msg.velocity = False
         msg.acceleration = False
@@ -108,19 +108,14 @@ class MissionMsgPublisherforPx4(Node):
         """Publishes the target position and Yaw setpoint."""
         msg = TrajectorySetpoint()
         
-        with self.data_lock:
-            error_x, error_y = self.x_e_d, self.y_e_d
-            u_d = self.berthing_psi
-            yaw_d = self.oa_yaw
-
-        msg.position = [error_x, error_y, 0]
-        msg.velocity = [u_d, 0 ,]
-        msg.yaw = yaw_d
+        msg.position = [0.0, 0.0, 0.0]
+        msg.velocity = [0.0, 0.0, 0.0]
+        msg.yaw = 90.0
         msg.timestamp = timestamp 
         self.trajectory_setpoint_publisher.publish(msg)
         
         log_message = (
-            f"Publishing setpoint: x={error_x:.2f}, y={error_y:.2f}, u_d={u_d:.2f}, yaw_d={yaw_d:.2f}"
+            f"Publishing setpoint:"
         )
         self.get_logger().info(log_message, throttle_duration_sec=1) 
 

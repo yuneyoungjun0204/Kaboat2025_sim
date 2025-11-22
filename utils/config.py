@@ -50,7 +50,7 @@ class Environment:
 # ┌─────────────────────────────────────────────────────────────────────────┐
 # │  🔧 여기만 수정하세요! 시뮬레이터 ↔ 실제 환경 전환                      │
 # └─────────────────────────────────────────────────────────────────────────┘
-CURRENT_ENVIRONMENT = Environment.SIMULATOR
+CURRENT_ENVIRONMENT = Environment.REAL_PX4
 
 
 class Constants:
@@ -66,7 +66,7 @@ class Constants:
         PROJECT_ROOT = Path(__file__).parent.parent.absolute()
 
         # NanoOWL 경로
-        NANOOWL_DIR = Path('/home/yuneyoungjun/vrx_ws/src/vrx/vrx_env/nanoowl')
+        NANOOWL_DIR = Path('nanoowl')
 
         # 모델 디렉토리
         MODELS_DIR = PROJECT_ROOT / 'models' / 'correct_IMU' / 'gpu'
@@ -404,7 +404,7 @@ class Constants:
         """ROS2 토픽명 관리"""
 
         # 센서 입력 토픽
-        CAMERA_IMAGE = '/image_raw'
+        CAMERA_IMAGE = '/camera/image_rect'
         LIDAR_SCAN = '/scan'
         GPS_FIX = '/wamv/sensors/gps/gps/fix'
         IMU_DATA = '/wamv/sensors/imu/imu/data'
@@ -516,7 +516,7 @@ class Constants:
     class VisualizationParams:
         """시각화 시스템 파라미터"""
         # 탐지 임계값
-        DETECTION_THRESHOLD = 0.00014
+        DETECTION_THRESHOLD = 0.00004
         MIN_BOX_AREA = 2
         MAX_BOX_AREA = 800000
         MIN_DEPTH_THRESHOLD = 0.12  # 최소 깊이 (미터)
