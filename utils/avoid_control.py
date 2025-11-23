@@ -235,23 +235,25 @@ class ObstacleDetector:
             # if lidar_distance < search_distance:
             #     obstacle_count += 1
 
-        # 2. 정면 긴급 장애물 검사
-        L_front = Constants.AvoidControl.L_FRONT
-        range_theta_front = self.calculate_range_theta(L_front)
+        # 2. 정면 장애물 검사 (OBSTACLE_BOAT_HEIGHT 범위까지)
+        # OBSTACLE_BOAT_WIDTH (2.2m)와 OBSTACLE_BOAT_HEIGHT (50m) 범위 내 장애물 체크
+        L_check = self.boat_height  # OBSTACLE_BOAT_HEIGHT 사용 (50m)
+        range_theta_front = self.calculate_range_theta(L_check)
 
         for i in range(-90, 91):
             lidar_angle_deg = float(i)
 
-            # 탐색 거리 결정
+            # 탐색 거리 결정 (OBSTACLE_BOAT_WIDTH와 OBSTACLE_BOAT_HEIGHT 범위 내)
             if abs(np.radians(i)) <= range_theta_front:
-                search_distance = L_front
+                search_distance = L_check  # OBSTACLE_BOAT_HEIGHT (50m)
             else:
                 angle_rad = abs(np.radians(i))
                 if angle_rad > 0.01:
+                    # 배 폭(OBSTACLE_BOAT_WIDTH) 기준으로 측면 거리 계산
                     search_distance = (self.boat_width / 2.0) / np.sin(angle_rad)
-                    search_distance = min(search_distance, L_front)
+                    search_distance = min(search_distance, L_check)  # 최대 OBSTACLE_BOAT_HEIGHT
                 else:
-                    search_distance = L_front
+                    search_distance = L_check
 
             # 체크 영역 점 계산 (NED 좌표계) - 정면 검사 영역도 시각화에 추가
             world_angle = current_psi + np.radians(lidar_angle_deg)

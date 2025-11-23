@@ -309,13 +309,13 @@ class PX4OffboardBridge(Node):
         vy = 0.0
         vz = 0.0                     # Down 방향 속도 (수상정은 0)
 
-        msg.velocity = [vx, 0.0, 0.0]
+        msg.velocity = [vx*0.8, 0.0, 0.0]
 
         # 가속도는 사용하지 않음 (NaN)
         msg.acceleration = [0.0, 0.0, 0.0]
 
         # Yaw 설정
-        msg.yaw = 1000*yaw+self.yaw  # [-π, π]
+        msg.yaw = self.yaw_cmd  # [-π, π]
         msg.yawspeed = 0.0
 
         msg.timestamp = timestamp

@@ -150,7 +150,7 @@ class Constants:
     LIDAR_ARRAY_SIZE = 201
     MAX_LIDAR_DISTANCE = 100.0
     LIDAR_ANGLE_RANGE = (-100, 100)  # degrees
-    LIDAR_SCALE_FACTOR = 5.0  # LiDAR 거리값 스케일 조정 (1.0 = 변환 없음)
+    LIDAR_SCALE_FACTOR = 15.0  # LiDAR 거리값 스케일 조정 (1.0 = 변환 없음)
     LIDAR_OBSTACLE_COUNT_THRESHOLD = 2  # ONNX 모드 전환을 위한 최소 장애물 감지 개수
 
     # LiDAR 필터링 설정
@@ -186,7 +186,7 @@ class Constants:
     # mission_type: 'PASS_BETWEEN_BUOYS', 'CIRCLE_BUOY', 'WAYPOINT_FOLLOW', 'OBSTACLE_AVOID', 'DOCK_MODE', 'ROTATION'
     PREDEFINED_WAYPOINTS = [
         # MODE=0 (로컬 좌표) 예시:
-        (100, 0, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS,{}),
+        (100, 10, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS,{}),
         (100, 10, 'DOCK_MODE', DEFAULT_WAYPOINT_RADIUS, {'target_shape': 'red_square'}),
         (160, 0, 'CIRCLE_BUOY', DEFAULT_WAYPOINT_RADIUS, {'rotation_direction': 1, 'circle_radius': 15.0}),
         (150, -15, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS,{}),
@@ -244,14 +244,14 @@ class Constants:
 
     ONNX_V_SCALE = 1.0
     ONNX_W_SCALE = -1.0
-    ONNX_LINEAR_VELOCITY_RANGE = (0.2, 1.0)
+    ONNX_LINEAR_VELOCITY_RANGE = (0.25, 1.0)
     ONNX_ANGULAR_VELOCITY_RANGE = (-1.0, 1.0)
 
     # ============================================================================
     # 장애물 회피 설정
     # ============================================================================
-    BOAT_WIDTH = 8.0
-    BOAT_HEIGHT = 25.0
+    BOAT_WIDTH = 2.2
+    BOAT_HEIGHT = 50.0
     LOS_DELTA = 35.0
     LOS_LOOKAHEAD_MIN = 20.0
     LOS_LOOKAHEAD_MAX = 40.0
@@ -517,7 +517,7 @@ class Constants:
     class VisualizationParams:
         """시각화 시스템 파라미터"""
         # 탐지 임계값
-        DETECTION_THRESHOLD = 0.00004
+        DETECTION_THRESHOLD = 0.00001
         MIN_BOX_AREA = 2
         MAX_BOX_AREA = 800000
         MIN_DEPTH_THRESHOLD = 0.12  # 최소 깊이 (미터)
@@ -563,10 +563,10 @@ class Constants:
         LOS_LOOKAHEAD_FACTOR = 1.0    # look-ahead 거리 계산 계수
 
         # ObstacleDetector 파라미터
-        OBSTACLE_BOAT_WIDTH = 2.2     # 배 폭 (미터) - 장애물 검사용
-        OBSTACLE_BOAT_HEIGHT = 50.0   # 배 높이/길이 (미터)
-        OBSTACLE_COUNT_THRESHOLD = 8  # ONNX 모드 전환 최소 감지 개수
-        OBSTACLE_COUNT_THRESHOLD_OFF = 4  # DIRECT 모드로 복귀하는 장애물 개수 (히스테리시스)
+        OBSTACLE_BOAT_WIDTH = 2.8     # 배 폭 (미터) - 장애물 검사용
+        OBSTACLE_BOAT_HEIGHT = 40.0   # 배 높이/길이 (미터)
+        OBSTACLE_COUNT_THRESHOLD = 3  # ONNX 모드 전환 최소 감지 개수
+        OBSTACLE_COUNT_THRESHOLD_OFF = 3  # DIRECT 모드로 복귀하는 장애물 개수 (히스테리시스)
 
         # DirectController 속도 임계값 (거리별 선속도)
         DIRECT_SPEED_FAR_DISTANCE = 20.0   # 먼 거리 기준 (미터)

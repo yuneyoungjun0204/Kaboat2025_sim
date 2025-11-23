@@ -84,7 +84,7 @@ class OptimizedPipeline:
         depth_engine_path=None,
 
         # Detection 설정
-        detection_threshold=0.0065,
+        detection_threshold=0.00065,
         detection_frame_skip=2,
         depth_frame_skip=3,
         use_async=True,
@@ -312,19 +312,19 @@ def create_optimized_pipeline(
             'depth_input_size': 192,
             'detection_frame_skip': 3,
             'depth_frame_skip': 5,
-            'detection_threshold': 0.01,
+            'detection_threshold': 0.00065,
         },
         'balanced': {
             'depth_input_size': 256,
             'detection_frame_skip': 2,
             'depth_frame_skip': 3,
-            'detection_threshold': 0.0065,
+            'detection_threshold': 0.00065,
         },
         'quality': {
             'depth_input_size': 384,
             'detection_frame_skip': 1,
             'depth_frame_skip': 2,
-            'detection_threshold': 0.005,
+            'detection_threshold': 0.00065,
         }
     }
 

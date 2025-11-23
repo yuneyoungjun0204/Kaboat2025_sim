@@ -112,7 +112,7 @@ class OptimizedDetectionSystem:
         self,
         depth_estimator,
         device="cuda",
-        detection_threshold=0.0065,
+        detection_threshold=0.00065,
         min_box_area=500,
         max_box_area=80000,
         min_depth=0.0,

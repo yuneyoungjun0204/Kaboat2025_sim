@@ -47,9 +47,9 @@ class VisualizationSystem:
         cv2.namedWindow(vp.WINDOW_NAME, cv2.WINDOW_NORMAL)
         cv2.resizeWindow(vp.WINDOW_NAME, vp.WINDOW_WIDTH, vp.WINDOW_HEIGHT)
 
-        # Depth map 창도 미리 생성
-        cv2.namedWindow("Depth Map", cv2.WINDOW_NORMAL)
-        cv2.resizeWindow("Depth Map", 640, 480)
+        # Depth map 창 생성 비활성화 (사용자 요청)
+        # cv2.namedWindow("Depth Map", cv2.WINDOW_NORMAL)
+        # cv2.resizeWindow("Depth Map", 640, 480)
 
         # 초기 화면 표시 (검은 화면)
         initial_image = np.zeros((vp.WINDOW_HEIGHT, vp.WINDOW_WIDTH, 3), dtype=np.uint8)
@@ -168,9 +168,9 @@ class VisualizationSystem:
         # 화면 표시
         cv2.imshow(Constants.VisualizationParams.WINDOW_NAME, vis_image)
 
-        # Depth map 시각화 활성화
-        if depth_map is not None:
-            self.visualize_depth_map(depth_map)
+        # Depth map 시각화 비활성화 (사용자 요청)
+        # if depth_map is not None:
+        #     self.visualize_depth_map(depth_map)
 
         cv2.waitKey(1)
 
@@ -179,5 +179,5 @@ class VisualizationSystem:
     def cleanup(self):
         """시각화 창 정리"""
         cv2.destroyWindow(Constants.VisualizationParams.WINDOW_NAME)
-        cv2.destroyWindow("Depth Map")
+        # cv2.destroyWindow("Depth Map")  # Depth 창 생성 안 함
         cv2.destroyAllWindows()
