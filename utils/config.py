@@ -50,7 +50,7 @@ class Environment:
 # ┌─────────────────────────────────────────────────────────────────────────┐
 # │  🔧 여기만 수정하세요! 시뮬레이터 ↔ 실제 환경 전환                      │
 # └─────────────────────────────────────────────────────────────────────────┘
-CURRENT_ENVIRONMENT = Environment.REAL_PX4
+CURRENT_ENVIRONMENT = Environment.SIMULATOR
 
 
 class Constants:
@@ -66,7 +66,7 @@ class Constants:
         PROJECT_ROOT = Path(__file__).parent.parent.absolute()
 
         # NanoOWL 경로
-        NANOOWL_DIR = Path('nanoowl')
+        NANOOWL_DIR = Path('/home/yuneyoungjun/vrx_ws/src/vrx/vrx_env/nanoowl')
 
         # 모델 디렉토리
         MODELS_DIR = PROJECT_ROOT / 'models' / 'correct_IMU' / 'gpu'
@@ -405,8 +405,8 @@ class Constants:
         """ROS2 토픽명 관리"""
 
         # 센서 입력 토픽
-        CAMERA_IMAGE = '/image_raw'
-        LIDAR_SCAN = '/scan'
+        CAMERA_IMAGE = '/wamv/sensors/cameras/front_left_camera_sensor/camera_info'
+        LIDAR_SCAN = '/wamv/sensors/lidars/lidar_wamv_sensor/scan'
         GPS_FIX = '/wamv/sensors/gps/gps/fix'
         IMU_DATA = '/wamv/sensors/imu/imu/data'
 
