@@ -479,7 +479,9 @@ class MissionLoopExecutor:
         params = self.param_manager.get_mission_parameters(mission_type)
         left, right = self.mission_executor.execute_pass_between_buoys(
             self.detected_objects, self.sensor_handler.current_image,
-            self.raw_detections, params, self.logger
+            self.raw_detections, params, self.logger,
+            self.sensor_handler.agent_position,
+            self.sensor_handler.agent_heading
         )
         self._publish_control_info(left, right, mode)
         return left, right

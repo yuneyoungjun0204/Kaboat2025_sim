@@ -38,30 +38,30 @@ class MissionType(Enum):
 class DetectionSystem:
     """NanoOWL + MiDaS 통합 탐지 시스템"""
 
-    def __init__(self, depth_estimator, device="cuda", detection_threshold=0.0065,
-                 min_box_area=500, max_box_area=80000, min_depth=0.0, max_depth=50.0,
+    def __init__(self, depth_estimator, device="cuda", detection_threshold=None,
+                 min_box_area=None, max_box_area=None, min_depth=None, max_depth=None,
                  spatial_smoothing=True, spatial_kernel_size=5):
         """
         Args:
             depth_estimator: MiDaSHybridDepthEstimator 인스턴스
             device: 디바이스 (cuda/cpu)
-            detection_threshold: 탐지 임계값
-            min_box_area: 최소 박스 면적
-            max_box_area: 최대 박스 면적
-            min_depth: 최소 깊이 (미터)
-            max_depth: 최대 깊이 (미터)
+            detection_threshold: 탐지 임계값 (None이면 config.py 값 사용)
+            min_box_area: 최소 박스 면적 (None이면 config.py 값 사용)
+            max_box_area: 최대 박스 면적 (None이면 config.py 값 사용)
+            min_depth: 최소 깊이 (미터, None이면 config.py 값 사용)
+            max_depth: 최대 깊이 (미터, None이면 config.py 값 사용)
             spatial_smoothing: 공간적 depth smoothing 활성화 여부
             spatial_kernel_size: spatial smoothing 커널 크기 (홀수 권장)
         """
         self.device = device
         self.depth_estimator = depth_estimator
 
-        # 탐지 파라미터
-        self.detection_threshold = detection_threshold
-        self.min_box_area = min_box_area
-        self.max_box_area = max_box_area
-        self.min_depth_threshold = min_depth
-        self.max_depth_threshold = max_depth
+        # 탐지 파라미터 (None이면 config.py 값 사용)
+        self.detection_threshold = detection_threshold if detection_threshold is not None else Constants.VisualizationParams.DETECTION_THRESHOLD
+        self.min_box_area = min_box_area if min_box_area is not None else Constants.VisualizationParams.MIN_BOX_AREA
+        self.max_box_area = max_box_area if max_box_area is not None else Constants.VisualizationParams.MAX_BOX_AREA
+        self.min_depth_threshold = min_depth if min_depth is not None else Constants.VisualizationParams.MIN_DEPTH_THRESHOLD
+        self.max_depth_threshold = max_depth if max_depth is not None else Constants.VisualizationParams.MAX_DEPTH_THRESHOLD
 
         # Depth smoothing 파라미터
         self.spatial_smoothing = spatial_smoothing

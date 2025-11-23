@@ -24,15 +24,47 @@ class MissionExecutor:
 
     def execute_pass_between_buoys(self, detected_objects: list, current_image,
                                   raw_detections: list, mission_params: Dict[str, Any],
-                                  logger) -> Tuple[float, float]:
-        """부표 사이 지나가기 미션 실행"""
+                                  logger, agent_position: Optional[np.ndarray] = None,
+                                  agent_heading: Optional[float] = None) -> Tuple[float, float]:
+        """
+        부표 사이 지나가기 미션 실행
+
+        Args:
+            detected_objects: 탐지된 객체 리스트
+            current_image: 현재 이미지
+            raw_detections: 원본 탐지 결과
+            mission_params: 미션 파라미터
+            logger: 로거
+            agent_position: 에이전트 현재 위치 (옵션, 부표 미탐지 시 LOS guidance 사용)
+            agent_heading: 에이전트 현재 헤딩 (옵션, 부표 미탐지 시 LOS guidance 사용)
+        """
+        # 현재 웨이포인트 정보 가져오기 (LOS guidance로 추종할 목표)
+        current_idx = self.waypoint_manager.get_waypoint_index()
+        current_waypoint = None
+        previous_waypoint = None
+
+        if agent_position is not None:
+            # 현재 목표 웨이포인트
+            if current_idx < len(self.waypoint_manager.waypoints):
+                curr_wp = self.waypoint_manager.waypoints[current_idx]
+                current_waypoint = {'x': curr_wp['x'], 'y': curr_wp['y']}
+
+            # 이전 웨이포인트 (호환성 유지, 미사용)
+            if current_idx > 0:
+                prev_wp = self.waypoint_manager.waypoints[current_idx - 1]
+                previous_waypoint = {'x': prev_wp['x'], 'y': prev_wp['y']}
+
         return self.mission_manager.execute_mission(
             MissionType.PASS_BETWEEN_BUOYS,
             detected_objects=detected_objects,
             current_image=current_image,
             raw_detections=raw_detections,
             mission_params=mission_params,
-            logger=logger
+            logger=logger,
+            agent_position=agent_position,
+            agent_heading=agent_heading,
+            previous_waypoint=previous_waypoint,
+            current_waypoint=current_waypoint
         )
 
     def execute_circle_buoy(self, detected_objects: list, current_image,

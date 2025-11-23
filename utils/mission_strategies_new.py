@@ -13,6 +13,7 @@ from .detection_system import MissionType
 from .config import Constants
 from .thruster_allocation import body_forces_to_thruster_commands
 from .helpers import normalize_heading, calculate_heading_error, find_buoy_with_fallback
+from .avoid_control import LOSGuidance
 
 
 # ============================================================================
@@ -144,10 +145,15 @@ class PassBetweenBuoysMission(BaseMissionStrategy):
             ki=Constants.PASS_BETWEEN_PID_KI,
             kd=Constants.PASS_BETWEEN_PID_KD
         )
+        # 미션 시작 위치 저장 (부표 미탐지 시 LOS guidance의 이전 웨이포인트로 사용)
+        self.mission_start_position: Optional[np.ndarray] = None
+        # LOS Guidance 시스템 (부표 미탐지 시 사용)
+        self.los_guidance = LOSGuidance()
 
     def reset(self):
         """미션 상태 초기화"""
         self.pid_controller.reset()
+        self.mission_start_position = None
 
     def execute_body_forces(
         self,
@@ -155,6 +161,10 @@ class PassBetweenBuoysMission(BaseMissionStrategy):
         current_image: np.ndarray,
         logger=None,
         raw_detections: Optional[List[Dict]] = None,
+        agent_position: Optional[np.ndarray] = None,
+        agent_heading: Optional[float] = None,
+        previous_waypoint: Optional[Dict] = None,
+        current_waypoint: Optional[Dict] = None,
         **kwargs
     ) -> Tuple[float, float, float]:
         """
@@ -165,10 +175,27 @@ class PassBetweenBuoysMission(BaseMissionStrategy):
             current_image: 현재 카메라 이미지
             logger: 로거
             raw_detections: 원본 탐지 결과 (NanoOWL 직접 출력, 측정값)
+            agent_position: 로봇 현재 위치 (x, y)
+            agent_heading: 로봇 현재 헤딩 (도)
+            previous_waypoint: 이전 웨이포인트 (미사용, 호환성 유지)
+            current_waypoint: 현재 목표 웨이포인트 {'x': float, 'y': float}
 
         Returns:
             Tuple[float, float, float]: (desired_speed, desired_yaw, desired_force_y)
+
+        Note:
+            부표 미탐지 시 LOS guidance 사용:
+            - 이전 웨이포인트가 없을 경우(첫 번째 WP) → 미션 시작 위치를 이전 기준점으로 사용
+            - 이전 웨이포인트가 있을 경우 → 미션 시작 위치를 이전 기준점으로 사용 (일관성 유지)
         """
+        # 미션 시작 위치 저장 (첫 실행 시) - 부표 미탐지 시 LOS의 이전 기준점으로 사용
+        if self.mission_start_position is None and agent_position is not None:
+            self.mission_start_position = agent_position.copy()
+            if logger:
+                logger.info(
+                    f"PassBetweenBuoys 미션 시작 위치 저장 (LOS 이전 기준점): "
+                    f"({agent_position[0]:.2f}, {agent_position[1]:.2f})"
+                )
         # 빨간색/초록색 부표 찾기 (헬퍼 함수 사용)
         red_buoy, red_source = find_buoy_with_fallback(
             'red_cone', detected_objects, raw_detections, logger
@@ -234,12 +261,68 @@ class PassBetweenBuoysMission(BaseMissionStrategy):
                     f"error={error:.1f}, steering={steering:.3f}"
                 )
         else:
-            # 부표 미탐지 시 천천히 전진
-            desired_speed = Constants.PASS_BETWEEN_FALLBACK_SPEED
-            desired_yaw = 0.0
-            desired_force_y = 0.0
-            if logger:
-                logger.warn("부표 미탐지: 천천히 전진")
+            # 부표 미탐지 시: LOS guidance로 다음 웨이포인트 추종
+            #
+            # LOS guidance 구조:
+            #   - waypoint_start (이전 기준점) = 미션 시작 위치
+            #     * 첫 번째 웨이포인트인 경우: config.py에서 이전 WP 지정 안 함 → 자동으로 미션 시작 위치 사용
+            #     * 이후 웨이포인트인 경우: 일관성을 위해 동일하게 미션 시작 위치 사용
+            #   - waypoint_end (목표) = 현재 웨이포인트
+            if (agent_position is not None and agent_heading is not None and
+                self.mission_start_position is not None and current_waypoint is not None):
+
+                # LOS guidance 계산
+                # waypoint_start: 미션 시작 위치 (이전 기준점, 자동 설정)
+                # waypoint_end: 현재 목표 웨이포인트
+                waypoint_start = self.mission_start_position
+                waypoint_end = np.array([current_waypoint['x'], current_waypoint['y']])
+
+                # LOS target 계산
+                los_target = self.los_guidance.calculate_los_point(
+                    agent_position, waypoint_start, waypoint_end
+                )
+
+                # LOS target 방향 계산
+                delta = los_target - agent_position
+                distance = np.linalg.norm(delta)
+
+                if distance > 0.5:  # 최소 거리 체크
+                    # 목표 방향 계산 (NED 좌표계: x=North, y=East)
+                    target_heading = np.degrees(np.arctan2(delta[0], delta[1]))
+                    if target_heading < 0:
+                        target_heading += 360
+
+                    # 헤딩 오차 계산
+                    heading_error = calculate_heading_error(target_heading, agent_heading)
+
+                    # 비례 제어
+                    steering = heading_error * Constants.PASS_BETWEEN_STEERING_GAIN
+                    steering = np.clip(steering, -Constants.PASS_BETWEEN_MAX_STEERING,
+                                     Constants.PASS_BETWEEN_MAX_STEERING)
+
+                    desired_speed = Constants.PASS_BETWEEN_FALLBACK_SPEED
+                    desired_yaw = steering
+                    desired_force_y = 0.0
+
+                    if logger:
+                        logger.warn(
+                            f"부표 미탐지: LOS guidance로 다음 WP 추종 "
+                            f"(목표={target_heading:.1f}°, 오차={heading_error:.1f}°, steering={steering:.3f})"
+                        )
+                else:
+                    # LOS target 도착 - 천천히 전진
+                    desired_speed = Constants.PASS_BETWEEN_FALLBACK_SPEED
+                    desired_yaw = 0.0
+                    desired_force_y = 0.0
+                    if logger:
+                        logger.warn("부표 미탐지 & LOS target 도착: 천천히 전진")
+            else:
+                # 위치/헤딩/웨이포인트 정보 없으면 천천히 전진 (기존 동작)
+                desired_speed = Constants.PASS_BETWEEN_FALLBACK_SPEED
+                desired_yaw = 0.0
+                desired_force_y = 0.0
+                if logger:
+                    logger.warn("부표 미탐지 (LOS 정보 부족): 천천히 전진")
 
         return desired_speed, desired_yaw, desired_force_y
 

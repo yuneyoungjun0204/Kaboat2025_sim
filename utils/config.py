@@ -184,9 +184,15 @@ class Constants:
     # MODE=0: (x, y, mission_type, radius, params) - x,y는 미터 단위
     # MODE=1: (lat, lon, mission_type, radius, params) - lat,lon은 위도/경도
     # mission_type: 'PASS_BETWEEN_BUOYS', 'CIRCLE_BUOY', 'WAYPOINT_FOLLOW', 'OBSTACLE_AVOID', 'DOCK_MODE', 'ROTATION'
+    #
+    # 💡 PASS_BETWEEN_BUOYS 미션 동작:
+    #    - 부표 2개 탐지: 중점으로 제어
+    #    - 부표 미탐지: LOS guidance로 웨이포인트 추종
+    #      * 이전 기준점 = 미션 시작 위치 (자동 설정, 첫 WP에서도 동일)
+    #      * 목표 = 현재 웨이포인트
     PREDEFINED_WAYPOINTS = [
         # MODE=0 (로컬 좌표) 예시:
-        (100, 0, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS,{}),
+        (50, 40, 'PASS_BETWEEN_BUOYS', DEFAULT_WAYPOINT_RADIUS,{}),
         (100, 10, 'DOCK_MODE', DEFAULT_WAYPOINT_RADIUS, {'target_shape': 'red_square'}),
         (160, 0, 'CIRCLE_BUOY', DEFAULT_WAYPOINT_RADIUS, {'rotation_direction': 1, 'circle_radius': 15.0}),
         (150, -15, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS,{}),
@@ -405,7 +411,7 @@ class Constants:
         """ROS2 토픽명 관리"""
 
         # 센서 입력 토픽
-        CAMERA_IMAGE = '/wamv/sensors/cameras/front_left_camera_sensor/camera_info'
+        CAMERA_IMAGE = '/wamv/sensors/cameras/front_left_camera_sensor/image_raw'
         LIDAR_SCAN = '/wamv/sensors/lidars/lidar_wamv_sensor/scan'
         GPS_FIX = '/wamv/sensors/gps/gps/fix'
         IMU_DATA = '/wamv/sensors/imu/imu/data'
@@ -517,7 +523,7 @@ class Constants:
     class VisualizationParams:
         """시각화 시스템 파라미터"""
         # 탐지 임계값
-        DETECTION_THRESHOLD = 0.00004
+        DETECTION_THRESHOLD = 1.4
         MIN_BOX_AREA = 2
         MAX_BOX_AREA = 800000
         MIN_DEPTH_THRESHOLD = 0.12  # 최소 깊이 (미터)

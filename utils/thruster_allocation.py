@@ -139,8 +139,8 @@ def _differential_drive_allocation(
     angular_velocity = np.clip(angular_velocity, min_angular, max_angular)
 
     # 스러스터 명령 계산
-    left_cmd = linear_velocity + angular_velocity
-    right_cmd = linear_velocity - angular_velocity
+    left_cmd = linear_velocity - angular_velocity*30
+    right_cmd = linear_velocity + angular_velocity*30
 
     # 추력 변환
     left_thrust = left_cmd * thrust_scale
