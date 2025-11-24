@@ -12,7 +12,7 @@ from typing import Tuple, Optional
 from dataclasses import dataclass
 from pyproj import Transformer, Proj
 
-from .config import Constants
+from ..core.config import Constants
 
 
 @dataclass

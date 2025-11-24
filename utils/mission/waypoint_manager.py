@@ -8,8 +8,8 @@
 
 import numpy as np
 from typing import List, Dict, Optional, Tuple
-from .detection_system import MissionType
-from .config import Constants
+from ..detection.detection_system import MissionType
+from ..core.config import Constants
 
 
 def gps_to_local(lat: float, lon: float, ref_lat: float, ref_lon: float) -> Tuple[float, float]:

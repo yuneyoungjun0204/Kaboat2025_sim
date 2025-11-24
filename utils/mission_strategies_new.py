@@ -9,11 +9,11 @@ import numpy as np
 import time
 from typing import Tuple, List, Dict, Optional, Callable, Union
 
-from .detection_system import MissionType
-from .config import Constants
-from .thruster_allocation import body_forces_to_thruster_commands
-from .helpers import normalize_heading, calculate_heading_error, find_buoy_with_fallback
-from .avoid_control import LOSGuidance
+from ..detection.detection_system import MissionType
+from ..core.config import Constants
+from ..control.thruster_allocation import body_forces_to_thruster_commands
+from ..core.helpers import normalize_heading, calculate_heading_error, find_buoy_with_fallback
+from ..control.avoid_control import LOSGuidance
 
 
 # ============================================================================
@@ -328,324 +328,319 @@ class PassBetweenBuoysMission(BaseMissionStrategy):
 
 
 class CircleBuoyMission(BaseMissionStrategy):
-    """미션 2: 부표 주변 회전"""
+    """미션 2: 웨이포인트 기반 원 궤적 그리기"""
 
     def __init__(self, thrust_scale: float = Constants.DEFAULT_THRUST_SCALE):
         super().__init__(thrust_scale)
         # 상태 변수
-        self.circle_start_time: Optional[float] = None
-        self.circle_initial_heading: Optional[float] = None
-        self.total_rotation = 0.0
-        self.previous_heading: Optional[float] = None
+        self.mission_start_time: Optional[float] = None
+        self.mission_start_position: Optional[np.ndarray] = None
+        self.mission_start_heading: Optional[float] = None
         self.is_completed = False
-        self.target_x: Optional[float] = None
 
-        # 이미지 크기 (calculate_steering_command에서 사용)
-        self.image_width = Constants.CIRCLE_IMAGE_WIDTH
+        # 웨이포인트 관리
+        self.generated_waypoints: List[np.ndarray] = []
+        self.current_waypoint_index = 0
 
-        # PID 제어기
+        # 미션 파라미터 (mission_params에서 설정됨)
+        self.length = 10.0  # 마름모 크기
+        self.radius_reach = 5.0  # 웨이포인트 도착 판정 거리
+        self.max_duration = 80.0  # 최대 미션 시간 (초)
+        self.rotation_direction = 1  # 1=시계방향, 0=반시계방향
+
+        # PID 제어기 (헤딩 오차 제어용)
+        # 기본 게인: kp=0.003 (기존 steering_gain), ki=0.001, kd=0.002
         self.pid_controller = PIDController(
-            kp=Constants.CIRCLE_PID_KP, ki=Constants.CIRCLE_PID_KI, kd=Constants.CIRCLE_PID_KD
+            kp=0.01,  # 비례 게인 (기존 steering_gain과 동일)
+            ki=0.00001,  # 적분 게인
+            kd=0.002   # 미분 게인
         )
-
-        # 동적 파라미터 (트랙바로 변경 가능)
-        self.base_speed = Constants.CIRCLE_BASE_SPEED
-        self.min_speed = Constants.CIRCLE_MIN_SPEED
-        self.max_turn_thrust = Constants.CIRCLE_MAX_TURN_THRUST
-        self.tx_base_x = Constants.CIRCLE_TX_BASE_X
-        self.tx_slope = Constants.CIRCLE_TX_SLOPE
-        self.tx_min_x = Constants.CIRCLE_TX_MIN_X
-        self.tx_max_x = Constants.CIRCLE_TX_MAX_X
-        self.lock_distance_threshold = Constants.CIRCLE_LOCK_DISTANCE_THRESHOLD
-        self.sway_strength = Constants.CIRCLE_SWAY_STRENGTH
-        self.sway_max_angle = Constants.CIRCLE_SWAY_MAX_ANGLE
-        self.filter_alpha = Constants.CIRCLE_FILTER_ALPHA
-
-        # 명령 저장 (부표 미탐지 시 사용)
-        self.last_known_left_cmd = 0.0
-        self.last_known_right_cmd = 0.0
-        self.distance_locked = False
-        self.locked_left_cmd = 0.0
-        self.locked_right_cmd = 0.0
-        self.locked_left_pos = 0.0
-        self.locked_right_pos = 0.0
-        self.filtered_left_thrust = 0.0
-        self.filtered_right_thrust = 0.0
 
     def reset(self):
         """미션 상태 초기화"""
-        self.circle_start_time = self.circle_initial_heading = self.previous_heading = self.target_x = None
-        self.total_rotation = 0.0
-        self.is_completed = self.distance_locked = False
-        self.pid_controller.reset()
-        self.last_known_left_cmd = self.last_known_right_cmd = 0.0
-        self.locked_left_cmd = self.locked_right_cmd = self.locked_left_pos = self.locked_right_pos = 0.0
-        self.filtered_left_thrust = self.filtered_right_thrust = 0.0
+        self.mission_start_time = None
+        self.mission_start_position = None
+        self.mission_start_heading = None
+        self.is_completed = False
+        self.generated_waypoints = []
+        self.current_waypoint_index = 0
+        self.pid_controller.reset()  # PID 제어기 상태 초기화
 
-    def calculate_rotation_target(self, rotation_direction: int, object_depth: float) -> float:
+    def get_generated_waypoints(self) -> List[np.ndarray]:
         """
-        회전 방향에 따른 목표 x 좌표 계산
-
-        Args:
-            rotation_direction: 1=시계방향, 2 or -1=반시계방향
-            object_depth: 부표까지의 깊이 (미터)
+        생성된 웨이포인트 반환 (시각화용)
 
         Returns:
-            float: 목표 x 좌표 (픽셀)
+            List[np.ndarray]: world-frame 웨이포인트 리스트 [[x, y], ...]
         """
+        return self.generated_waypoints
+
+    def _body_to_world_frame(self, body_x: float, body_y: float,
+                             robot_pos: np.ndarray, robot_heading: float) -> np.ndarray:
+        """
+        body-frame 좌표를 world-frame 좌표로 변환
+
+        Args:
+            body_x: body-frame x 좌표 (전방, 미터)
+            body_y: body-frame y 좌표 (좌측, 미터)
+            robot_pos: 로봇 현재 위치 [Easting, Northing] (world-frame)
+            robot_heading: 로봇 현재 헤딩 (도, 0=North, 90=East)
+
+        Returns:
+            np.ndarray: world-frame 좌표 [Easting, Northing]
+
+        Note:
+            - body-frame: 로봇 기준 (전방=x+, 좌측=y+)
+            - world-frame: [Easting, Northing] 형식 (agent_position과 동일)
+            - heading: 0도=North, 90도=East, 180도=South, 270도=West
+
+        변환 공식:
+            - Forward 벡터 (body_x): heading 방향
+              → North 성분: body_x * cos(θ)
+              → East 성분: body_x * sin(θ)
+            - Left 벡터 (body_y): heading - 90도 방향
+              → North 성분: -body_y * sin(θ)
+              → East 성분: body_y * cos(θ)
+            
+            [Easting]  = [robot_pos[0]] + [sin(θ)   cos(θ)] [body_x]
+            [Northing]   [robot_pos[1]]   [cos(θ)  -sin(θ)] [body_y]
+        """
+        # 헤딩을 라디안으로 변환
+        heading_rad = np.radians(robot_heading)
+        cos_h = np.cos(heading_rad)
+        sin_h = np.sin(heading_rad)
+
+        # body-frame → world-frame 변환
+        # robot_pos = [Easting, Northing]
+        # Forward (body_x) → (East: sin(θ), North: cos(θ))
+        # Left (body_y) → (East: cos(θ), North: -sin(θ))
+        easting = robot_pos[0] + (body_x * sin_h + body_y * cos_h)
+        northing = robot_pos[1] + (body_x * cos_h - body_y * sin_h)
+
+        return np.array([easting, northing], dtype=np.float32)
+
+    def _generate_waypoints(self, robot_pos: np.ndarray, robot_heading: float,
+                           rotation_direction: int, length: float) -> List[np.ndarray]:
+        """
+        마름모 형태의 웨이포인트 생성 (로봇의 현재 각도 기준 body-frame)
+
+        Args:
+            robot_pos: 로봇 현재 위치 [Easting, Northing] (전역 좌표)
+            robot_heading: 로봇 현재 헤딩 (도, 0=North, 90=East) - 이 각도만큼 회전된 좌표계에서 생성
+            rotation_direction: 회전 방향 (1=시계방향, 0=반시계방향)
+            length: 마름모 크기 (미터)
+
+        Returns:
+            List[np.ndarray]: 전역 좌표 웨이포인트 리스트 (로봇 위치 및 각도 기준)
+            형식: [[Easting_global, Northing_global], ...]
+
+        Note:
+            - length 기준으로 body-frame 좌표 생성
+            - 로봇의 현재 각도(robot_heading)만큼 회전된 좌표계에서 생성됨
+            - _body_to_world_frame 함수를 사용하여 전역 좌표로 변환
+            - 시계방향(1): [(-length, length), (0, 2*length), (length, length), (0, 0)]
+            - 반시계방향(0): [(length, length), (0, 2*length), (-length, length), (0, 0)]
+            - body-frame: Forward=x+, Left=y+
+            - world-frame: Easting=x+, Northing=y+
+        """
+        # body-frame 좌표 정의 (length 기준)
+        # 로봇의 현재 각도(robot_heading)를 기준으로 회전된 좌표계에서 생성됨
+        # Forward = 로봇의 현재 heading 방향, Left = 로봇의 왼쪽 방향
         if rotation_direction == 1:  # 시계방향
-            target_x = self.tx_base_x - self.tx_slope * object_depth
-            return max(self.tx_min_x, min(self.tx_max_x, target_x))
+            body_waypoints = [
+                (-length, length),   # [Forward, Left] - body-frame 기준
+                (0, 2 * length),
+                (length, length),
+                (0, 0)
+            ]
         else:  # 반시계방향
-            target_x = Constants.CIRCLE_CCW_SLOPE * object_depth
-            return max(Constants.CIRCLE_CCW_MIN_X, min(Constants.CIRCLE_CCW_MAX_X, target_x))
+            body_waypoints = [
+                (length, length),
+                (0, 2 * length),
+                (-length, length),
+                (0, 0)
+            ]
 
-    def calculate_steering_command(self, error: float) -> float:
+        # body-frame → world-frame 변환 (로봇의 현재 각도 적용)
+        # 회전 좌표계: 로봇의 현재 각도(robot_heading)만큼 회전된 좌표계에서 생성
+        # _body_to_world_frame 함수가 회전 변환을 수행하여 전역 좌표로 변환
+        global_waypoints = []
+        for body_forward, body_left in body_waypoints:
+            # body-frame 좌표를 로봇의 현재 각도만큼 회전하여 전역 좌표로 변환
+            # 이렇게 하면 로봇의 현재 방향을 기준으로 웨이포인트가 생성됨
+            global_wp = self._body_to_world_frame(
+                body_forward,  # body-frame Forward (로봇 전방 방향)
+                body_left,     # body-frame Left (로봇 왼쪽 방향)
+                robot_pos,     # 로봇 현재 위치 [Easting, Northing]
+                robot_heading  # 로봇 현재 헤딩 (도) - 이 각도만큼 회전된 좌표계
+            )
+            global_waypoints.append(global_wp)
+
+        return global_waypoints
+
+    def _check_waypoint_reached(self, robot_pos: np.ndarray, target_wp: np.ndarray,
+                                radius: float) -> bool:
         """
-        조향 명령 계산 (PID 제어)
+        웨이포인트 도착 판정
 
         Args:
-            error: 위치 오차 (픽셀)
+            robot_pos: 로봇 현재 위치 [x, y]
+            target_wp: 목표 웨이포인트 [x, y]
+            radius: 도착 판정 반경 (미터)
 
         Returns:
-            float: 조향 명령 (-1.0 ~ 1.0)
+            bool: 도착했으면 True
         """
-        # 오차 정규화 (이미지 너비의 절반으로 나누어 -1~1 범위로)
-        normalized_error = error / (self.image_width / 2)
-
-        # PID 제어기로 조향 명령 계산
-        steering_command = self.pid_controller.update(normalized_error)
-
-        # 조향 명령 제한
-        return max(-1.0, min(1.0, steering_command))
-
-    def calculate_rotation_speed(self, turn_angle: float) -> float:
-        """
-        각도에 따른 적응형 속도 계산 (각도가 클수록 속도 감소)
-
-        Args:
-            turn_angle: 회전 각도 (도)
-
-        Returns:
-            float: 전진 속도
-        """
-        abs_angle = abs(turn_angle)
-
-        # 각도가 클수록 속도 감소 (선형적)
-        # 0도: 기본 속도, ANGLE_THRESHOLD도: 최소 속도
-        if abs_angle >= Constants.CIRCLE_SPEED_ANGLE_THRESHOLD:
-            return self.min_speed
-        else:
-            speed_ratio = 1.0 - (abs_angle / Constants.CIRCLE_SPEED_ANGLE_THRESHOLD)
-            adaptive_speed = self.min_speed + (self.base_speed - self.min_speed) * speed_ratio
-            return max(self.min_speed, adaptive_speed)
-
-    def apply_low_pass_filter(self, new_left: float, new_right: float) -> Tuple[float, float]:
-        """
-        1차 저주파 필터 적용 (지수 가중 이동 평균)
-
-        Args:
-            new_left: 새로 계산된 왼쪽 명령
-            new_right: 새로 계산된 오른쪽 명령
-
-        Returns:
-            Tuple[float, float]: (필터링된 왼쪽, 필터링된 오른쪽)
-
-        공식: filtered = alpha * new + (1 - alpha) * previous
-        alpha가 작을수록 더 부드러움 (0 < alpha < 1)
-        """
-        self.filtered_left_thrust = (self.filter_alpha * new_left +
-                                     (1.0 - self.filter_alpha) * self.filtered_left_thrust)
-        self.filtered_right_thrust = (self.filter_alpha * new_right +
-                                      (1.0 - self.filter_alpha) * self.filtered_right_thrust)
-
-        return self.filtered_left_thrust, self.filtered_right_thrust
+        distance = np.linalg.norm(robot_pos - target_wp)
+        return distance < radius
 
     def execute(
         self,
-        detected_objects: List[Dict],
-        current_image: np.ndarray,
-        agent_heading: float,
+        agent_position: Optional[np.ndarray],
+        agent_heading: Optional[float],
         mission_params: Dict,
         logger=None,
-        raw_detections: Optional[List[Dict]] = None,
         **kwargs
     ) -> Tuple[float, float, float, float]:
         """
-        파란색 부표 주변을 회전 (SWAY 포함)
+        웨이포인트 기반 원 궤적 그리기
 
         Args:
-            detected_objects: 추적된 객체 (IMM-PDAF 출력, 추정값)
-            current_image: 현재 카메라 이미지
+            agent_position: 로봇 현재 위치 [x, y]
             agent_heading: 로봇 헤딩 (도)
-            mission_params: 미션 파라미터
+            mission_params: 미션 파라미터 (rotation_direction, length, radius_reach, max_duration)
             logger: 로거
-            raw_detections: 원본 탐지 결과 (NanoOWL 직접 출력, 측정값)
 
         Returns:
             Tuple[float, float, float, float]: (left_thrust, right_thrust, left_pos, right_pos)
         """
-        # 동적 파라미터 업데이트
-        self._update_params(mission_params,
-            base_speed='circle_base_speed', min_speed='circle_min_speed',
-            max_turn_thrust='circle_max_turn', lock_distance_threshold='circle_lock_distance',
-            sway_strength='circle_sway_strength', sway_max_angle='circle_sway_max_angle',
-            filter_alpha='circle_filter_alpha', tx_base_x='circle_tx_base_x',
-            tx_slope='circle_tx_slope', tx_min_x='circle_tx_min_x', tx_max_x='circle_tx_max_x')
+        # 미션 파라미터 업데이트
+        self.rotation_direction = mission_params.get('rotation_direction', 1)
+        self.length = mission_params.get('length', 10.0)
+        self.radius_reach = mission_params.get('radius_reach', 5.0)
+        self.max_duration = mission_params.get('max_duration', 80.0)
 
-        if 'circle_pid_kp' in mission_params:
-            self.pid_controller.kp = mission_params['circle_pid_kp']
+        # 위치/헤딩 정보가 없으면 정지
+        if agent_position is None or agent_heading is None:
+            if logger:
+                logger.warn("CIRCLE_BUOY: 위치/헤딩 정보 없음 - 정지")
+            return 0.0, 0.0, 0.0, 0.0
 
-        # min/max 순서 보장
-        if self.tx_min_x >= self.tx_max_x:
-            self.tx_min_x, self.tx_max_x = self.tx_max_x - 1.0, self.tx_min_x + 1.0
+        # 미션 시작 시 초기화
+        if self.mission_start_time is None:
+            self.mission_start_time = time.time()
+            self.mission_start_position = agent_position.copy()
+            self.mission_start_heading = agent_heading
 
-        # 파란색 부표 찾기 (헬퍼 함수 사용)
-        blue_buoy, data_source = find_buoy_with_fallback(
-            'blue_buoy', detected_objects, raw_detections, logger
+            # 웨이포인트 생성
+            self.generated_waypoints = self._generate_waypoints(
+                agent_position, agent_heading, self.rotation_direction, self.length
+            )
+            self.current_waypoint_index = 0
+            
+            # PID 제어기 초기화 (미션 시작 시)
+            self.pid_controller.reset()
+
+            if logger:
+                direction_str = "시계방향" if self.rotation_direction == 1 else "반시계방향"
+                logger.info(
+                    f"🎯 CIRCLE_BUOY 미션 시작: 위치=({agent_position[0]:.2f}, {agent_position[1]:.2f}), "
+                    f"헤딩={agent_heading:.1f}°, 방향={direction_str}, length={self.length:.1f}m"
+                )
+                for i, wp in enumerate(self.generated_waypoints):
+                    logger.info(f"  WP{i}: ({wp[0]:.2f}, {wp[1]:.2f})")
+
+        # 타임아웃 체크
+        elapsed_time = time.time() - self.mission_start_time
+        if elapsed_time > self.max_duration:
+            self.is_completed = True
+            if logger:
+                logger.warn(
+                    f"⏱️ CIRCLE_BUOY 타임아웃 ({elapsed_time:.1f}s > {self.max_duration:.1f}s): "
+                    f"미션 종료"
+                )
+            return 0.0, 0.0, 0.0, 0.0
+
+        # 모든 웨이포인트 통과 확인
+        if self.current_waypoint_index >= len(self.generated_waypoints):
+            self.is_completed = True
+            if logger:
+                logger.info(
+                    f"✅ CIRCLE_BUOY 완료: 모든 웨이포인트 통과 ({elapsed_time:.1f}s)"
+                )
+            return 0.0, 0.0, 0.0, 0.0
+
+        # 현재 목표 웨이포인트
+        target_waypoint = self.generated_waypoints[self.current_waypoint_index]
+
+        # 웨이포인트 도착 판정
+        if self._check_waypoint_reached(agent_position, target_waypoint, self.radius_reach):
+            if logger:
+                logger.info(
+                    f"✓ WP{self.current_waypoint_index} 도착: "
+                    f"({target_waypoint[0]:.2f}, {target_waypoint[1]:.2f})"
+                )
+            self.current_waypoint_index += 1
+
+            # 마지막 웨이포인트 도착 확인
+            if self.current_waypoint_index >= len(self.generated_waypoints):
+                self.is_completed = True
+                if logger:
+                    logger.info(
+                        f"✅ CIRCLE_BUOY 완료: 모든 웨이포인트 통과 ({elapsed_time:.1f}s)"
+                    )
+                return 0.0, 0.0, 0.0, 0.0
+
+            # 다음 웨이포인트로 업데이트
+            target_waypoint = self.generated_waypoints[self.current_waypoint_index]
+
+        # 목표 방향 계산
+        # agent_position = [Easting, Northing]
+        # target_waypoint = [Easting, Northing]
+        delta = target_waypoint - agent_position
+        distance = np.linalg.norm(delta)
+
+        if distance < 0.5:  # 너무 가까우면 정지
+            return 0.0, 0.0, 0.0, 0.0
+
+        # 목표 헤딩 계산
+        # delta = [Easting_diff, Northing_diff]
+        # atan2(Easting, Northing) = 목표 방향 (0도=North, 90도=East)
+        target_heading = np.degrees(np.arctan2(delta[0], delta[1]))
+        if target_heading < 0:
+            target_heading += 360
+
+        # 헤딩 오차 계산
+        heading_error = calculate_heading_error(target_heading, agent_heading)
+
+        # PID 제어 (헤딩 오차 기반)
+        # heading_error는 도(degree) 단위이므로 라디안으로 변환하여 PID 제어
+        heading_error_rad = np.radians(heading_error)
+        steering = self.pid_controller.update(heading_error_rad)
+        
+        # 최대 조향 제한
+        max_steering = 0.5
+        steering = np.clip(steering, -max_steering, max_steering)
+
+        # 전진 속도 (일정하게 유지)
+        forward_speed = 0.4
+
+        # Body force 명령 계산
+        desired_speed = forward_speed
+        desired_yaw = steering
+        desired_force_y = 0.0
+
+        # Thruster 명령으로 변환
+        left_thrust, right_thrust, left_pos, right_pos = body_forces_to_thruster_commands(
+            desired_speed, desired_yaw, desired_force_y, self.thrust_scale
         )
 
-        # 회전 시작 시간 기록 (완료 확인용)
-        if self.circle_start_time is None:
-            self.circle_start_time = time.time()
-            self.circle_initial_heading = agent_heading if agent_heading else 0.0
-            self.previous_heading = agent_heading if agent_heading else 0.0
-            self.total_rotation = 0.0
-
-        # 누적 회전 각도 계산
-        if agent_heading is not None:
-            heading_diff = agent_heading - self.previous_heading
-
-            # 각도 차이 정규화 (-180 ~ 180)
-            if heading_diff > 180:
-                heading_diff -= 360
-            elif heading_diff < -180:
-                heading_diff += 360
-
-            self.total_rotation += abs(heading_diff)
-            self.previous_heading = agent_heading
-
-        # 360도 회전 완료 확인
-        if self.total_rotation >= Constants.CIRCLE_COMPLETION_ROTATION:
-            self.is_completed = True
-            self.target_x = None
-            if logger:
-                logger.info("🎉 부표 360도 회전 완료! 다음 미션으로 전환됩니다.")
-            # 미션 완료 후 천천히 전진 (thruster 각도 0)
-            left_thrust = Constants.CIRCLE_COMPLETION_SPEED * self.thrust_scale
-            right_thrust = Constants.CIRCLE_COMPLETION_SPEED * self.thrust_scale
-            return left_thrust, right_thrust, 0.0, 0.0
-
-        # 부표 미탐지 시 이전 명령 사용
-        if not blue_buoy:
-            self.target_x = None
-            # 거리 고정 상태이면 고정된 명령 사용, 아니면 마지막 명령 사용
-            if self.distance_locked:
-                left_thrust = self.locked_left_cmd
-                right_thrust = self.locked_right_cmd
-                left_pos = self.locked_left_pos
-                right_pos = self.locked_right_pos
-                if logger:
-                    logger.warn(
-                        f"파란색 부표 미탐지 (거리 고정 모드): 고정 명령 사용 "
-                        f"L={left_thrust:.1f}, R={right_thrust:.1f}"
-                    )
-            else:
-                left_thrust = self.last_known_left_cmd
-                right_thrust = self.last_known_right_cmd
-                left_pos = 0.0  # 기본값
-                right_pos = 0.0
-                if logger:
-                    logger.warn(
-                        f"파란색 부표 미탐지: 이전 명령 사용 L={left_thrust:.1f}, R={right_thrust:.1f}"
-                    )
-            return left_thrust, right_thrust, left_pos, right_pos
-
-        # 미션 파라미터
-        rotation_direction = mission_params.get('rotation_direction', 1)
-
-        # 부표 측정값
-        buoy_depth = blue_buoy['depth']
-        buoy_x = blue_buoy['center'][0]
-
-        # === 거리 고정 모드 체크 (이미 고정된 경우) ===
-        if self.distance_locked:
-            left_thrust = self.locked_left_cmd
-            right_thrust = self.locked_right_cmd
-            left_pos = self.locked_left_pos
-            right_pos = self.locked_right_pos
-            self.target_x = None  # 시각화에서 target_x 표시 안함
-
-            # 마지막 명령도 고정된 값으로 업데이트 (부표 미탐지 시 사용)
-            self.last_known_left_cmd = left_thrust
-            self.last_known_right_cmd = right_thrust
-
-            if logger:
-                direction_name = "시계방향" if rotation_direction == 1 else "반시계방향"
-                logger.info(
-                    f"Circle [LOCKED][{data_source}]: rotation={self.total_rotation:.1f}°, "
-                    f"부표 위치=({buoy_x:.1f}px), 깊이={buoy_depth:.3f}m, "
-                    f"방향={direction_name}, 고정 명령 사용"
-                )
-
-            return left_thrust, right_thrust, left_pos, right_pos
-
-        # === 일반 제어 모드 (명령 계산) ===
-        # 회전 모드: 부표를 기준으로 일정한 방향으로 회전
-        target_x = self.calculate_rotation_target(rotation_direction, buoy_depth)
-        self.target_x = target_x
-        error = target_x - buoy_x
-
-        # 조향 명령 계산 (PID)
-        steering_command = self.calculate_steering_command(error)
-
-        # 회전 추력 계산
-        turn_thrust = steering_command * self.max_turn_thrust
-
-        # 각도에 따른 적응형 속도 계산
-        turn_angle = abs(steering_command * 90)
-        forward_thrust = self.calculate_rotation_speed(turn_angle)
-
-        # 스러스터 명령 계산
-        left_command = forward_thrust - turn_thrust
-        right_command = forward_thrust + turn_thrust
-
-        # 스러스터를 thrust_scale로 변환
-        left_thrust = (left_command / 1000.0) * self.thrust_scale
-        right_thrust = (right_command / 1000.0) * self.thrust_scale
-
-        # 1차 저주파 필터 적용 (명령값 튀기 방지)
-        left_thrust, right_thrust = self.apply_low_pass_filter(left_thrust, right_thrust)
-
-        left_pos = 0.0  # 기본 각도
-        right_pos = 0.0
-
-        # === 거리 기반 명령 고정 로직 (막 임계값을 넘었을 때) ===
-        # 거리가 임계값 이하로 가까워지면 방금 계산한 명령 고정
-        if not self.distance_locked and buoy_depth >= self.lock_distance_threshold:
-            self.distance_locked = True
-            # 방금 계산한 명령을 고정 (thrust_scale 변환된 실제 값)
-            self.locked_left_cmd = left_thrust
-            self.locked_right_cmd = right_thrust
-            self.locked_left_pos = left_pos
-            self.locked_right_pos = right_pos
-            if logger:
-                logger.info(
-                    f"🔒 거리 임계값 도달 (depth={buoy_depth:.2f}m <= {self.lock_distance_threshold:.2f}m): "
-                    f"현재 명령 고정 L={left_thrust:.1f}, R={right_thrust:.1f}"
-                )
-
-        # 마지막으로 성공한 명령 저장 (thrust_scale 변환된 실제 값 저장)
-        self.last_known_left_cmd = left_thrust
-        self.last_known_right_cmd = right_thrust
-
         if logger:
-            direction_name = "시계방향" if rotation_direction == 1 else "반시계방향"
             logger.info(
-                f"Circle [ROTATE][{data_source}]: rotation={self.total_rotation:.1f}°, "
-                f"부표 위치=({buoy_x:.1f}px), 깊이={buoy_depth:.3f}m, "
-                f"목표={target_x:.1f}px, 오차={error:.1f}px, "
-                f"조향={steering_command:.3f}, 방향={direction_name}"
+                f"CIRCLE_BUOY [WP{self.current_waypoint_index}/{len(self.generated_waypoints)-1}]: "
+                f"목표=({target_waypoint[0]:.2f}, {target_waypoint[1]:.2f}), "
+                f"거리={distance:.2f}m, 헤딩오차={heading_error:.1f}°, "
+                f"조향={steering:.3f}, 경과시간={elapsed_time:.1f}s"
             )
 
         return left_thrust, right_thrust, left_pos, right_pos
@@ -1316,29 +1311,34 @@ class MissionManager:
         CIRCLE_BUOY 미션의 target_x 가져오기 (시각화용)
 
         Returns:
-            Optional[float]: target_x 값 또는 None
+            Optional[float]: target_x 값 또는 None (웨이포인트 기반 방식으로 변경되어 항상 None 반환)
         """
-        circle_mission = self.missions.get(MissionType.CIRCLE_BUOY)
-        if circle_mission and hasattr(circle_mission, 'target_x'):
-            return circle_mission.target_x
+        # 웨이포인트 기반 방식으로 변경되어 target_x가 더 이상 없음
         return None
 
     def is_circle_mission_completed(self) -> bool:
         """
-        CircleBuoyMission의 완료 여부 확인 (360도 회전 완료)
+        CircleBuoyMission의 완료 여부 확인 (모든 웨이포인트 통과 또는 타임아웃)
 
         Returns:
-            bool: 360도 회전이 완료되었으면 True, 아니면 False
+            bool: 모든 웨이포인트를 통과했거나 타임아웃되었으면 True, 아니면 False
         """
         circle_mission = self.missions.get(MissionType.CIRCLE_BUOY)
-        if circle_mission:
-            # is_completed 플래그가 설정되어 있으면 그 값 사용
-            if hasattr(circle_mission, 'is_completed'):
-                return circle_mission.is_completed
-            # 없으면 total_rotation으로 직접 확인 (후방 호환성)
-            if hasattr(circle_mission, 'total_rotation'):
-                return circle_mission.total_rotation >= Constants.CIRCLE_COMPLETION_ROTATION
+        if circle_mission and hasattr(circle_mission, 'is_completed'):
+            return circle_mission.is_completed
         return False
+
+    def get_circle_buoy_waypoints(self) -> List[np.ndarray]:
+        """
+        CIRCLE_BUOY 미션의 생성된 웨이포인트 가져오기 (시각화용)
+
+        Returns:
+            List[np.ndarray]: world-frame 웨이포인트 리스트 [[x, y], ...]
+        """
+        circle_mission = self.missions.get(MissionType.CIRCLE_BUOY)
+        if circle_mission and hasattr(circle_mission, 'get_generated_waypoints'):
+            return circle_mission.get_generated_waypoints()
+        return []
 
     def is_rotation_mission_completed(self) -> bool:
         """

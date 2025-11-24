@@ -9,8 +9,8 @@
 import cv2
 import numpy as np
 from typing import List, Dict, Callable, Optional
-from .detection_system import MissionType
-from .config import Constants
+from ..detection.detection_system import MissionType
+from ..core.config import Constants
 
 
 class VisualizationSystem:

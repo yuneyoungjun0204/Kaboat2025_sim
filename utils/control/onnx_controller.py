@@ -7,7 +7,7 @@ import numpy as np
 import onnxruntime as ort
 from collections import deque
 from typing import Tuple, List, Optional
-from utils.config import Constants
+from ..core.config import Constants
 
 
 class ONNXController:

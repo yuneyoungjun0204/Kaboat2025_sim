@@ -9,19 +9,40 @@ VRX 로봇 제어 시스템 유틸리티 모듈
 """
 
 try:
-    # 센서 및 제어 모듈
-    from .depth_estimation import MiDaSHybridDepthEstimator
-    from .sensor_preprocessing import GPSTransformer, LiDARProcessor, IMUProcessor, SensorDataManager
-    from .avoid_control import (
+    # Core 모듈
+    from .core.config import Constants
+    from .core.helpers import normalize_heading, calculate_heading_error, find_buoy_with_fallback
+    from .core.system_factory import VRXSystemFactory, QuickStart
+    from .core.super_optimizer import SuperOptimizer, create_super_optimizer
+    from .core.jetson_optimizer import setup_jetson
+
+    # Sensors 모듈
+    from .sensors.depth_estimation import MiDaSHybridDepthEstimator
+    from .sensors.sensor_preprocessing import GPSTransformer, LiDARProcessor, IMUProcessor, SensorDataManager, normalize_angle_180
+    from .sensors.sensor_callbacks import SensorCallbackHandler, LidarFilter
+    from .sensors.depth_estimation_optimized import OptimizedDepthEstimator
+    from .sensors.depth_estimation_ultra import UltraDepthEstimator, create_ultra_depth_estimator
+    from .sensors.depth_filter import smooth_depth_spatially
+
+    # Detection 모듈
+    from .detection.detection_system import DetectionSystem, MissionType
+    from .detection.detection_system_optimized import DetectionSystem as OptimizedDetectionSystem
+    from .detection.imm_pdaf_tracker import (
+        IMMPDAFTracker, Track, create_tracker,
+        MotionModel, NearlyConstantPosition, ConstantVelocity,
+        ConstantAcceleration, SingerModel
+    )
+
+    # Control 모듈
+    from .control.avoid_control import (
         LOSGuidance, ObstacleDetector, DirectController,
         LowPassFilter, AvoidanceController
     )
+    from .control.thruster_allocation import body_forces_to_thruster_commands
+    from .control.onnx_controller import ONNXController
 
-    # 탐지 시스템
-    from .detection_system import DetectionSystem, MissionType
-
-    # 미션 전략
-    from .mission_strategies_new import (
+    # Mission 모듈
+    from .mission.mission_strategies_new import (
         BaseMissionStrategy,
         PassBetweenBuoysMission,
         CircleBuoyMission,
@@ -29,45 +50,23 @@ try:
         ObstacleAvoidMission,
         MissionManager
     )
-
-    # 시각화 시스템
-    from .visualization_system import VisualizationSystem
-
-    # 웨이포인트 관리
-    from .waypoint_manager import WaypointManager
-
-    # ROS2 통신
-    from .ros_communication import ROSCommunicationManager
-
-    # IMM-PDAF 트래커
-    from .imm_pdaf_tracker import (
-        IMMPDAFTracker, Track, create_tracker,
-        MotionModel, NearlyConstantPosition, ConstantVelocity,
-        ConstantAcceleration, SingerModel
-    )
-
-    # 새로운 유틸리티 모듈
-    from .config import Constants
-    from .parameter_manager import ParameterManager
-    from .sensor_callbacks import SensorCallbackHandler
-    from .onnx_controller import ONNXController
-    from .mission_executor import MissionExecutor
-
-    # System Factory
-    from .system_factory import VRXSystemFactory, QuickStart
-
-    # Visualization Components
-    from .viz_components import PlotManager, VizCallbackHandler, VizUtils
-
-    # Mission Control Components
-    from .mission_control import (
+    from .mission.mission_control import (
         MissionLoopExecutor,
         WaypointTransitionHandler,
         ObstacleAvoidExecutor
     )
+    from .mission.mission_executor import MissionExecutor
+    from .mission.waypoint_manager import WaypointManager, gps_to_local, local_to_gps
+    from .mission.parameter_manager import ParameterManager
 
-    # PX4 Adapter
-    from .px4_adapter import (
+    # Visualization 모듈
+    from .visualization.visualization_system import VisualizationSystem
+    from .visualization.viz_components import PlotManager, VizCallbackHandler, VizUtils
+    from .visualization.image_preprocessor import create_preprocessor
+
+    # Communication 모듈
+    from .communication.ros_communication import ROSCommunicationManager
+    from .communication.px4_adapter import (
         PX4SensorAdapter,
         PX4CommandConverter,
         CoordinateConverter,

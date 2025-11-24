@@ -4,9 +4,9 @@
 """
 
 from typing import Dict, Any, Optional
-from utils.detection_system import MissionType
-from utils.visualization_system import VisualizationSystem
-from utils.config import Constants
+from ..detection.detection_system import MissionType
+from ..visualization.visualization_system import VisualizationSystem
+from ..core.config import Constants
 
 
 class ParameterManager:
@@ -95,6 +95,35 @@ class ParameterManager:
             # waypoint_params를 먼저 넣고 trackbar로 덮어쓰기 (trackbar 우선순위)
             # 하지만 target_shape은 waypoint_params 우선
             result = {**dock_params, **waypoint_params}
+            # LOS delta 추가 (waypoint_params 우선, 없으면 기본값)
+            if 'los_delta' not in result:
+                result['los_delta'] = waypoint_params.get('los_delta', Constants.AvoidControl.DOCK_MODE_LOS_DELTA)
+            return result
+
+        elif mission_type == MissionType.OBSTACLE_AVOID:
+            # 장애물 회피 미션 파라미터
+            result = {**waypoint_params}
+            # LOS delta 추가 (waypoint_params 우선, 없으면 기본값)
+            if 'los_delta' not in result:
+                result['los_delta'] = waypoint_params.get('los_delta', Constants.AvoidControl.OBSTACLE_AVOID_LOS_DELTA)
+            return result
+
+        elif mission_type == MissionType.CIRCLE_BUOY:
+            # CIRCLE_BUOY 미션 파라미터
+            circle_params = {k: v for k, v in trackbar_params.items()
+                           if k.startswith('circle_')}
+            result = {**waypoint_params, **circle_params}
+            # LOS delta 추가 (waypoint_params 우선, 없으면 기본값)
+            if 'los_delta' not in result:
+                result['los_delta'] = waypoint_params.get('los_delta', Constants.AvoidControl.CIRCLE_BUOY_LOS_DELTA)
+            return result
+
+        elif mission_type == MissionType.STOP:
+            # 정지 미션 파라미터
+            result = {**waypoint_params}
+            # stop_duration 추가 (waypoint_params 우선, 없으면 기본값)
+            if 'stop_duration' not in result:
+                result['stop_duration'] = waypoint_params.get('stop_duration', Constants.STOP_DEFAULT_DURATION)
             return result
 
         return {}

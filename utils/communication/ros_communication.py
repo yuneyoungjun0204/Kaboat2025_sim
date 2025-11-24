@@ -10,7 +10,9 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPo
 from sensor_msgs.msg import Image, LaserScan, NavSatFix, Imu
 from geometry_msgs.msg import Point
 from std_msgs.msg import Float64, Float64MultiArray, String, Bool, Int32
-from .config import Constants
+import numpy as np
+import math
+from ..core.config import Constants
 from rclpy.qos import QoSProfile, ReliabilityPolicy
 # PX4 메시지 (optional)
 try:
@@ -57,13 +59,18 @@ class ROSCommunicationManager:
             callbacks: {topic_name: callback_function} 형태의 딕셔너리
                 지원하는 topic_name: 'image', 'lidar', 'gps', 'imu', 'waypoint'
         """
-        # 이미지 구독
+        # 이미지 구독 (BEST_EFFORT QoS로 빠른 수신)
         if 'image' in callbacks:
+            image_qos_profile = QoSProfile(
+                depth=1,  # 큐 크기를 1로 줄여서 최신 데이터만 사용
+                reliability=ReliabilityPolicy.BEST_EFFORT,
+                history=HistoryPolicy.KEEP_LAST
+            )
             self.subscribers['image'] = self.node.create_subscription(
                 Image,
                 Constants.Topics.CAMERA_IMAGE,
                 callbacks['image'],
-                Constants.QueueSizes.SENSOR
+                image_qos_profile
             )
 
         # LiDAR 구독 (선택적)
@@ -242,6 +249,19 @@ class ROSCommunicationManager:
         # 장애물 회피용 퍼블리셔
         self.publishers['avoid_yaw'] = self.node.create_publisher(
             Int32, Constants.Topics.AVOID_YAW, Constants.QueueSizes.CONTROL
+        )
+
+        # CIRCLE_BUOY 웨이포인트 퍼블리셔 (시각화용)
+        self.publishers['circle_buoy_waypoints'] = self.node.create_publisher(
+            Float64MultiArray, Constants.Topics.CIRCLE_BUOY_WAYPOINTS, Constants.QueueSizes.STATUS
+        )
+        self.publishers['circle_buoy_current_waypoint'] = self.node.create_publisher(
+            Float64MultiArray, Constants.Topics.CIRCLE_BUOY_CURRENT_WAYPOINT, Constants.QueueSizes.STATUS
+        )
+        
+        # 모든 웨이포인트 퍼블리셔 (시각화용)
+        self.publishers['all_waypoints'] = self.node.create_publisher(
+            Float64MultiArray, Constants.Topics.ALL_WAYPOINTS, Constants.QueueSizes.STATUS
         )
 
         # PX4 브릿지 퍼블리셔 (항상 활성화)
@@ -576,3 +596,100 @@ class ROSCommunicationManager:
                 velocity if velocity is not None else 0.0,
                 yaw if yaw is not None else 0.0
             )
+
+    def publish_circle_buoy_waypoints(self, waypoints: List[np.ndarray]) -> None:
+        """
+        CIRCLE_BUOY 미션의 목표 포인트 발행 (시각화용)
+
+        Args:
+            waypoints: [[Easting, Northing], ...] 형태의 포인트 리스트 (numpy array 또는 list)
+        """
+        if not waypoints:
+            return
+
+        msg = Float64MultiArray()
+        # Flatten: [[Easting0, Northing0], [Easting1, Northing1], ...] → [Easting0, Northing0, Easting1, Northing1, ...]
+        # numpy array를 float으로 명시적 변환
+        msg.data = [float(coord) for wp in waypoints for coord in wp]
+        self.publishers['circle_buoy_waypoints'].publish(msg)
+
+    def publish_circle_buoy_current_waypoint(self, waypoint: np.ndarray) -> None:
+        """
+        CIRCLE_BUOY 미션의 현재 목표 포인트 발행 (시각화용)
+
+        Args:
+            waypoint: [Easting, Northing] 현재 목표 포인트 (numpy array 또는 list)
+        """
+        # numpy array의 boolean 비교 오류 방지
+        if waypoint is None:
+            return
+
+        # numpy array를 list로 변환
+        if isinstance(waypoint, np.ndarray):
+            waypoint = waypoint.tolist()
+        
+        if len(waypoint) < 2:
+            return
+
+        msg = Float64MultiArray()
+        # [Easting, Northing] 형식으로 발행
+        msg.data = [float(waypoint[0]), float(waypoint[1])]
+        self.publishers['circle_buoy_current_waypoint'].publish(msg)
+
+    def publish_all_waypoints(self, waypoints: List[Dict], current_index: int) -> None:
+        """
+        모든 웨이포인트 정보 발행 (시각화용)
+        
+        Args:
+            waypoints: 웨이포인트 리스트 [{'x': float, 'y': float, 'mission_type': MissionType, ...}, ...]
+            current_index: 현재 활성화된 웨이포인트 인덱스
+        
+        발행 형식: [mission_type_id0, easting0, northing0, mission_type_id1, easting1, northing1, ..., current_index]
+        mission_type_id: 0=WAYPOINT_FOLLOW, 1=OBSTACLE_AVOID, 2=PASS_BETWEEN_BUOYS, 
+                         3=CIRCLE_BUOY, 4=DOCK_MODE, 5=ROTATION
+        """
+        if not waypoints:
+            return
+
+        msg = Float64MultiArray()
+        data = []
+        
+        # 미션 타입을 숫자로 변환
+        mission_type_map = {
+            'WAYPOINT_FOLLOW': 0,
+            'OBSTACLE_AVOID': 1,
+            'PASS_BETWEEN_BUOYS': 2,
+            'CIRCLE_BUOY': 3,
+            'DOCK_MODE': 4,
+            'ROTATION': 5,
+            'STOP': 8
+        }
+        
+        for wp in waypoints:
+            mission_type = wp.get('mission_type')
+            if hasattr(mission_type, 'name'):
+                mission_type_name = mission_type.name
+            else:
+                mission_type_name = str(mission_type)
+            
+            mission_id = float(mission_type_map.get(mission_type_name, 0))
+            
+            # x, y 값이 numpy 타입일 수 있으므로 명시적으로 float로 변환
+            x_val = wp.get('x', 0.0)
+            y_val = wp.get('y', 0.0)
+            easting = float(x_val) if not isinstance(x_val, (list, tuple)) else float(x_val[0]) if len(x_val) > 0 else 0.0
+            northing = float(y_val) if not isinstance(y_val, (list, tuple)) else float(y_val[0]) if len(y_val) > 0 else 0.0
+            
+            # 유효한 float 값인지 확인 (NaN, Inf 체크)
+            if not (math.isfinite(easting) and math.isfinite(northing)):
+                continue
+            
+            # [mission_type_id, easting, northing] 형식으로 추가 (모두 float)
+            data.extend([float(mission_id), float(northing), float(easting)])
+        
+        # 마지막에 현재 인덱스 추가
+        data.append(float(current_index))
+        
+        # 모든 값을 명시적으로 float 리스트로 변환
+        msg.data = [float(v) for v in data]
+        self.publishers['all_waypoints'].publish(msg)

@@ -13,8 +13,8 @@ from matplotlib.figure import Figure
 from matplotlib.axes import Axes
 from collections import deque
 
-from .config import Constants
-from .sensor_preprocessing import SensorDataManager
+from ..core.config import Constants
+from ..sensors.sensor_preprocessing import SensorDataManager
 
 
 class VizUtils:

@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Optional
 import time
 
-from .super_optimizer import SuperOptimizer, create_super_optimizer
+from ..core.super_optimizer import SuperOptimizer, create_super_optimizer
 
 
 class UltraDepthEstimator:

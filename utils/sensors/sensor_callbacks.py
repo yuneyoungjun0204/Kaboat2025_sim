@@ -9,9 +9,9 @@ from sensor_msgs.msg import Image, LaserScan, NavSatFix, Imu
 from geometry_msgs.msg import Point
 from cv_bridge import CvBridge, CvBridgeError
 from typing import Optional, Callable
-from utils.config import Constants
-from utils.sensor_preprocessing import SensorDataManager, normalize_angle_180
-from utils.detection_system import MissionType
+from ..core.config import Constants
+from .sensor_preprocessing import SensorDataManager, normalize_angle_180
+from ..detection.detection_system import MissionType
 
 
 class LidarFilter:
@@ -320,7 +320,7 @@ class SensorCallbackHandler:
 
         Note: PX4 모드에서 기존 GPS 토픽 대신 사용됨
         """
-        from utils.waypoint_manager import gps_to_local
+        from ..mission.waypoint_manager import gps_to_local
 
         # 미션 시작 시 첫 번째 현재 위치를 기준점으로 설정
         if self.initial_lat is None:

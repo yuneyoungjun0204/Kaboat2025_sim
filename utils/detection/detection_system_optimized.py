@@ -18,8 +18,8 @@ import threading
 import queue
 import time
 
-from .config import Constants
-from .depth_filter import smooth_depth_spatially
+from ..core.config import Constants
+from ..sensors.depth_filter import smooth_depth_spatially
 
 
 class MissionType(Enum):
@@ -31,6 +31,7 @@ class MissionType(Enum):
     HEADING_ALIGN = 5
     DOCK_MODE = 6
     ROTATION = 7
+    STOP = 8  # 정지 미션
 
 
 class AsyncWorker:
@@ -184,12 +185,12 @@ class OptimizedDetectionSystem:
                 image_encoder_engine=None
             )
 
-            # 미션별 쿼리 정의
+            # 미션별 탐지 쿼리 정의
             self.detection_queries = {
                 MissionType.PASS_BETWEEN_BUOYS: {
                     'queries': [
-                        "a red cone buoy", "a red conical marker", "a cone-shaped red buoy",
-                        "a green cone buoy", "a green conical marker", "a cone-shaped green buoy"
+                        "a red buoy", "red circular buoy", "red buoy on water",
+                        "a green buoy", "a green buoy on water", "a green circular buoy"
                     ],
                     'label_mapping': {
                         0: "red_cone", 1: "red_cone", 2: "red_cone",
@@ -197,12 +198,28 @@ class OptimizedDetectionSystem:
                     }
                 },
                 MissionType.CIRCLE_BUOY: {
-                    'queries': ["a blue buoy"],
-                    'label_mapping': {0: "blue_buoy"}
+                    'queries': [
+                        "a blue buoy",
+                    ],
+                    'label_mapping': {
+                        0: "blue_buoy"
+                    }
                 },
                 MissionType.DOCK_MODE: {
-                    'queries': ["a red square"],
-                    'label_mapping': {0: "red_square"}
+                    'queries': [
+                        "a red square"
+                        # "a red circle", "a red square", "a red triangle",
+                        # "a green circle", "a green square", "a green triangle",
+                        # "a blue circle", "a blue square", "a blue triangle",
+                        # "a yellow circle", "a yellow square", "a yellow triangle"
+                    ],
+                    'label_mapping': {
+                        0: "red_square"
+                        # 0: "red_circle", 1: "red_square", 2: "red_triangle",
+                        # 3: "green_circle", 4: "green_square", 5: "green_triangle",
+                        # 6: "blue_circle", 7: "blue_square", 8: "blue_triangle",
+                        # 9: "yellow_circle", 10: "yellow_square", 11: "yellow_triangle"
+                    }
                 }
             }
 

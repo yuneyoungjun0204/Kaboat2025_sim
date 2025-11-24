@@ -14,15 +14,15 @@ from geometry_msgs.msg import Point
 from std_msgs.msg import Float64MultiArray, String
 import numpy as np
 from collections import deque
-from typing import Optional, List, Tuple
+from typing import Optional, List, Tuple, Dict
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 from matplotlib.patches import Polygon, Circle, FancyArrow
 
 from utils import Constants, SensorDataManager
-from utils.sensor_callbacks import LidarFilter
-from utils.waypoint_manager import gps_to_local
-from utils.sensor_preprocessing import normalize_angle_180
+from utils.sensors.sensor_callbacks import LidarFilter
+from utils.mission.waypoint_manager import gps_to_local
+from utils.sensors.sensor_preprocessing import normalize_angle_180
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
 
 # PX4 메시지 (optional)
@@ -125,6 +125,9 @@ class UnifiedPlotManager:
         self.robot_marker = None
         self.lidar_scatter = None
         self.waypoint_markers = None
+        self.circle_buoy_waypoint_markers = None
+        # 모든 웨이포인트 마커 (미션 타입별)
+        self.all_waypoint_markers = {}  # {mission_type_id: plot_line}
 
         # 제어 출력 요소들
         self.linear_bar = None
@@ -192,6 +195,20 @@ class UnifiedPlotManager:
         self.waypoint_markers, = self.ax_main.plot(
             [], [], 'go', markersize=10, label='Waypoints', markeredgecolor='darkgreen', markeredgewidth=2
         )
+        self.circle_buoy_waypoint_markers, = self.ax_main.plot(
+            [], [], 'c^', markersize=12, label='CIRCLE_BUOY WPs', markeredgecolor='darkcyan', markeredgewidth=2
+        )
+        
+        # 미션 타입별 마커 스타일 정의
+        self.mission_marker_styles = {
+            0: ('o', 'blue', 'WAYPOINT_FOLLOW'),
+            1: ('s', 'orange', 'OBSTACLE_AVOID'),
+            2: ('D', 'purple', 'PASS_BETWEEN_BUOYS'),
+            3: ('^', 'cyan', 'CIRCLE_BUOY'),
+            4: ('p', 'red', 'DOCK_MODE'),
+            5: ('h', 'magenta', 'ROTATION'),
+            8: ('X', 'gray', 'STOP')
+        }
 
         # 범례용 더미
         self.ax_main.plot([], [], 'r-', linewidth=3, label='Current Heading')
@@ -199,8 +216,14 @@ class UnifiedPlotManager:
         self.ax_main.plot([], [], 'mD', markersize=10, label='LOS Target')
         self.ax_main.scatter([], [], c='orange', marker='x', s=60, linewidths=2, label='Obstacle Check Points')
         self.ax_main.fill([], [], color='purple', alpha=0.3, label='Goal Check Zone')
+        
+        # 미션 타입별 범례 추가
+        for mission_id, (marker, color, name) in self.mission_marker_styles.items():
+            self.ax_main.plot([], [], marker=marker, color=color, markersize=10, 
+                            label=f'{name} WP', linestyle='None', markeredgecolor='black', markeredgewidth=1)
 
-        self.ax_main.legend(loc='upper right', fontsize=9, framealpha=0.9)
+        # 범례를 더 작고 간결하게 표시 (표 밖으로 이동)
+        self.ax_main.legend(loc='upper left', fontsize=7, framealpha=0.7, ncol=2, columnspacing=0.5)
 
     def _setup_lidar_polar_plot(self):
         """LiDAR 극좌표 플롯 초기화 (Robot Frame)"""
@@ -235,8 +258,7 @@ class UnifiedPlotManager:
             0.02, -0.3, '0.000', fontsize=10, va='center', fontweight='bold'
         )
         self.mode_text = self.ax_control.text(
-            0.5, -1.2, 'Mode: UNKNOWN', fontsize=11, va='center', ha='center',
-            bbox=dict(boxstyle="round,pad=0.4", facecolor="lightgray", alpha=0.9),
+            0.5, -1.2, 'Mode: UNKNOWN', fontsize=10, va='center', ha='center',
             fontweight='bold'
         )
 
@@ -489,6 +511,136 @@ class UnifiedPlotManager:
             )[0]
             self.dynamic_elements.append(marker)
 
+    def update_circle_buoy_waypoints(self, circle_waypoints: List[List[float]], current_waypoint: Optional[List[float]] = None):
+        """CIRCLE_BUOY 웨이포인트 업데이트 (자동 생성된 웨이포인트)
+
+        Args:
+            circle_waypoints: [[North, East], ...] CIRCLE_BUOY 미션의 웨이포인트 (NED 좌표계, 로봇 위치 반영됨)
+            current_waypoint: [North, East] 현재 추종 중인 웨이포인트 (NED 좌표계)
+        """
+        if len(circle_waypoints) > 0:
+            wp_array = np.array(circle_waypoints)
+
+            # 플롯: 이미 [North, East] 형식으로 변환되어 있음 (circle_buoy_waypoints_callback에서 처리)
+            # trajectory_viz는 NED 좌표계 사용 [North, East]
+            # matplotlib: ax.plot(x, y) → x=North, y=East
+            self.circle_buoy_waypoint_markers.set_data(wp_array[:, 0], wp_array[:, 1])  # [North, East]
+
+            # 웨이포인트 번호 표시 (동적 요소)
+            for i, wp in enumerate(wp_array):
+                # 현재 추종 중인 웨이포인트는 다른 색상으로 표시
+                if current_waypoint is not None and len(current_waypoint) >= 2:
+                    # numpy array를 스칼라로 변환하여 비교 ([North, East] 형식)
+                    wp_north = float(wp[0])
+                    wp_east = float(wp[1])
+                    current_north = float(current_waypoint[0])
+                    current_east = float(current_waypoint[1])
+                    is_current = (abs(wp_north - current_north) < 0.1 and
+                                 abs(wp_east - current_east) < 0.1)
+                    color = 'red' if is_current else 'darkcyan'
+                    fontsize = 12 if is_current else 10
+                else:
+                    color = 'darkcyan'
+                    fontsize = 10
+
+                text = self.ax_main.text(
+                    wp[0], wp[1], f'{i}',  # [North, East] 형식: x=North, y=East
+                    fontsize=fontsize, fontweight='bold', color=color,
+                    ha='center', va='bottom', zorder=10
+                )
+                self.dynamic_elements.append(text)
+
+            # 현재 추종 중인 웨이포인트를 별도로 강조 표시
+            if current_waypoint is not None and len(current_waypoint) >= 2:
+                # 이미 [North, East] 형식으로 변환되어 있음
+                # numpy array를 스칼라로 변환
+                current_north = float(current_waypoint[0])
+                current_east = float(current_waypoint[1])
+                current_marker = self.ax_main.scatter(
+                    [current_north], [current_east],  # [North, East] 형식
+                    c='red', marker='*', s=300, alpha=0.9,
+                    edgecolors='darkred', linewidths=2, zorder=11,
+                    label='Current Target'
+                )
+                self.dynamic_elements.append(current_marker)
+
+    def update_all_waypoints(self, waypoints: List[Dict], current_index: int):
+        """모든 웨이포인트 업데이트 (미션 타입별 구분 및 현재 활성화된 웨이포인트 강조)
+        
+        Args:
+            waypoints: [{'mission_type': int, 'north': float, 'east': float}, ...]
+            current_index: 현재 활성화된 웨이포인트 인덱스
+        """
+        if not waypoints:
+            return
+        
+        # 미션 타입별로 그룹화
+        waypoints_by_mission = {}
+        for i, wp in enumerate(waypoints):
+            mission_id = wp['mission_type']
+            if mission_id not in waypoints_by_mission:
+                waypoints_by_mission[mission_id] = []
+            waypoints_by_mission[mission_id].append((i, wp))
+        
+        # 기존 마커 제거
+        for marker in self.all_waypoint_markers.values():
+            try:
+                marker.remove()
+            except:
+                pass
+        self.all_waypoint_markers.clear()
+        
+        # 미션 타입별로 표시
+        for mission_id, wp_list in waypoints_by_mission.items():
+            if mission_id not in self.mission_marker_styles:
+                continue
+            
+            marker_style, color, name = self.mission_marker_styles[mission_id]
+            
+            # 웨이포인트 좌표 추출
+            norths = [wp['north'] for _, wp in wp_list]
+            easts = [wp['east'] for _, wp in wp_list]
+            indices = [idx for idx, _ in wp_list]
+            
+            # 마커 플롯
+            marker_line, = self.ax_main.plot(
+                norths, easts, marker=marker_style, color=color, markersize=12,
+                linestyle='None', markeredgecolor='black', markeredgewidth=1.5,
+                label=f'{name} WP', zorder=6, alpha=0.8
+            )
+            self.all_waypoint_markers[mission_id] = marker_line
+            
+            # 웨이포인트 번호 및 미션 타입 표시
+            for idx, wp in wp_list:
+                is_current = (idx == current_index)
+                
+                # 현재 활성화된 웨이포인트 강조
+                if is_current:
+                    # 큰 별표 마커로 강조
+                    current_marker = self.ax_main.scatter(
+                        [wp['north']], [wp['east']],
+                        c='yellow', marker='*', s=500, alpha=1.0,
+                        edgecolors='red', linewidths=3, zorder=12,
+                        label='Active Waypoint' if idx == 0 else ''
+                    )
+                    self.dynamic_elements.append(current_marker)
+                    
+                    # 번호 텍스트 (큰 글씨, 빨간색, 배경 없이)
+                    text = self.ax_main.text(
+                        wp['north'], wp['east'], f'{idx}',
+                        fontsize=12, fontweight='bold', color='red',
+                        ha='center', va='bottom', zorder=13
+                    )
+                    self.dynamic_elements.append(text)
+                else:
+                    # 일반 웨이포인트 번호 (배경 없이)
+                    text = self.ax_main.text(
+                        wp['north'], wp['east'], f'{idx}',
+                        fontsize=8, fontweight='normal', color=color,
+                        ha='center', va='bottom', zorder=7
+                    )
+                    self.dynamic_elements.append(text)
+
     def update_control_output(self, linear_vel: float, angular_vel: float, mode: str):
         """제어 출력 업데이트"""
         # 바 크기 조정
@@ -515,9 +667,7 @@ class UnifiedPlotManager:
         color = mode_colors.get(mode, "lightgray")
 
         self.mode_text.set_text(f'Mode: {mode}')
-        self.mode_text.set_bbox(
-            dict(boxstyle="round,pad=0.4", facecolor=color, alpha=0.9)
-        )
+        self.mode_text.set_color(color)
 
     def draw(self):
         """화면 갱신"""
@@ -574,6 +724,15 @@ class UnifiedVizNode(Node):
         # 웨이포인트
         self.waypoints = []
         self.current_waypoint: Optional[List[float]] = None
+
+        # CIRCLE_BUOY 웨이포인트 (자동 생성)
+        self.circle_buoy_waypoints: List[List[float]] = []
+        self.circle_buoy_waypoints_global: List[List[float]] = []  # 전역 좌표로 변환된 웨이포인트 (고정)
+        self.circle_buoy_current_waypoint: Optional[List[float]] = None  # 현재 추종 중인 웨이포인트 [Easting, Northing]
+        
+        # 모든 웨이포인트 (미션 타입 포함)
+        self.all_waypoints: List[Dict] = []  # [{'mission_type': int, 'north': float, 'east': float}, ...]
+        self.current_waypoint_index: int = -1  # 현재 활성화된 웨이포인트 인덱스
 
         # 콜백 데이터
         self.linear_velocity = 0.0
@@ -645,6 +804,9 @@ class UnifiedVizNode(Node):
         self.create_subscription(Float64MultiArray, Constants.Topics.LOS_TARGET, self.los_callback, 10)
         self.create_subscription(Float64MultiArray, Constants.Topics.OBSTACLE_CHECK_AREA, self.obstacle_callback, 10)
         self.create_subscription(Float64MultiArray, Constants.Topics.GOAL_CHECK_AREAS, self.goal_callback, 10)
+        self.create_subscription(Float64MultiArray, Constants.Topics.CIRCLE_BUOY_WAYPOINTS, self.circle_buoy_waypoints_callback, 10)
+        self.create_subscription(Float64MultiArray, Constants.Topics.CIRCLE_BUOY_CURRENT_WAYPOINT, self.circle_buoy_current_waypoint_callback, 10)
+        self.create_subscription(Float64MultiArray, Constants.Topics.ALL_WAYPOINTS, self.all_waypoints_callback, 10)
 
         # 퍼블리셔
         self.waypoint_pub = self.create_publisher(Point, Constants.Topics.WAYPOINT, 10)
@@ -912,6 +1074,81 @@ class UnifiedVizNode(Node):
         else:
             self.goal_check_areas = []
 
+    def circle_buoy_waypoints_callback(self, msg):
+        """CIRCLE_BUOY 웨이포인트 콜백
+
+        수신 형식: [Easting0, Northing0, Easting1, Northing1, ...] (전역 좌표)
+        trajectory_viz의 NED 좌표계 [North, East]로 변환
+        """
+        if len(msg.data) < 2:
+            self.circle_buoy_waypoints_global = []
+            self.get_logger().warn("⚠️ CIRCLE_BUOY 웨이포인트 데이터 부족")
+            return
+
+        # 수신된 웨이포인트: [Easting, Northing] 형식 (전역 좌표)
+        # trajectory_viz는 [North, East] 형식 사용 (NED 좌표계)
+        # [Easting, Northing] → [Northing, Easting] = [North, East] 변환
+        self.circle_buoy_waypoints_global = [
+            [msg.data[i + 1], msg.data[i]]  # [Easting, Northing] → [Northing, Easting] = [North, East]
+            for i in range(0, len(msg.data) - 1, 2)
+        ]
+
+        self.get_logger().info(
+            f"✓ CIRCLE_BUOY 웨이포인트 수신: {len(self.circle_buoy_waypoints_global)}개, "
+            f"원본=[{msg.data[0]:.2f}, {msg.data[1]:.2f}], "
+            f"변환=[{self.circle_buoy_waypoints_global[0][0]:.2f}, {self.circle_buoy_waypoints_global[0][1]:.2f}]"
+        )
+
+    def circle_buoy_current_waypoint_callback(self, msg):
+        """CIRCLE_BUOY 현재 추종 중인 웨이포인트 콜백
+
+        수신 형식: [Easting, Northing] (전역 좌표)
+        trajectory_viz의 NED 좌표계 [North, East]로 변환
+        """
+        if len(msg.data) >= 2:
+            # [Easting, Northing] → [Northing, Easting] = [North, East]
+            self.circle_buoy_current_waypoint = [msg.data[1], msg.data[0]]  # [North, East]
+        else:
+            self.circle_buoy_current_waypoint = None
+
+    def all_waypoints_callback(self, msg):
+        """모든 웨이포인트 콜백
+        
+        수신 형식: [mission_type_id0, easting0, northing0, mission_type_id1, easting1, northing1, ..., current_index]
+        mission_type_id: 0=WAYPOINT_FOLLOW, 1=OBSTACLE_AVOID, 2=PASS_BETWEEN_BUOYS,
+                         3=CIRCLE_BUOY, 4=DOCK_MODE, 5=ROTATION, 8=STOP
+        """
+        if len(msg.data) < 4:  # 최소 1개 웨이포인트 + current_index
+            self.all_waypoints = []
+            self.current_waypoint_index = -1
+            return
+        
+        # 마지막 요소는 current_index
+        current_index = int(msg.data[-1])
+        self.current_waypoint_index = current_index
+        
+        # 웨이포인트 파싱: [mission_id, easting, northing, ...]
+        waypoints = []
+        for i in range(0, len(msg.data) - 1, 3):  # 마지막 요소 제외
+            if i + 2 < len(msg.data) - 1:  # current_index 전까지
+                mission_id = int(msg.data[i])
+                easting = float(msg.data[i + 1])
+                northing = float(msg.data[i + 2])
+                
+                # [Easting, Northing] → [Northing, Easting] = [North, East] (NED)
+                waypoints.append({
+                    'mission_type': mission_id,
+                    'north': northing,  # NED 좌표계
+                    'east': easting
+                })
+        
+        self.all_waypoints = waypoints
+        
+        if len(waypoints) > 0:
+            self.get_logger().info(
+                f"✓ 모든 웨이포인트 수신: {len(waypoints)}개, 현재 인덱스={current_index}"
+            )
+
     # ============================================================================
     # 플롯 업데이트
     # ============================================================================
@@ -965,7 +1202,22 @@ class UnifiedVizNode(Node):
             # 6. 웨이포인트
             self.plot_manager.update_waypoints(self.waypoints, self.current_waypoint)
 
-            # 7. 제어 출력
+            # 7. CIRCLE_BUOY 웨이포인트 (자동 생성)
+            # 전역 좌표로 변환된 웨이포인트 사용 (처음 받을 때 고정됨)
+            if self.circle_buoy_waypoints_global:
+                self.plot_manager.update_circle_buoy_waypoints(
+                    self.circle_buoy_waypoints_global,
+                    self.circle_buoy_current_waypoint
+                )
+            
+            # 8. 모든 웨이포인트 표시 (미션 타입별 구분)
+            if self.all_waypoints:
+                self.plot_manager.update_all_waypoints(
+                    self.all_waypoints,
+                    self.current_waypoint_index
+                )
+
+            # 9. 제어 출력
             self.plot_manager.update_control_output(
                 self.linear_velocity,
                 self.angular_velocity,

@@ -50,7 +50,7 @@ class Environment:
 # ┌─────────────────────────────────────────────────────────────────────────┐
 # │  🔧 여기만 수정하세요! 시뮬레이터 ↔ 실제 환경 전환                      │
 # └─────────────────────────────────────────────────────────────────────────┘
-CURRENT_ENVIRONMENT = Environment.SIMULATOR
+CURRENT_ENVIRONMENT = Environment.REAL_PX4
 
 
 class Constants:
@@ -62,8 +62,8 @@ class Constants:
     class Paths:
         """파일 및 디렉토리 경로 관리"""
 
-        # 프로젝트 루트 디렉토리 (config.py 위치 기준)
-        PROJECT_ROOT = Path(__file__).parent.parent.absolute()
+        # 프로젝트 루트 디렉토리 (config.py 위치 기준: utils/core/config.py -> utils -> 프로젝트 루트)
+        PROJECT_ROOT = Path(__file__).parent.parent.parent.absolute()
 
         # NanoOWL 경로
         NANOOWL_DIR = Path('/home/yuneyoungjun/vrx_ws/src/vrx/vrx_env/nanoowl')
@@ -191,24 +191,47 @@ class Constants:
     #      * 이전 기준점 = 미션 시작 위치 (자동 설정, 첫 WP에서도 동일)
     #      * 목표 = 현재 웨이포인트
     PREDEFINED_WAYPOINTS = [
+        # (100, 10, 'DOCK_MODE', DEFAULT_WAYPOINT_RADIUS, {
+        #     'dock_index': 1,
+        #     'dock_points': [
+        #         [[5.0, 0.0], [20.0, 0.0]],  # 도킹 스테이션 1: 도킹 포인트, 보조 포인트
+        #         [[5.0, 10.0], [40.0, 10.0]],  # 도킹 스테이션 2: 도킹 포인트, 보조 포인트
+        #         [[5.0, 20.0], [60.0, 20.0]]   # 도킹 스테이션 3: 도킹 포인트, 보조 포인트
+        #     ]
+        # }),
         # MODE=0 (로컬 좌표) 예시:
-        (50, 40, 'PASS_BETWEEN_BUOYS', DEFAULT_WAYPOINT_RADIUS,{}),
-        (100, 10, 'DOCK_MODE', DEFAULT_WAYPOINT_RADIUS, {'target_shape': 'red_square'}),
-        (160, 0, 'CIRCLE_BUOY', DEFAULT_WAYPOINT_RADIUS, {'rotation_direction': 1, 'length': 8.0, 'radius_reach': 5.0, 'max_duration': 100.0}),
-        (150, -15, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS,{}),
-        (100, 10, 'ROTATION', DEFAULT_WAYPOINT_RADIUS, {'desired_angle': 70.0}),
-        (100, 10, 'DOCK_MODE', DEFAULT_WAYPOINT_RADIUS, {'target_shape': 'red_square'}),
-        (155, 55, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {}),
-        (80, 45, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {}),
-        (0, 0, 'PASS_BETWEEN_BUOYS', DEFAULT_WAYPOINT_RADIUS, {})
+        # (50, 40, 'CIRCLE_BUOY', DEFAULT_WAYPOINT_RADIUS,{}),
+        # DOCK_MODE 예시: dock_index(1-3), dock_points는 상대 좌표로 3쌍 (도킹 포인트, 도킹 보조 포인트)
+        # dock_points 형식: [[dock1_point, dock1_aux], [dock2_point, dock2_aux], [dock3_point, dock3_aux]]
+        # 각 포인트는 [Easting, Northing] 형식의 상대 좌표 (미터)
+        # (160, 0, 'CIRCLE_BUOY', DEFAULT_WAYPOINT_RADIUS, {'rotation_direction': 1, 'length': -8.0, 'radius_reach': 5.0, 'max_duration': 80.0}),
+        # (15, -15, 'CIRCLE_BUOY', DEFAULT_WAYPOINT_RADIUS, {'length': 14.0, 'angle': 45.0, 'turn_flag': 1, 'radius': 2.0, 'los_delta': 10.0}),
+        (15, -15, 'STOP', DEFAULT_WAYPOINT_RADIUS, {'stop_duration': 15.0}),  # 3초 정지
+        (15, -15, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {'los_delta': 10.0}),
+        (30, 10, 'ROTATION', DEFAULT_WAYPOINT_RADIUS, {'desired_angle': 70.0}),
+        (50, 10, 'DOCK_MODE', DEFAULT_WAYPOINT_RADIUS, {
+            'dock_index': 2,
+            'dock_points': [
+                [[5.0, 0.0], [10.0, 0.0]],  # 도킹 스테이션 1: 도킹 포인트, 보조 포인트
+                [[5.0, 10.0], [10.0, 10.0]],  # 도킹 스테이션 2: 도킹 포인트, 보조 포인트
+                [[5.0, 20.0], [10.0, 20.0]]   # 도킹 스테이션 3: 도킹 포인트, 보조 포인트
+            ],
+            'los_delta': 15.0  # DOCK_MODE LOS delta
+        }),
+        (55, 55, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {}),
+        (50, 0, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {}),
+        (0, 0, 'PASS_BETWEEN_BUOYS', DEFAULT_WAYPOINT_RADIUS, {}),
+        # STOP 미션 예시: (x, y, 'STOP', DEFAULT_WAYPOINT_RADIUS, {'stop_duration': 5.0})
+        # (100, 50, 'STOP', DEFAULT_WAYPOINT_RADIUS, {'stop_duration': 3.0}),  # 3초 정지
 
         # MODE=1 (GPS 좌표) 예시: (WAYPOINT_MODE를 1로 변경 후 사용)
-        # (-33.8575, 151.2160, 'DOCK_MODE', DEFAULT_WAYPOINT_RADIUS,  {'target_shape': 'red_square'}),
-        # (36.3960395, 127.400863, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {}),
-        # (-33.8575, 151.2160, 'DOCK_MODE', DEFAULT_WAYPOINT_RADIUS,  {'target_shape': 'red_square'}),
+        # (-33.8575, 151.2160, 'DOCK_MODE', DEFAULT_WAYPOINT_RADIUS,  {'target_shape': 'red_square', 'los_delta': 15.0}),
+        # (36.3960395, 127.400863, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {'los_delta': 10.0}),
+        # (-33.8575, 151.2160, 'DOCK_MODE', DEFAULT_WAYPOINT_RADIUS,  {'target_shape': 'red_square', 'los_delta': 15.0}),
         # (100, 10, 'ROTATION', DEFAULT_WAYPOINT_RADIUS, {'desired_angle': 70.0}),
-        # (-33.8575, 151.2160, 'CIRCLE_BUOY', DEFAULT_WAYPOINT_RADIUS, {'rotation_direction': 1}),
-        # (-33.8580, 151.2165, 'DOCK_MODE', DEFAULT_WAYPOINT_RADIUS, {'target_shape': 'red_square'}),
+        # (-33.8575, 151.2160, 'CIRCLE_BUOY', DEFAULT_WAYPOINT_RADIUS, {'length': 14.0, 'angle': 45.0, 'turn_flag': 1, 'radius': 2.0, 'los_delta': 10.0}),
+        # (-33.8580, 151.2165, 'DOCK_MODE', DEFAULT_WAYPOINT_RADIUS, {'target_shape': 'red_square', 'los_delta': 15.0}),
+        # (-33.8585, 151.2170, 'STOP', DEFAULT_WAYPOINT_RADIUS, {'stop_duration': 5.0}),
     ]
 
     # ============================================================================
@@ -249,7 +272,7 @@ class Constants:
     ONNX_INPUT_SIZE = OBSERVATION_SIZE * STACK_COUNT  # 기본값: 213 * 2 = 426
 
     ONNX_V_SCALE = 1.0
-    ONNX_W_SCALE = -1.0
+    ONNX_W_SCALE = 1.0
     ONNX_LINEAR_VELOCITY_RANGE = (0.2, 1.0)
     ONNX_ANGULAR_VELOCITY_RANGE = (-1.0, 1.0)
 
@@ -397,6 +420,9 @@ class Constants:
     ROTATION_GAIN = 0.003  # 회전 비례 게인
     ROTATION_MAX_THRUST = 0.3  # 최대 회전 추력
 
+    # Stop 미션 파라미터
+    STOP_DEFAULT_DURATION = 5.0  # 기본 정지 시간 (초)
+
 
 
 
@@ -411,8 +437,8 @@ class Constants:
         """ROS2 토픽명 관리"""
 
         # 센서 입력 토픽
-        CAMERA_IMAGE = '/wamv/sensors/cameras/front_left_camera_sensor/image_raw'
-        LIDAR_SCAN = '/wamv/sensors/lidars/lidar_wamv_sensor/scan'
+        CAMERA_IMAGE = 'image_raw'
+        LIDAR_SCAN = '/scan'
         GPS_FIX = '/wamv/sensors/gps/gps/fix'
         IMU_DATA = '/wamv/sensors/imu/imu/data'
 
@@ -445,6 +471,8 @@ class Constants:
         CURRENT_MODE = '/vrx/current_mode'
         GOAL_CHECK_AREAS = '/vrx/goal_check_areas'
         CIRCLE_BUOY_WAYPOINTS = '/vrx/circle_buoy_waypoints'  # CIRCLE_BUOY 미션 웨이포인트
+        CIRCLE_BUOY_CURRENT_WAYPOINT = '/vrx/circle_buoy_current_waypoint'  # CIRCLE_BUOY 미션 현재 추종 웨이포인트
+        ALL_WAYPOINTS = '/vrx/all_waypoints'  # 모든 웨이포인트 정보 (미션 타입 포함)
 
         # 장애물 회피용 토픽
         AVOID_YAW = '/avoid_yaw'  # ONNX 모드가 아닐 때 0, 1 번갈아 발행
@@ -490,8 +518,8 @@ class Constants:
 
         # 축 범위 설정
         AXIS_MARGIN = 200.0
-        AXIS_MARGIN_X = 40.0
-        AXIS_MARGIN_Y = 40.0
+        AXIS_MARGIN_X = 60.0
+        AXIS_MARGIN_Y = 60.0
 
         # 배 크기 및 안전 여유
         BOAT_WIDTH = 5.0
@@ -524,7 +552,7 @@ class Constants:
     class VisualizationParams:
         """시각화 시스템 파라미터"""
         # 탐지 임계값
-        DETECTION_THRESHOLD = 0.0004
+        DETECTION_THRESHOLD = 0.00004
         MIN_BOX_AREA = 2
         MAX_BOX_AREA = 800000
         MIN_DEPTH_THRESHOLD = 0.12  # 최소 깊이 (미터)
@@ -563,11 +591,16 @@ class Constants:
     class AvoidControl:
         """장애물 회피 컨트롤러 파라미터 (avoid_control.py에서 사용)"""
 
-        # LOS (Line of Sight) Guidance 파라미터
+        # LOS (Line of Sight) Guidance 파라미터 (기본값)
         LOS_DELTA = 10.0              # 수직 오프셋 (미터)
         LOS_LOOKAHEAD_MIN = 30.0      # 최소 look-ahead 거리 (미터)
         LOS_LOOKAHEAD_MAX = 80.0      # 최대 look-ahead 거리 (미터)
         LOS_LOOKAHEAD_FACTOR = 1.0    # look-ahead 거리 계산 계수
+        
+        # 미션별 LOS Delta 파라미터 (미션 파라미터에서 오버라이드 가능)
+        DOCK_MODE_LOS_DELTA = 15.0    # DOCK_MODE 미션 LOS delta
+        OBSTACLE_AVOID_LOS_DELTA = 10.0  # OBSTACLE_AVOID 미션 LOS delta
+        CIRCLE_BUOY_LOS_DELTA = 10.0  # CIRCLE_BUOY 미션 LOS delta
 
         # ObstacleDetector 파라미터
         OBSTACLE_BOAT_WIDTH = 2.2     # 배 폭 (미터) - 장애물 검사용

@@ -14,7 +14,7 @@ from scipy.stats import chi2
 from scipy.linalg import block_diag
 
 # Depth filtering for temporal smoothing
-from .depth_filter import ExponentialMovingAverageFilter
+from ..sensors.depth_filter import ExponentialMovingAverageFilter
 
 
 class MotionModel(ABC):

@@ -14,7 +14,7 @@
 import numpy as np
 import math
 from typing import Tuple, Optional, List
-from .config import Constants
+from ..core.config import Constants
 
 
 class LOSGuidance:
@@ -33,6 +33,10 @@ class LOSGuidance:
         self.lookahead_min = lookahead_min if lookahead_min is not None else ac.LOS_LOOKAHEAD_MIN
         self.lookahead_max = lookahead_max if lookahead_max is not None else ac.LOS_LOOKAHEAD_MAX
         self.lookahead_factor = lookahead_factor if lookahead_factor is not None else ac.LOS_LOOKAHEAD_FACTOR
+
+    def update_delta(self, delta: float):
+        """LOS delta 동적 업데이트"""
+        self.delta = delta
 
     def calculate_crosstrack_error(self, current_pos: np.ndarray, line_start: np.ndarray,
                                    line_end: np.ndarray) -> float:
@@ -407,6 +411,10 @@ class AvoidanceController:
         
         # 히스테리시스: 현재 제어 모드 상태 저장 (채터링 방지)
         self.current_mode_is_onnx = False  # False=DIRECT, True=ONNX
+
+    def update_los_delta(self, los_delta: float):
+        """LOS delta 동적 업데이트"""
+        self.los_guidance.update_delta(los_delta)
 
     def get_los_target(self, current_pos: np.ndarray, waypoints: List,
                       current_target_index: int) -> np.ndarray:

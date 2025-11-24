@@ -14,13 +14,13 @@ from geometry_msgs.msg import Point
 from cv_bridge import CvBridge
 
 from utils import Constants, VRXSystemFactory
-from utils.detection_system_optimized import MissionType
-from utils.mission_control import (
+from utils.detection.detection_system_optimized import MissionType
+from utils.mission.mission_control import (
     MissionLoopExecutor,
     WaypointTransitionHandler,
     ObstacleAvoidExecutor
 )
-from utils.jetson_optimizer import setup_jetson
+from utils.core.jetson_optimizer import setup_jetson
 
 
 class VRXMissionController(Node):
@@ -80,7 +80,7 @@ class VRXMissionController(Node):
 
     def _setup_ros_communication(self):
         """ROS2 통신 설정"""
-        from utils.ros_communication import ROSCommunicationManager
+        from utils.communication.ros_communication import ROSCommunicationManager
 
         self.get_logger().info("ROS2 통신 설정 중...")
         self.ros_comm = ROSCommunicationManager(self)

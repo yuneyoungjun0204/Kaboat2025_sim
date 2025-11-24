@@ -11,22 +11,22 @@ from rclpy.node import Node
 from cv_bridge import CvBridge
 
 from .config import Constants
-from .depth_estimation import MiDaSHybridDepthEstimator
-from .depth_estimation_optimized import OptimizedDepthEstimator
-from .depth_estimation_ultra import UltraDepthEstimator, create_ultra_depth_estimator
-from .detection_system import DetectionSystem
-from .sensor_preprocessing import SensorDataManager
-from .sensor_callbacks import SensorCallbackHandler
-from .avoid_control import AvoidanceController
-from .mission_strategies_new import MissionManager
-from .waypoint_manager import WaypointManager
-from .mission_executor import MissionExecutor
-from .visualization_system import VisualizationSystem
-from .parameter_manager import ParameterManager
-from .onnx_controller import ONNXController
-from .imm_pdaf_tracker import create_tracker
-from .ros_communication import ROSCommunicationManager
-from .image_preprocessor import create_preprocessor
+from ..sensors.depth_estimation import MiDaSHybridDepthEstimator
+from ..sensors.depth_estimation_optimized import OptimizedDepthEstimator
+from ..sensors.depth_estimation_ultra import UltraDepthEstimator, create_ultra_depth_estimator
+from ..detection.detection_system import DetectionSystem
+from ..sensors.sensor_preprocessing import SensorDataManager
+from ..sensors.sensor_callbacks import SensorCallbackHandler
+from ..control.avoid_control import AvoidanceController
+from ..mission.mission_strategies_new import MissionManager
+from ..mission.waypoint_manager import WaypointManager
+from ..mission.mission_executor import MissionExecutor
+from ..visualization.visualization_system import VisualizationSystem
+from ..mission.parameter_manager import ParameterManager
+from ..control.onnx_controller import ONNXController
+from ..detection.imm_pdaf_tracker import create_tracker
+from ..communication.ros_communication import ROSCommunicationManager
+from ..visualization.image_preprocessor import create_preprocessor
 
 
 class VRXSystemFactory:
@@ -75,43 +75,11 @@ class VRXSystemFactory:
         engine_path = project_root / "depth_model.engine"
         onnx_path = project_root / "depth_model.onnx"
         use_tensorrt = engine_path.exists()
-        
-        # 엔진이 없으면 자동으로 변환 시도
+
+        # 자동 변환 비활성화 - 수동으로만 생성 가능
         if not use_tensorrt:
-            self.logger.info("   → TensorRT 엔진 없음 - 자동 변환 시도 중...")
-            try:
-                # OptimizedDepthEstimator로 ONNX 변환
-                from .depth_estimation_optimized import OptimizedDepthEstimator
-                temp_estimator = OptimizedDepthEstimator(
-                    model_type="DPT_Hybrid",
-                    input_size=256,
-                    use_tensorrt=False,
-                    device=self.device
-                )
-                
-                # ONNX 변환
-                if not onnx_path.exists():
-                    self.logger.info("   → ONNX 변환 중...")
-                    temp_estimator.export_to_onnx(str(onnx_path))
-                    self.logger.info(f"   ✅ ONNX 변환 완료: {onnx_path}")
-                
-                # TensorRT 엔진 생성 시도
-                self.logger.info("   → TensorRT 엔진 생성 시도 중...")
-                temp_estimator.export_to_tensorrt(str(onnx_path), str(engine_path))
-                
-                if engine_path.exists():
-                    use_tensorrt = True
-                    self.logger.info(f"   ✅ TensorRT 엔진 생성 완료: {engine_path}")
-                else:
-                    self.logger.warn("   ⚠️ TensorRT 엔진 생성 실패 - PyTorch 모드로 실행")
-                    self.logger.warn(f"   → 수동 변환: python3 convert_to_tensorrt.py")
-            except ImportError:
-                self.logger.warn("   ⚠️ TensorRT Python API 미설치 - PyTorch 모드로 실행")
-                self.logger.warn(f"   → TensorRT 사용하려면: python3 convert_to_tensorrt.py")
-            except Exception as e:
-                self.logger.warn(f"   ⚠️ 자동 변환 실패: {e}")
-                self.logger.warn(f"   → PyTorch 모드로 실행")
-                self.logger.warn(f"   → 수동 변환: python3 convert_to_tensorrt.py")
+            self.logger.info("   → TensorRT 엔진 없음 - PyTorch 모드로 실행")
+            self.logger.info("   → TensorRT 사용하려면 수동 변환: python3 convert_to_tensorrt.py")
         
         if use_tensorrt:
             self.logger.info(f"🔥 TensorRT 엔진 발견: {engine_path}")

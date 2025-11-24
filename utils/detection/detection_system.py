@@ -14,10 +14,10 @@ from enum import Enum
 from typing import List, Dict, Optional
 
 # config 모듈에서 경로 가져오기
-from .config import Constants
+from ..core.config import Constants
 
 # Depth filtering utilities
-from .depth_filter import smooth_depth_spatially
+from ..sensors.depth_filter import smooth_depth_spatially
 
 # NanoOWL 경로 추가
 sys.path.insert(0, str(Constants.Paths.NANOOWL_DIR))
@@ -33,6 +33,7 @@ class MissionType(Enum):
     HEADING_ALIGN = 5
     DOCK_MODE = 6
     ROTATION = 7  # 제자리 선회 미션
+    STOP = 8  # 정지 미션
 
 
 class DetectionSystem:
@@ -92,8 +93,8 @@ class DetectionSystem:
         self.detection_queries = {
             MissionType.PASS_BETWEEN_BUOYS: {
                 'queries': [
-                    "a red cone buoy", "a red conical marker", "a cone-shaped red buoy",
-                    "a green cone buoy", "a green conical marker", "a cone-shaped green buoy"
+                    "a red buoy", "red circular buoy", "red buoy on water",
+                    "a green buoy", "a green buoy on water", "a green circular buoy"
                 ],
                 'label_mapping': {
                     0: "red_cone", 1: "red_cone", 2: "red_cone",

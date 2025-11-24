@@ -15,7 +15,7 @@ Example:
 
 import numpy as np
 from typing import Tuple
-from .config import Constants
+from ..core.config import Constants
 
 
 def body_forces_to_thruster_commands(
