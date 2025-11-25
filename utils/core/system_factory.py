@@ -157,7 +157,11 @@ class VRXSystemFactory:
                 센서 데이터 관리자와 콜백 핸들러
         """
         self.logger.info("센서 시스템 초기화 중...")
-        sensor_manager = SensorDataManager()
+        sensor_manager = SensorDataManager(
+            ref_lat=Constants.GPS_REFERENCE_LAT,
+            ref_lon=Constants.GPS_REFERENCE_LON,
+            use_first_fix=(Constants.WAYPOINT_MODE == 0)
+        )
         sensor_handler = SensorCallbackHandler(
             self.bridge, sensor_manager, self.logger
         )

@@ -66,7 +66,7 @@ class Constants:
         PROJECT_ROOT = Path(__file__).parent.parent.parent.absolute()
 
         # NanoOWL 경로
-        NANOOWL_DIR = Path('nanoowl')
+        NANOOWL_DIR = Path('/home/yuneyoungjun/vrx_ws/src/vrx/vrx_env/nanoowl')
 
         # 모델 디렉토리
         MODELS_DIR = PROJECT_ROOT / 'models' / 'correct_IMU' / 'gpu'
@@ -174,11 +174,20 @@ class Constants:
     # 웨이포인트 좌표계 모드
     # 0: 로컬 좌표계 (UTM 상대 좌표, 미터 단위)
     # 1: GPS 좌표계 (위도/경도)
-    WAYPOINT_MODE = 0
+    WAYPOINT_MODE = 1
 
     # GPS 기준점 (MODE=1일 때 사용)
-    GPS_REFERENCE_LAT = 36.39601179  # Sydney Regatta Centre 기준
-    GPS_REFERENCE_LON = 127.40155743
+    # - MODE=0: 로컬 좌표만 사용하므로 0,0으로 고정 (모든 상대 좌표 기준점)
+    # - MODE=1: 실제 GPS 기준점 사용 (필요 시 아래 값을 수정)
+    _GPS_REFERENCE_LAT_DEFAULT = 36.39601179  # Sydney Regatta Centre 기준
+    _GPS_REFERENCE_LON_DEFAULT = 127.40155743
+
+    if WAYPOINT_MODE == 0:
+        GPS_REFERENCE_LAT = 0.0
+        GPS_REFERENCE_LON = 0.0
+    else:
+        GPS_REFERENCE_LAT = _GPS_REFERENCE_LAT_DEFAULT
+        GPS_REFERENCE_LON = _GPS_REFERENCE_LON_DEFAULT
 
     # 미리 정의된 웨이포인트
     # MODE=0: (x, y, mission_type, radius, params) - x,y는 미터 단위
@@ -200,7 +209,7 @@ class Constants:
         #     ]
         # }),
         # MODE=0 (로컬 좌표) 예시:
-        (30, 0, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {'los_delta': 10.0}),
+        # (30, 10, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {'los_delta': 10.0}),
         # (50, 40, 'CIRCLE_BUOY', DEFAULT_WAYPOINT_RADIUS,{}),
         # # DOCK_MODE 예시: dock_index(1-3), dock_points는 상대 좌표로 3쌍 (도킹 포인트, 도킹 보조 포인트)
         # # dock_points 형식: [[dock1_point, dock1_aux], [dock2_point, dock2_aux], [dock3_point, dock3_aux]]
@@ -223,14 +232,13 @@ class Constants:
         # (50, 0, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {}),
         # (0, 0, 'PASS_BETWEEN_BUOYS', DEFAULT_WAYPOINT_RADIUS, {}),
 
-
-
+# 36.39603706°, lon=127.40173229
         # STOP 미션 예시: (x, y, 'STOP', DEFAULT_WAYPOINT_RADIUS, {'stop_duration': 5.0})
         # (100, 50, 'STOP', DEFAULT_WAYPOINT_RADIUS, {'stop_duration': 3.0}),  # 3초 정지
 
         # MODE=1 (GPS 좌표) 예시: (WAYPOINT_MODE를 1로 변경 후 사용)
         # (-33.8575, 151.2160, 'DOCK_MODE', DEFAULT_WAYPOINT_RADIUS,  {'target_shape': 'red_square', 'los_delta': 15.0}),
-        # (36.3960395, 127.400863, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {'los_delta': 10.0}),
+        (36.39603892, 127.40173437, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {'los_delta': 3.0}),
         # (-33.8575, 151.2160, 'DOCK_MODE', DEFAULT_WAYPOINT_RADIUS,  {'target_shape': 'red_square', 'los_delta': 15.0}),
         # (100, 10, 'ROTATION', DEFAULT_WAYPOINT_RADIUS, {'desired_angle': 70.0}),
         # (-33.8575, 151.2160, 'CIRCLE_BUOY', DEFAULT_WAYPOINT_RADIUS, {'length': 14.0, 'angle': 45.0, 'turn_flag': 1, 'radius': 2.0, 'los_delta': 10.0}),
@@ -495,6 +503,7 @@ class Constants:
         CIRCLE_BUOY_WAYPOINTS = '/vrx/circle_buoy_waypoints'  # CIRCLE_BUOY 미션 웨이포인트
         CIRCLE_BUOY_CURRENT_WAYPOINT = '/vrx/circle_buoy_current_waypoint'  # CIRCLE_BUOY 미션 현재 추종 웨이포인트
         ALL_WAYPOINTS = '/vrx/all_waypoints'  # 모든 웨이포인트 정보 (미션 타입 포함)
+        GPS_REFERENCE = '/vrx/gps_reference'  # GPS 기준점 정보 [waypoint_mode, ref_lat, ref_lon]
 
         # 장애물 회피용 토픽
         AVOID_YAW = '/avoid_yaw'  # ONNX 모드가 아닐 때 0, 1 번갈아 발행

@@ -6,7 +6,7 @@
 - GPS 좌표 <-> 로컬 좌표 변환 지원
 """
 
-import numpy as np
+import numpy as np  # type: ignore[import]
 from typing import List, Dict, Optional, Tuple
 from ..detection.detection_system import MissionType
 from ..core.config import Constants
@@ -77,7 +77,8 @@ class WaypointManager:
 
     def add_waypoint(self, x: float, y: float, mission_type: MissionType,
                     radius: float = None, params: Optional[Dict] = None,
-                    is_gps: bool = None):
+                    is_gps: bool = None,
+                    current_position: Optional[Tuple[float, float]] = None):
         """
         웨이포인트 추가 (로컬 좌표 또는 GPS 좌표)
 
@@ -89,6 +90,8 @@ class WaypointManager:
             params: 미션별 파라미터
             is_gps: True이면 x,y를 GPS 좌표(위도/경도)로 처리,
                    None이면 self.waypoint_mode 사용
+            current_position: (x, y) 현재 로봇 위치 (미터, 로컬 좌표)
+                - WAYPOINT_MODE=1 (GPS 모드)에서 상대 좌표로 변환 시 사용
         """
         # GPS 좌표인지 확인
         use_gps = is_gps if is_gps is not None else (self.waypoint_mode == 1)
@@ -96,7 +99,13 @@ class WaypointManager:
         # GPS 좌표를 로컬 좌표로 변환
         if use_gps:
             lat, lon = x, y
-            x_local, y_local = gps_to_local(lat, lon, self.gps_reference_lat, self.gps_reference_lon)
+            y_local, x_local = gps_to_local(lat, lon, self.gps_reference_lat, self.gps_reference_lon)
+
+            # # 현재 로봇 위치를 기준으로 상대 좌표 계산 (옵션)
+            # if current_position is not None and len(current_position) == 2:
+            #     x_local -= current_position[0]
+            #     y_local -= current_position[1]
+
             waypoint = {
                 'x': x_local,
                 'y': y_local,
@@ -279,8 +288,9 @@ class WaypointManager:
             self.initial_position_lon = lon
             self.initial_position_set = True
 
-            # 모든 GPS 웨이포인트의 x, y를 미션 시작 위치 기준으로 재계산
-            self._recalculate_all_waypoints_from_initial()
+            # GPS 웨이포인트 모드가 아니면 미션 시작 위치 기준으로 재계산
+            if self.waypoint_mode != 1:
+                self._recalculate_all_waypoints_from_initial()
 
     def _recalculate_all_waypoints_from_initial(self):
         """

@@ -243,7 +243,8 @@ class SensorCallbackHandler:
             if not self.reference_point_set:
                 self.reference_point_set = True
                 # 웨이포인트 관리자에 초기 위치 설정 (웨이포인트 재계산)
-                if self.waypoint_manager is not None:
+                # MODE=0 (로컬 좌표)일 때만 첫 GPS 값을 기준으로 설정
+                if self.waypoint_manager is not None and self.waypoint_manager.waypoint_mode == 0:
                     self.waypoint_manager.set_initial_position(msg.latitude, msg.longitude)
                     self.logger.info(
                         f"초기 위치 설정: lat={msg.latitude:.8f}, lon={msg.longitude:.8f}"
@@ -322,31 +323,44 @@ class SensorCallbackHandler:
         """
         from ..mission.waypoint_manager import gps_to_local
 
-        # 미션 시작 시 첫 번째 현재 위치를 기준점으로 설정
-        if self.initial_lat is None:
-            self.initial_lat = msg.lat
-            self.initial_lon = msg.lon
-            self.reference_point_set = True
+        # 기준점 결정: MODE=1 (GPS 모드)면 config의 GPS_REFERENCE 사용, MODE=0이면 첫 GPS 값 사용
+        if self.waypoint_manager is not None and self.waypoint_manager.waypoint_mode == 1:
+            # GPS 모드: config의 기준 위경도 사용
+            ref_lat = Constants.GPS_REFERENCE_LAT
+            ref_lon = Constants.GPS_REFERENCE_LON
+            if self.initial_lat is None:
+                self.initial_lat = ref_lat
+                self.initial_lon = ref_lon
+                self.reference_point_set = True
+                self.logger.info(
+                    f"GPS 모드: 기준 위경도 사용 - lat={ref_lat:.8f}, lon={ref_lon:.8f}"
+                )
+        else:
+            # 로컬 모드: 첫 GPS 값을 기준점으로 설정
+            if self.initial_lat is None:
+                self.initial_lat = msg.lat
+                self.initial_lon = msg.lon
+                self.reference_point_set = True
 
-            self.logger.info(
-                f"PX4 GPS 초기 위치 설정: lat={msg.lat:.8f}, lon={msg.lon:.8f}"
-            )
+                self.logger.info(
+                    f"로컬 모드: 첫 GPS 위치를 기준점으로 설정 - lat={msg.lat:.8f}, lon={msg.lon:.8f}"
+                )
 
-            # waypoint_manager에도 초기 위치 설정
-            if self.waypoint_manager is not None:
-                self.waypoint_manager.set_initial_position(msg.lat, msg.lon)
-                self.logger.info(f"waypoint_manager 초기 위치 설정 완료")
+                # waypoint_manager에도 초기 위치 설정 (MODE=0일 때만)
+                if self.waypoint_manager is not None:
+                    self.waypoint_manager.set_initial_position(msg.lat, msg.lon)
+                    self.logger.info(f"waypoint_manager 초기 위치 설정 완료")
 
-                # 재계산된 웨이포인트 정보 로깅
-                for i, wp in enumerate(self.waypoint_manager.waypoints):
-                    self.logger.info(
-                        f"  웨이포인트 {i}: x={wp['x']:.2f}m, y={wp['y']:.2f}m, "
-                        f"미션={wp['mission_type'].name}"
-                    )
-            else:
-                self.logger.warn("waypoint_manager가 None입니다! 웨이포인트 재계산 불가")
+                    # 재계산된 웨이포인트 정보 로깅
+                    for i, wp in enumerate(self.waypoint_manager.waypoints):
+                        self.logger.info(
+                            f"  웨이포인트 {i}: x={wp['x']:.2f}m, y={wp['y']:.2f}m, "
+                            f"미션={wp['mission_type'].name}"
+                        )
+                else:
+                    self.logger.warn("waypoint_manager가 None입니다! 웨이포인트 재계산 불가")
 
-        # 초기 위치 기준으로 현재 위치를 로컬 좌표(m)로 변환
+        # 기준점 기준으로 현재 위치를 로컬 좌표(m)로 변환
         x_local, y_local = gps_to_local(msg.lat, msg.lon, self.initial_lat, self.initial_lon)
         self.agent_position = np.array(
             [x_local, y_local],  # [x, y] = [Easting, Northing]

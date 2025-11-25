@@ -55,6 +55,9 @@ class VRXMissionController(Node):
             self.loop_executor.execute_loop
         )
 
+        # GPS 기준점 정보 발행 (trajectory_viz 동기화용)
+        self.ros_comm.publish_gps_reference()
+
         self.get_logger().info("✓ 초기화 완료!")
         self.get_logger().info("=" * 80)
 
@@ -174,10 +177,17 @@ class VRXMissionController(Node):
             params['rotation_direction'] = 1
             params['circle_radius'] = 15.0
 
+        current_position = None
+        if hasattr(self.sensor_handler, 'agent_position'):
+            agent_pos = self.sensor_handler.agent_position
+            if agent_pos is not None and len(agent_pos) >= 2:
+                current_position = (float(agent_pos[0]), float(agent_pos[1]))
+
         self.waypoint_manager.add_waypoint(
             msg.y, msg.x, mission_type,
             Constants.DEFAULT_WAYPOINT_RADIUS,
-            params
+            params,
+            current_position=current_position
         )
         self.get_logger().info(
             f"웨이포인트 추가: {mission_type.name} at ({msg.y:.1f}, {msg.x:.1f})"

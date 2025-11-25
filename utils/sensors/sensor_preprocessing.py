@@ -10,6 +10,7 @@ import numpy as np
 import time
 from typing import Tuple, Dict
 from sensor_msgs.msg import LaserScan, NavSatFix, Imu
+from ..core.config import Constants
 
 
 # ============================================================================
@@ -73,13 +74,14 @@ def simple_utm_conversion(lat, lon, ref_lat, ref_lon):
 class GPSTransformer:
     """GPS 데이터를 UTM 좌표로 변환하는 클래스"""
     
-    def __init__(self, ref_lat=-33.8568, ref_lon=151.2153):  # Sydney Regatta 기준점
+    def __init__(self, ref_lat=-33.8568, ref_lon=151.2153, use_first_fix=True):  # Sydney Regatta 기준점
         self.ref_lat = ref_lat
         self.ref_lon = ref_lon
+        self.use_first_fix = use_first_fix
         self.ref_easting, self.ref_northing = simple_utm_conversion(ref_lat, ref_lon, ref_lat, ref_lon)
         self.gps_data = None
         
-        # 첫 번째 GPS 값을 기준점으로 설정
+        # 첫 번째 GPS 값을 기준점으로 설정 (옵션)
         self.first_gps_set = False
         self.first_utm_x = None
         self.first_utm_y = None
@@ -92,16 +94,21 @@ class GPSTransformer:
         # 간단한 UTM 변환
         utm_easting, utm_northing = simple_utm_conversion(msg.latitude, msg.longitude, self.ref_lat, self.ref_lon)
         
-        # 첫 번째 GPS 값을 기준점으로 설정
-        if not self.first_gps_set:
-            self.first_utm_x = utm_easting
-            self.first_utm_y = utm_northing
-            self.first_gps_set = True
-            print(f"📍 기준점 설정: UTM X={self.first_utm_x:.2f}m, Y={self.first_utm_y:.2f}m")
-        
-        # 첫 번째 GPS 값을 기준으로 한 상대 좌표 계산
-        relative_x = utm_easting - self.first_utm_x
-        relative_y = utm_northing - self.first_utm_y
+        if self.use_first_fix:
+            # 첫 번째 GPS 값을 기준점으로 설정
+            if not self.first_gps_set:
+                self.first_utm_x = utm_easting
+                self.first_utm_y = utm_northing
+                self.first_gps_set = True
+                print(f"📍 기준점 설정: UTM X={self.first_utm_x:.2f}m, Y={self.first_utm_y:.2f}m")
+            
+            # 첫 번째 GPS 값을 기준으로 한 상대 좌표 계산
+            relative_x = utm_easting - self.first_utm_x
+            relative_y = utm_northing - self.first_utm_y
+        else:
+            # 고정 기준점 사용: ref_lat/ref_lon 기준 상대 좌표
+            relative_x = utm_easting
+            relative_y = utm_northing
         
         self.gps_data = {
             'latitude': msg.latitude,
@@ -246,8 +253,14 @@ class IMUProcessor:
 class SensorDataManager:
     """센서 데이터 통합 관리 클래스"""
     
-    def __init__(self):
-        self.gps_transformer = GPSTransformer()
+    def __init__(self, ref_lat: float = None, ref_lon: float = None, use_first_fix: bool = True):
+        gps_ref_lat = ref_lat if ref_lat is not None else Constants.GPS_REFERENCE_LAT
+        gps_ref_lon = ref_lon if ref_lon is not None else Constants.GPS_REFERENCE_LON
+        self.gps_transformer = GPSTransformer(
+            ref_lat=gps_ref_lat,
+            ref_lon=gps_ref_lon,
+            use_first_fix=use_first_fix
+        )
         self.lidar_processor = LiDARProcessor()
         self.imu_processor = IMUProcessor()
         

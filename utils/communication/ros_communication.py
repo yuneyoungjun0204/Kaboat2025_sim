@@ -263,6 +263,11 @@ class ROSCommunicationManager:
         self.publishers['all_waypoints'] = self.node.create_publisher(
             Float64MultiArray, Constants.Topics.ALL_WAYPOINTS, Constants.QueueSizes.STATUS
         )
+        
+        # GPS 기준점 정보 퍼블리셔 (시각화용)
+        self.publishers['gps_reference'] = self.node.create_publisher(
+            Float64MultiArray, Constants.Topics.GPS_REFERENCE, Constants.QueueSizes.STATUS
+        )
 
         # PX4 브릿지 퍼블리셔 (항상 활성화)
         self.publishers['px4_velocity_yaw'] = self.node.create_publisher(
@@ -693,3 +698,20 @@ class ROSCommunicationManager:
         # 모든 값을 명시적으로 float 리스트로 변환
         msg.data = [float(v) for v in data]
         self.publishers['all_waypoints'].publish(msg)
+
+    def publish_gps_reference(self) -> None:
+        """
+        GPS 기준점 정보 발행 (시각화용)
+        
+        발행 형식: [waypoint_mode, ref_lat, ref_lon]
+        - waypoint_mode: 0=로컬 좌표, 1=GPS 좌표
+        - ref_lat: 기준 위도 (MODE=1일 때만 유효)
+        - ref_lon: 기준 경도 (MODE=1일 때만 유효)
+        """
+        msg = Float64MultiArray()
+        msg.data = [
+            float(Constants.WAYPOINT_MODE),
+            float(Constants.GPS_REFERENCE_LAT),
+            float(Constants.GPS_REFERENCE_LON)
+        ]
+        self.publishers['gps_reference'].publish(msg)

@@ -685,9 +685,17 @@ class UnifiedVizNode(Node):
         super().__init__('unified_viz_node')
 
         # 매니저들
-        self.sensor_manager = SensorDataManager()
+        self.sensor_manager = SensorDataManager(
+            ref_lat=Constants.GPS_REFERENCE_LAT,
+            ref_lon=Constants.GPS_REFERENCE_LON,
+            use_first_fix=(Constants.WAYPOINT_MODE == 0)
+        )
         self.plot_manager = UnifiedPlotManager(self.get_logger())
         self.transformer = CoordinateTransformer()
+
+        self.get_logger().info(
+            f"WAYPOINT_MODE={Constants.WAYPOINT_MODE} | GPS 기준점=({Constants.GPS_REFERENCE_LAT:.6f}, {Constants.GPS_REFERENCE_LON:.6f})"
+        )
 
         # LiDAR 필터 초기화 (sensor_callbacks와 동일한 설정)
         self.lidar_filter = None
@@ -807,6 +815,7 @@ class UnifiedVizNode(Node):
         self.create_subscription(Float64MultiArray, Constants.Topics.CIRCLE_BUOY_WAYPOINTS, self.circle_buoy_waypoints_callback, 10)
         self.create_subscription(Float64MultiArray, Constants.Topics.CIRCLE_BUOY_CURRENT_WAYPOINT, self.circle_buoy_current_waypoint_callback, 10)
         self.create_subscription(Float64MultiArray, Constants.Topics.ALL_WAYPOINTS, self.all_waypoints_callback, 10)
+        self.create_subscription(Float64MultiArray, Constants.Topics.GPS_REFERENCE, self.gps_reference_callback, 10)
 
         # 퍼블리셔
         self.waypoint_pub = self.create_publisher(Point, Constants.Topics.WAYPOINT, 10)
@@ -838,6 +847,19 @@ class UnifiedVizNode(Node):
         gps_data = self.sensor_manager.process_gps_data(msg)
         if gps_data is None:
             return
+
+        # 기준점 확인 및 로깅 (MODE=1일 때)
+        if not hasattr(self, '_gps_reference_logged'):
+            self._gps_reference_logged = True
+            if Constants.WAYPOINT_MODE == 1:
+                self.get_logger().info(
+                    f"GPS 모드: 기준 위경도 사용 - lat={Constants.GPS_REFERENCE_LAT:.8f}, "
+                    f"lon={Constants.GPS_REFERENCE_LON:.8f}"
+                )
+            else:
+                self.get_logger().info(
+                    f"로컬 모드: 첫 GPS 위치를 기준점으로 사용"
+                )
 
         # NED 좌표로 변환
         position = self.transformer.gps_to_ned(gps_data)
@@ -879,16 +901,27 @@ class UnifiedVizNode(Node):
 
     def px4_global_position_callback(self, msg):
         """PX4 VehicleGlobalPosition 콜백 - GPS 위치"""
-        # 첫 번째 위치를 기준점으로 설정
-        if self.initial_lat is None:
-            self.initial_lat = msg.lat
-            self.initial_lon = msg.lon
-            self.get_logger().info(
-                f"PX4 GPS 초기 위치 설정: lat={msg.lat:.8f}, lon={msg.lon:.8f}"
-            )
-            self.get_logger().info("✓ px4_global_position_callback 첫 호출 성공")
+        # 기준점 결정: MODE=1 (GPS 모드)면 config의 GPS_REFERENCE 사용, MODE=0이면 첫 GPS 값 사용
+        if Constants.WAYPOINT_MODE == 1:
+            # GPS 모드: config의 기준 위경도 사용
+            if self.initial_lat is None:
+                self.initial_lat = Constants.GPS_REFERENCE_LAT
+                self.initial_lon = Constants.GPS_REFERENCE_LON
+                self.get_logger().info(
+                    f"GPS 모드: 기준 위경도 사용 - lat={self.initial_lat:.8f}, lon={self.initial_lon:.8f}"
+                )
+                self.get_logger().info("✓ px4_global_position_callback 첫 호출 성공")
+        else:
+            # 로컬 모드: 첫 GPS 값을 기준점으로 설정
+            if self.initial_lat is None:
+                self.initial_lat = msg.lat
+                self.initial_lon = msg.lon
+                self.get_logger().info(
+                    f"로컬 모드: 첫 GPS 위치를 기준점으로 설정 - lat={msg.lat:.8f}, lon={msg.lon:.8f}"
+                )
+                self.get_logger().info("✓ px4_global_position_callback 첫 호출 성공")
 
-        # 로컬 좌표로 변환
+        # 기준점 기준으로 로컬 좌표로 변환
         x_local, y_local = gps_to_local(msg.lat, msg.lon, self.initial_lat, self.initial_lon)
         position = np.array([x_local, y_local])
         self.current_position = position
@@ -1043,7 +1076,7 @@ class UnifiedVizNode(Node):
     def los_callback(self, msg):
         """LOS target 콜백"""
         if len(msg.data) >= 2:
-            self.los_target = [msg.data[1], msg.data[0]]  # [North, East]
+            self.los_target = [msg.data[0], msg.data[1]]  # [North, East]
         else:
             self.los_target = None
 
@@ -1132,8 +1165,8 @@ class UnifiedVizNode(Node):
         for i in range(0, len(msg.data) - 1, 3):  # 마지막 요소 제외
             if i + 2 < len(msg.data) - 1:  # current_index 전까지
                 mission_id = int(msg.data[i])
-                easting = float(msg.data[i + 1])
-                northing = float(msg.data[i + 2])
+                easting = float(msg.data[i + 2])
+                northing = float(msg.data[i + 1])
                 
                 # [Easting, Northing] → [Northing, Easting] = [North, East] (NED)
                 waypoints.append({
@@ -1148,6 +1181,38 @@ class UnifiedVizNode(Node):
             self.get_logger().info(
                 f"✓ 모든 웨이포인트 수신: {len(waypoints)}개, 현재 인덱스={current_index}"
             )
+
+    def gps_reference_callback(self, msg):
+        """GPS 기준점 정보 콜백
+        
+        수신 형식: [waypoint_mode, ref_lat, ref_lon]
+        - waypoint_mode: 0=로컬 좌표, 1=GPS 좌표
+        - ref_lat: 기준 위도 (MODE=1일 때만 유효)
+        - ref_lon: 기준 경도 (MODE=1일 때만 유효)
+        """
+        if len(msg.data) < 3:
+            return
+        
+        waypoint_mode = int(msg.data[0])
+        ref_lat = float(msg.data[1])
+        ref_lon = float(msg.data[2])
+        
+        # MODE=1 (GPS 모드)일 때만 기준점 설정
+        if waypoint_mode == 1:
+            # sensor_manager의 기준점 업데이트
+            if hasattr(self.sensor_manager, 'gps_transformer'):
+                self.sensor_manager.gps_transformer.ref_lat = ref_lat
+                self.sensor_manager.gps_transformer.ref_lon = ref_lon
+                self.sensor_manager.gps_transformer.use_first_fix = False
+            
+            # trajectory_viz의 기준점도 업데이트
+            if self.initial_lat is None:
+                self.initial_lat = ref_lat
+                self.initial_lon = ref_lon
+                self.get_logger().info(
+                    f"✓ GPS 기준점 동기화: lat={ref_lat:.8f}, lon={ref_lon:.8f} "
+                    f"(Main_MCP.py와 동일한 기준점 사용)"
+                )
 
     # ============================================================================
     # 플롯 업데이트
