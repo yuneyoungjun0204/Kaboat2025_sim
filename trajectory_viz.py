@@ -48,7 +48,7 @@ class CoordinateTransformer:
         Returns:
             [North, East] 배열
         """
-        return np.array([gps_data['utm_y'], gps_data['utm_x']])
+        return np.array([gps_data['utm_x'], gps_data['utm_y']])
 
     @staticmethod
     def lidar_to_ned(lidar_x: np.ndarray, lidar_y: np.ndarray,
@@ -1197,7 +1197,7 @@ class UnifiedVizNode(Node):
 
             # 5. LOS target
             if self.los_target:
-                self.plot_manager.update_los_target(self.los_target, self.current_position)
+                self.plot_manager.update_los_target(self.los_target, [self.current_position[1], self.current_position[0]])
 
             # 6. 웨이포인트
             self.plot_manager.update_waypoints(self.waypoints, self.current_waypoint)
