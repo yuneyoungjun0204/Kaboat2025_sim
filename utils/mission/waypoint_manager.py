@@ -106,6 +106,18 @@ class WaypointManager:
             #     x_local -= current_position[0]
             #     y_local -= current_position[1]
 
+            # params 처리 (MODE=1에서 previous_waypoint_lat/lon을 로컬 좌표로 변환)
+            processed_params = params.copy() if params else {}
+            if 'previous_waypoint_lat' in processed_params and 'previous_waypoint_lon' in processed_params:
+                prev_lat = processed_params['previous_waypoint_lat']
+                prev_lon = processed_params['previous_waypoint_lon']
+                prev_y_local, prev_x_local = gps_to_local(
+                    prev_lat, prev_lon, self.gps_reference_lat, self.gps_reference_lon
+                )
+                # 로컬 좌표로 변환된 값을 params에 저장 (PassBetweenBuoysMission에서 사용)
+                processed_params['previous_waypoint_x'] = prev_x_local
+                processed_params['previous_waypoint_y'] = prev_y_local
+
             waypoint = {
                 'x': x_local,
                 'y': y_local,
@@ -113,7 +125,7 @@ class WaypointManager:
                 'lon': lon,
                 'mission_type': mission_type,
                 'radius': radius if radius is not None else Constants.DEFAULT_WAYPOINT_RADIUS,
-                'params': params if params else {},
+                'params': processed_params,
                 'is_gps': True
             }
         else:

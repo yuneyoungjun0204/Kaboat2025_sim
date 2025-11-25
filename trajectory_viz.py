@@ -662,7 +662,9 @@ class UnifiedPlotManager:
         mode_colors = {
             "DIRECT_CONTROL": "lightgreen", "ONNX_MODEL": "lightblue",
             "ONNX": "lightblue", "DIRECT": "lightgreen",
-            "STOP": "lightcoral", "REACHED": "lightyellow"
+            "STOP": "lightcoral", "REACHED": "lightyellow",
+            "PASS_BETWEEN_BUOYS_LOS": "orange",  # LOS guidance 모드
+            "BUOY_MISSION": "lightcyan"  # 부표 탐지 모드
         }
         color = mode_colors.get(mode, "lightgray")
 

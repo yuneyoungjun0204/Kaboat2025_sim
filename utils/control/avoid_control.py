@@ -88,10 +88,6 @@ class LOSGuidance:
         Returns:
             LOS target 위치 [x, y]
         """
-        # Crosstrack error 계산
-        crosstrack_error = self.calculate_crosstrack_error(current_pos, waypoint_start, waypoint_end)
-        adaptive_lookahead = self.calculate_adaptive_lookahead(crosstrack_error)
-
         # 경로 벡터 계산
         line_vec = np.array([waypoint_end[0] - waypoint_start[0], waypoint_end[1] - waypoint_start[1]])
         line_length = np.linalg.norm(line_vec)
@@ -104,10 +100,26 @@ class LOSGuidance:
         # 현재 위치를 경로에 투영
         point_vec = np.array([current_pos[0] - waypoint_start[0], current_pos[1] - waypoint_start[1]])
         projection_length = np.dot(point_vec, line_unit)
+        
+        # 웨이포인트를 넘어섰는지 확인
+        # projection_length가 line_length를 넘어섰으면 웨이포인트를 직접 반환
+        if projection_length >= line_length:
+            return np.array(waypoint_end)
+
+        # Crosstrack error 계산 (웨이포인트를 넘어서지 않은 경우에만)
+        crosstrack_error = self.calculate_crosstrack_error(current_pos, waypoint_start, waypoint_end)
+        adaptive_lookahead = self.calculate_adaptive_lookahead(crosstrack_error)
+
         projection_point = np.array(waypoint_start) + projection_length * line_unit
 
         # Lookahead point 계산 (경로 방향으로 전진)
+        # 웨이포인트를 넘어서지 않도록 제한
         los_point = projection_point + adaptive_lookahead * line_unit
+        los_projection_length = np.dot(los_point - waypoint_start, line_unit)
+        
+        # LOS point가 웨이포인트를 넘어서면 웨이포인트로 제한
+        if los_projection_length >= line_length:
+            return np.array(waypoint_end)
 
         # Crosstrack error 보정 (경로로 부드럽게 복귀)
         perpendicular_unit = np.array([-line_unit[1], line_unit[0]])  # 90도 회전 (좌측 방향)

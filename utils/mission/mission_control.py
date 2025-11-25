@@ -527,7 +527,21 @@ class MissionLoopExecutor:
             self.sensor_handler.agent_position,
             self.sensor_handler.agent_heading
         )
-        self._publish_control_info(left, right, mode)
+        
+        # LOS guidance 사용 여부 확인 및 제어 모드/LOS target 발행
+        pass_mission = self.mission_manager.missions.get(MissionType.PASS_BETWEEN_BUOYS)
+        if pass_mission and hasattr(pass_mission, 'using_los_guidance') and pass_mission.using_los_guidance:
+            # LOS guidance 사용 중
+            control_mode = "PASS_BETWEEN_BUOYS_LOS"
+            if hasattr(pass_mission, 'los_target_position') and pass_mission.los_target_position is not None:
+                # LOS target 발행 (NED 좌표계: [North, East])
+                los_target = pass_mission.los_target_position
+                self.ros_comm.publish_los_target(los_target[0], los_target[1])
+        else:
+            # 부표 탐지 중
+            control_mode = mode
+        
+        self._publish_control_info(left, right, control_mode)
         return left, right
 
     def _execute_circle_mission(self) -> Tuple[float, float]:

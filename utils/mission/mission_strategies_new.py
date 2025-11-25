@@ -188,14 +188,34 @@ class PassBetweenBuoysMission(BaseMissionStrategy):
             - 이전 웨이포인트가 없을 경우(첫 번째 WP) → 미션 시작 위치를 이전 기준점으로 사용
             - 이전 웨이포인트가 있을 경우 → 미션 시작 위치를 이전 기준점으로 사용 (일관성 유지)
         """
+        # 이전 웨이포인트 확인 (MODE=1에서 params로 지정된 경우)
+        mission_params = kwargs.get('mission_params', {})
+        previous_waypoint_from_params = None
+        if 'previous_waypoint_x' in mission_params and 'previous_waypoint_y' in mission_params:
+            previous_waypoint_from_params = np.array([
+                mission_params['previous_waypoint_x'],
+                mission_params['previous_waypoint_y']
+            ])
+            if logger:
+                logger.info(
+                    f"PassBetweenBuoys: params에서 이전 웨이포인트 지정됨 "
+                    f"({previous_waypoint_from_params[0]:.2f}, {previous_waypoint_from_params[1]:.2f})"
+                )
+
         # 미션 시작 위치 저장 (첫 실행 시) - 부표 미탐지 시 LOS의 이전 기준점으로 사용
-        if self.mission_start_position is None and agent_position is not None:
+        # 단, params로 이전 웨이포인트가 지정된 경우는 저장하지 않음
+        if (self.mission_start_position is None and agent_position is not None and
+            previous_waypoint_from_params is None):
             self.mission_start_position = agent_position.copy()
             if logger:
                 logger.info(
                     f"PassBetweenBuoys 미션 시작 위치 저장 (LOS 이전 기준점): "
                     f"({agent_position[0]:.2f}, {agent_position[1]:.2f})"
                 )
+        
+        # LOS guidance 사용 여부 및 LOS target 저장 (시각화용)
+        self.using_los_guidance = False
+        self.los_target_position = None
         # 빨간색/초록색 부표 찾기 (헬퍼 함수 사용)
         red_buoy, red_source = find_buoy_with_fallback(
             'red_cone', detected_objects, raw_detections, logger
@@ -233,6 +253,10 @@ class PassBetweenBuoysMission(BaseMissionStrategy):
 
         # 필터링 후 두 부표가 모두 있는 경우
         if red_buoy and green_buoy:
+            # 부표 탐지 중이므로 LOS guidance 사용 안 함
+            self.using_los_guidance = False
+            self.los_target_position = None
+            
             # 두 부표의 중점 계산 (이미지 좌표)
             red_x = red_buoy['center'][0]
             green_x = green_buoy['center'][0]
@@ -264,23 +288,34 @@ class PassBetweenBuoysMission(BaseMissionStrategy):
             # 부표 미탐지 시: LOS guidance로 다음 웨이포인트 추종
             #
             # LOS guidance 구조:
-            #   - waypoint_start (이전 기준점) = 미션 시작 위치
-            #     * 첫 번째 웨이포인트인 경우: config.py에서 이전 WP 지정 안 함 → 자동으로 미션 시작 위치 사용
-            #     * 이후 웨이포인트인 경우: 일관성을 위해 동일하게 미션 시작 위치 사용
+            #   - waypoint_start (이전 기준점):
+            #     * MODE=1에서 params로 지정된 경우: previous_waypoint_x/y 사용
+            #     * 그 외: 미션 시작 위치 사용
             #   - waypoint_end (목표) = 현재 웨이포인트
+            waypoint_start = None
+            if previous_waypoint_from_params is not None:
+                waypoint_start = previous_waypoint_from_params
+            elif self.mission_start_position is not None:
+                waypoint_start = self.mission_start_position
+
             if (agent_position is not None and agent_heading is not None and
-                self.mission_start_position is not None and current_waypoint is not None):
+                waypoint_start is not None and current_waypoint is not None):
+
+                # LOS guidance 사용 중임을 표시
+                self.using_los_guidance = True
 
                 # LOS guidance 계산
-                # waypoint_start: 미션 시작 위치 (이전 기준점, 자동 설정)
+                # waypoint_start: params로 지정된 이전 웨이포인트 또는 미션 시작 위치
                 # waypoint_end: 현재 목표 웨이포인트
-                waypoint_start = self.mission_start_position
-                waypoint_end = np.array([current_waypoint['x'], current_waypoint['y']])
+                waypoint_end = np.array([current_waypoint['y'], current_waypoint['x']])
 
                 # LOS target 계산
                 los_target = self.los_guidance.calculate_los_point(
                     agent_position, waypoint_start, waypoint_end
                 )
+                
+                # LOS target 저장 (시각화용, NED 좌표계: [North, East])
+                self.los_target_position = los_target.copy()
 
                 # LOS target 방향 계산
                 delta = los_target - agent_position
@@ -714,7 +749,7 @@ class ObstacleAvoidMission(BaseMissionStrategy):
             return 0.0, 0.0, 0.0
 
         # LOS target 계산
-        waypoint_list = [[wp['x'], wp['y']] for wp in waypoints]
+        waypoint_list = [[wp['y'], wp['x']] for wp in waypoints]
         los_target = self.avoidance_controller.get_los_target(
             agent_position, waypoint_list, current_waypoint_index
         )
