@@ -66,7 +66,7 @@ class Constants:
         PROJECT_ROOT = Path(__file__).parent.parent.parent.absolute()
 
         # NanoOWL 경로
-        NANOOWL_DIR = Path('/home/yuneyoungjun/vrx_ws/src/vrx/vrx_env/nanoowl')
+        NANOOWL_DIR = Path('nanoowl')
 
         # 모델 디렉토리
         MODELS_DIR = PROJECT_ROOT / 'models' / 'correct_IMU' / 'gpu'
@@ -200,27 +200,28 @@ class Constants:
         #     ]
         # }),
         # MODE=0 (로컬 좌표) 예시:
-        (50, 40, 'CIRCLE_BUOY', DEFAULT_WAYPOINT_RADIUS,{}),
-        # DOCK_MODE 예시: dock_index(1-3), dock_points는 상대 좌표로 3쌍 (도킹 포인트, 도킹 보조 포인트)
-        # dock_points 형식: [[dock1_point, dock1_aux], [dock2_point, dock2_aux], [dock3_point, dock3_aux]]
-        # 각 포인트는 [Easting, Northing] 형식의 상대 좌표 (미터)
-        (160, 0, 'CIRCLE_BUOY', DEFAULT_WAYPOINT_RADIUS, {'rotation_direction': 1, 'length': -8.0, 'radius_reach': 5.0, 'max_duration': 80.0}),
-        (15, -15, 'CIRCLE_BUOY', DEFAULT_WAYPOINT_RADIUS, {'length': 14.0, 'angle': 45.0, 'turn_flag': 1, 'radius': 2.0, 'los_delta': 10.0}),
-        (15, -15, 'STOP', DEFAULT_WAYPOINT_RADIUS, {'stop_duration': 15.0}),  # 3초 정지
         (30, 0, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {'los_delta': 10.0}),
-        (30, 10, 'ROTATION', DEFAULT_WAYPOINT_RADIUS, {'desired_angle': 70.0}),
-        (50, 10, 'DOCK_MODE', DEFAULT_WAYPOINT_RADIUS, {
-            'dock_index': 2,
-            'dock_points': [
-                [[5.0, 0.0], [10.0, 0.0]],  # 도킹 스테이션 1: 도킹 포인트, 보조 포인트
-                [[5.0, 10.0], [10.0, 10.0]],  # 도킹 스테이션 2: 도킹 포인트, 보조 포인트
-                [[5.0, 20.0], [10.0, 20.0]]   # 도킹 스테이션 3: 도킹 포인트, 보조 포인트
-            ],
-            'los_delta': 15.0  # DOCK_MODE LOS delta
-        }),
-        (55, 55, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {}),
-        (50, 0, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {}),
-        (0, 0, 'PASS_BETWEEN_BUOYS', DEFAULT_WAYPOINT_RADIUS, {}),
+        # (50, 40, 'CIRCLE_BUOY', DEFAULT_WAYPOINT_RADIUS,{}),
+        # # DOCK_MODE 예시: dock_index(1-3), dock_points는 상대 좌표로 3쌍 (도킹 포인트, 도킹 보조 포인트)
+        # # dock_points 형식: [[dock1_point, dock1_aux], [dock2_point, dock2_aux], [dock3_point, dock3_aux]]
+        # # 각 포인트는 [Easting, Northing] 형식의 상대 좌표 (미터)
+        # (160, 0, 'CIRCLE_BUOY', DEFAULT_WAYPOINT_RADIUS, {'rotation_direction': 1, 'length': -8.0, 'radius_reach': 5.0, 'max_duration': 80.0}),
+        # (15, -15, 'CIRCLE_BUOY', DEFAULT_WAYPOINT_RADIUS, {'length': 14.0, 'angle': 45.0, 'turn_flag': 1, 'radius': 2.0, 'los_delta': 10.0}),
+        # (15, -15, 'STOP', DEFAULT_WAYPOINT_RADIUS, {'stop_duration': 15.0}),  # 3초 정지
+        # (30, 0, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {'los_delta': 10.0}),
+        # (30, 10, 'ROTATION', DEFAULT_WAYPOINT_RADIUS, {'desired_angle': 70.0}),
+        # (50, 10, 'DOCK_MODE', DEFAULT_WAYPOINT_RADIUS, {
+        #     'dock_index': 2,
+        #     'dock_points': [
+        #         [[5.0, 0.0], [10.0, 0.0]],  # 도킹 스테이션 1: 도킹 포인트, 보조 포인트
+        #         [[5.0, 10.0], [10.0, 10.0]],  # 도킹 스테이션 2: 도킹 포인트, 보조 포인트
+        #         [[5.0, 20.0], [10.0, 20.0]]   # 도킹 스테이션 3: 도킹 포인트, 보조 포인트
+        #     ],
+        #     'los_delta': 15.0  # DOCK_MODE LOS delta
+        # }),
+        # (55, 55, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {}),
+        # (50, 0, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {}),
+        # (0, 0, 'PASS_BETWEEN_BUOYS', DEFAULT_WAYPOINT_RADIUS, {}),
 
 
 

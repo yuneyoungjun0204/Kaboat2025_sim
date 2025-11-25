@@ -234,7 +234,7 @@ class PX4OffboardBridge(Node):
             use_position = self.use_position_control
 
             # 속도 제어 명령
-            velocity = self.velocity_cmd
+            velocity = min(2.0,self.velocity_cmd*1.4+0.45)
             yaw = self.yaw_cmd
 
             # 위치 제어 명령
@@ -309,7 +309,7 @@ class PX4OffboardBridge(Node):
         vy = 0.0
         vz = 0.0                     # Down 방향 속도 (수상정은 0)
 
-        msg.velocity = [vx*0.8, 0.0, 0.0]
+        msg.velocity = [vx, 0.0, 0.0]
 
         # 가속도는 사용하지 않음 (NaN)
         msg.acceleration = [0.0, 0.0, 0.0]

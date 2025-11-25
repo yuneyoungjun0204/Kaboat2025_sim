@@ -177,8 +177,8 @@ class Constants:
     WAYPOINT_MODE = 0
 
     # GPS 기준점 (MODE=1일 때 사용)
-    GPS_REFERENCE_LAT = -33.72259952421798  # Sydney Regatta Centre 기준
-    GPS_REFERENCE_LON = 150.67390369752246
+    GPS_REFERENCE_LAT = 36.3960395 # Sydney Regatta Centre 기준
+    GPS_REFERENCE_LON = 127.400863
 
     # 미리 정의된 웨이포인트
     # MODE=0: (x, y, mission_type, radius, params) - x,y는 미터 단위
@@ -192,15 +192,16 @@ class Constants:
     #      * 목표 = 현재 웨이포인트
     PREDEFINED_WAYPOINTS = [
         # MODE=0 (로컬 좌표) 예시:
-        (50, 40, 'PASS_BETWEEN_BUOYS', DEFAULT_WAYPOINT_RADIUS,{}),
-        (100, 10, 'DOCK_MODE', DEFAULT_WAYPOINT_RADIUS, {'target_shape': 'red_square'}),
-        (160, 0, 'CIRCLE_BUOY', DEFAULT_WAYPOINT_RADIUS, {'rotation_direction': 1, 'length': 8.0, 'radius_reach': 5.0, 'max_duration': 100.0}),
-        (150, -15, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS,{}),
-        (100, 10, 'ROTATION', DEFAULT_WAYPOINT_RADIUS, {'desired_angle': 70.0}),
-        (100, 10, 'DOCK_MODE', DEFAULT_WAYPOINT_RADIUS, {'target_shape': 'red_square'}),
-        (155, 55, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {}),
-        (80, 45, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {}),
-        (0, 0, 'PASS_BETWEEN_BUOYS', DEFAULT_WAYPOINT_RADIUS, {})
+        (40, 15, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS,{}),
+        # (50, 40, 'PASS_BETWEEN_BUOYS', DEFAULT_WAYPOINT_RADIUS,{}),
+        # (100, 10, 'DOCK_MODE', DEFAULT_WAYPOINT_RADIUS, {'target_shape': 'red_square'}),
+        # (160, 0, 'CIRCLE_BUOY', DEFAULT_WAYPOINT_RADIUS, {'rotation_direction': 1, 'length': 8.0, 'radius_reach': 5.0, 'max_duration': 100.0}),
+        # (150, -15, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS,{}),
+        # (100, 10, 'ROTATION', DEFAULT_WAYPOINT_RADIUS, {'desired_angle': 70.0}),
+        # (100, 10, 'DOCK_MODE', DEFAULT_WAYPOINT_RADIUS, {'target_shape': 'red_square'}),
+        # (155, 55, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {}),
+        # (80, 45, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {}),
+        # (0, 0, 'PASS_BETWEEN_BUOYS', DEFAULT_WAYPOINT_RADIUS, {})
 
         # MODE=1 (GPS 좌표) 예시: (WAYPOINT_MODE를 1로 변경 후 사용)
         # (-33.8575, 151.2160, 'DOCK_MODE', DEFAULT_WAYPOINT_RADIUS,  {'target_shape': 'red_square'}),
@@ -249,7 +250,7 @@ class Constants:
     ONNX_INPUT_SIZE = OBSERVATION_SIZE * STACK_COUNT  # 기본값: 213 * 2 = 426
 
     ONNX_V_SCALE = 1.0
-    ONNX_W_SCALE = -1.0
+    ONNX_W_SCALE =  -1.0
     ONNX_LINEAR_VELOCITY_RANGE = (0.2, 1.0)
     ONNX_ANGULAR_VELOCITY_RANGE = (-1.0, 1.0)
 

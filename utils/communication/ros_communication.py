@@ -510,8 +510,8 @@ class ROSCommunicationManager:
         velocity = np.clip(velocity, Constants.PX4.MIN_VELOCITY, Constants.PX4.MAX_VELOCITY)
 
         # desired_moment → 목표 yaw 계산 (현재 yaw + moment * scale)
-        yaw_delta = float(desired_moment) * Constants.PX4.YAW_RATE_SCALE * 0.02  # dt ≈ 0.02s (50Hz)
-        target_yaw = current_yaw + yaw_delta
+        yaw_delta = float(desired_moment) * Constants.PX4.YAW_RATE_SCALE   # dt ≈ 0.02s (50Hz)
+        target_yaw = current_yaw - yaw_delta
         # [-pi, pi] 범위로 정규화
         while target_yaw > math.pi:
             target_yaw -= 2 * math.pi

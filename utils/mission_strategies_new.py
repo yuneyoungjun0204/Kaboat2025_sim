@@ -623,7 +623,7 @@ class CircleBuoyMission(BaseMissionStrategy):
         steering = np.clip(steering, -max_steering, max_steering)
 
         # 전진 속도 (일정하게 유지)
-        forward_speed = 0.4
+        forward_speed = 0.
 
         # Body force 명령 계산
         desired_speed = forward_speed
