@@ -89,6 +89,7 @@ class PX4OffboardBridge(Node):
             # 위치 제어 명령
             self.x_error = 0.0  # X 방향 위치 오차 (m, NED: North)
             self.y_error = 0.0  # Y 방향 위치 오차 (m, NED: East)
+            self.desired_psi = None  # 목표 헤딩 (rad, DOCK_MODE일 때 사용)
 
             # 명령 수신 플래그
             self.command_received = False
@@ -198,7 +199,7 @@ class PX4OffboardBridge(Node):
         위치 오차 명령 콜백
 
         Args:
-            msg.data: [x_error (m), y_error (m)]
+            msg.data: [x_error (m), y_error (m)] 또는 [x_error (m), y_error (m), desired_psi (rad)]
         """
         if len(msg.data) < 2:
             self.get_logger().warn('position_error: 데이터 길이 부족')
@@ -207,6 +208,11 @@ class PX4OffboardBridge(Node):
         with self.data_lock:
             self.x_error = float(msg.data[0])
             self.y_error = float(msg.data[1])
+            # desired_psi가 있으면 저장 (DOCK_MODE일 때)
+            if len(msg.data) >= 3:
+                self.desired_psi = float(msg.data[2])
+            else:
+                self.desired_psi = None
             self.command_received = True
 
     # =========================================================================
@@ -240,6 +246,7 @@ class PX4OffboardBridge(Node):
             # 위치 제어 명령
             x_err = self.x_error
             y_err = self.y_error
+            desired_psi = self.desired_psi  # DOCK_MODE일 때 목표 헤딩 (rad)
 
             cmd_received = self.command_received
 
@@ -253,7 +260,9 @@ class PX4OffboardBridge(Node):
         if use_position:
             # 위치 제어 모드
             self.publish_offboard_control_mode(timestamp, position=True, velocity=False)
-            self.publish_position_setpoint(timestamp, x_err, y_err, yaw)
+            # desired_psi가 있으면 사용 (DOCK_MODE), 없으면 기본 yaw 사용
+            target_yaw = desired_psi if desired_psi is not None else yaw
+            self.publish_position_setpoint(timestamp, x_err, y_err, target_yaw)
         else:
             # 속도 제어 모드
             self.publish_offboard_control_mode(timestamp, position=False, velocity=True)
@@ -343,12 +352,13 @@ class PX4OffboardBridge(Node):
             timestamp: 타임스탬프 (마이크로초)
             x_error: X 방향 위치 오차 (m, NED: North)
             y_error: Y 방향 위치 오차 (m, NED: East)
-            yaw: 목표 yaw 각도 (rad)
+            yaw: 목표 yaw 각도 (rad, DOCK_MODE일 때는 desired_psi 사용)
 
         Note:
             - NED 좌표계 사용
             - x_error, y_error는 현재 위치 기준 상대 오차
             - PX4는 현재 위치를 기준으로 목표 위치를 계산
+            - DOCK_MODE일 때는 desired_psi가 yaw로 사용됨
         """
         msg = TrajectorySetpoint()
 

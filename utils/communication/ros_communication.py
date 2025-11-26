@@ -4,7 +4,7 @@ ROS2 통신 모듈
 - 퍼블리셔/서브스크라이버 설정 및 관리
 """
 
-from typing import Dict, List, Callable, Any
+from typing import Dict, List, Callable, Any, Optional
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
 from sensor_msgs.msg import Image, LaserScan, NavSatFix, Imu
@@ -268,6 +268,11 @@ class ROSCommunicationManager:
         self.publishers['gps_reference'] = self.node.create_publisher(
             Float64MultiArray, Constants.Topics.GPS_REFERENCE, Constants.QueueSizes.STATUS
         )
+        
+        # 도킹 미션 Position Control 오차 퍼블리셔 (시각화용)
+        self.publishers['dock_position_error'] = self.node.create_publisher(
+            Float64MultiArray, Constants.Topics.DOCK_POSITION_ERROR, Constants.QueueSizes.STATUS
+        )
 
         # PX4 브릿지 퍼블리셔 (항상 활성화)
         self.publishers['px4_velocity_yaw'] = self.node.create_publisher(
@@ -441,6 +446,22 @@ class ROSCommunicationManager:
         msg.data = [float(target_x), float(target_y)]
         self.publishers['los_target'].publish(msg)
 
+    def publish_dock_position_error(self, x_error: float, y_error: float, desired_psi: Optional[float] = None) -> None:
+        """
+        도킹 미션 Position Control 오차 발행 (시각화용)
+
+        Args:
+            x_error: body-frame X 오차 (미터, 전방)
+            y_error: body-frame Y 오차 (미터, 좌측)
+            desired_psi: 목표 헤딩 (도, None 가능)
+        """
+        msg = Float64MultiArray()
+        if desired_psi is not None:
+            msg.data = [float(x_error), float(y_error), float(desired_psi)]
+        else:
+            msg.data = [float(x_error), float(y_error), 0.0]
+        self.publishers['dock_position_error'].publish(msg)
+
     def publish_avoid_yaw(self, value: int) -> None:
         """
         장애물 회피 yaw 상태 발행 (ONNX 모드가 아닐 때 0, 1 번갈아 발행)
@@ -523,14 +544,12 @@ class ROSCommunicationManager:
         while target_yaw < -math.pi:
             target_yaw += 2 * math.pi
 
-        # 도킹 미션: position_error만 발행 (control_flag=True 유지)
+        # 도킹 미션: position_error는 mission_control.py에서 직접 발행 (x_error_body, y_error_body 기반)
+        # 여기서는 velocity/yaw 명령만 발행하지 않음
         if is_dock_mode:
-            # desired_speed → x_error (m)
-            x_error = float(desired_speed) * 1.0  # 1.0m 스케일
-            # desired_force_y → y_error (m)
-            y_error = float(desired_force_y) * 1.0  # 1.0m 스케일
-            self.publish_px4_position_command(x_error, y_error)
             # 위치 제어 모드이므로 velocity/yaw 명령은 발행하지 않음
+            # position_error는 mission_control.py의 _execute_dock_mission에서 직접 발행됨
+            pass
         else:
             # 일반 모드: velocity/yaw만 발행
             self.publish_px4_velocity_command(velocity, target_yaw)
@@ -556,16 +575,23 @@ class ROSCommunicationManager:
         flag_msg.data = False
         self.publishers['px4_control_flag'].publish(flag_msg)
 
-    def publish_px4_position_command(self, x_error: float, y_error: float) -> None:
+    def publish_px4_position_command(self, x_error: float, y_error: float, desired_psi: Optional[float] = None) -> None:
         """
         PX4 위치 오차 명령 발행 (항상 발행)
 
         Args:
             x_error: X 방향 위치 오차 (m)
             y_error: Y 방향 위치 오차 (m)
+            desired_psi: 목표 헤딩 (도, DOCK_MODE일 때 사용)
         """
         msg = Float64MultiArray()
-        msg.data = [float(x_error), float(y_error)]
+        if desired_psi is not None:
+            # desired_psi를 라디안으로 변환하여 포함
+            import math
+            desired_psi_rad = math.radians(desired_psi)
+            msg.data = [float(x_error), float(y_error), float(desired_psi_rad)]
+        else:
+            msg.data = [float(x_error), float(y_error)]
         self.publishers['px4_position_error'].publish(msg)
 
         # 제어 플래그: 위치 제어 모드

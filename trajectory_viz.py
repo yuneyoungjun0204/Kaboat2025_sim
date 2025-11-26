@@ -493,6 +493,58 @@ class UnifiedPlotManager:
         )
         self.dynamic_elements.append(line)
 
+    def update_dock_position_error(self, position_error: Dict[str, float], 
+                                   robot_pos: np.ndarray, robot_heading: float):
+        """도킹 미션 Position Control 오차 시각화
+
+        Args:
+            position_error: {'x_error': float, 'y_error': float, 'desired_psi': float}
+            robot_pos: 로봇 위치 [North, East]
+            robot_heading: 로봇 헤딩 (도, 0=North, 90=East)
+        """
+        x_error = position_error['x_error']  # body-frame 전방
+        y_error = position_error['y_error']  # body-frame 좌측
+        desired_psi = position_error.get('desired_psi')
+        
+        # Body-frame → World-frame 변환
+        heading_rad = np.radians(robot_heading)
+        cos_h = np.cos(heading_rad)
+        sin_h = np.sin(heading_rad)
+        
+        # Body-frame: x=전방, y=좌측
+        # World-frame (NED): North, East
+        error_north = x_error * cos_h - y_error * sin_h
+        error_east = x_error * sin_h + y_error * cos_h
+        
+        # 목표 위치 계산
+        target_pos = np.array([robot_pos[0] + error_north, robot_pos[1] + error_east])
+        
+        # 오차 벡터 화살표
+        arrow = self.ax_main.arrow(
+            robot_pos[0], robot_pos[1],
+            error_north, error_east,
+            head_width=2.0, head_length=2.0,
+            fc='yellow', ec='orange', linewidth=2.5,
+            alpha=0.8, zorder=8
+        )
+        self.dynamic_elements.append(arrow)
+        
+        # desired_psi가 있으면 목표 헤딩 화살표
+        if desired_psi is not None:
+            arrow_params = self.transformer.heading_to_arrow(robot_pos, desired_psi, 10.0)
+            arrow = self.ax_main.arrow(**arrow_params, fc='cyan', ec='blue', zorder=7)
+            self.dynamic_elements.append(arrow)
+        
+        # 텍스트 표시
+        text = self.ax_main.text(
+            robot_pos[0] + error_north / 2, robot_pos[1] + error_east / 2,
+            f'x_err={x_error:.2f}m\ny_err={y_error:.2f}m',
+            fontsize=9, fontweight='bold', color='orange',
+            bbox=dict(boxstyle='round', facecolor='yellow', alpha=0.7),
+            ha='center', va='center', zorder=10
+        )
+        self.dynamic_elements.append(text)
+
     def update_waypoints(self, waypoints: List[List[float]], current: Optional[List[float]] = None):
         """웨이포인트 업데이트
 
@@ -751,6 +803,7 @@ class UnifiedVizNode(Node):
         self.los_target: Optional[List[float]] = None
         self.obstacle_check_area: List[List[float]] = []
         self.goal_check_areas: List[dict] = []
+        self.dock_position_error: Optional[Dict[str, float]] = None  # {'x_error': float, 'y_error': float, 'desired_psi': float}
 
         # 플롯 설정 (ROS보다 먼저)
         self.plot_manager.setup()
@@ -818,6 +871,7 @@ class UnifiedVizNode(Node):
         self.create_subscription(Float64MultiArray, Constants.Topics.CIRCLE_BUOY_CURRENT_WAYPOINT, self.circle_buoy_current_waypoint_callback, 10)
         self.create_subscription(Float64MultiArray, Constants.Topics.ALL_WAYPOINTS, self.all_waypoints_callback, 10)
         self.create_subscription(Float64MultiArray, Constants.Topics.GPS_REFERENCE, self.gps_reference_callback, 10)
+        self.create_subscription(Float64MultiArray, Constants.Topics.DOCK_POSITION_ERROR, self.dock_position_error_callback, 10)
 
         # 퍼블리셔
         self.waypoint_pub = self.create_publisher(Point, Constants.Topics.WAYPOINT, 10)
@@ -1216,6 +1270,23 @@ class UnifiedVizNode(Node):
                     f"(Main_MCP.py와 동일한 기준점 사용)"
                 )
 
+    def dock_position_error_callback(self, msg):
+        """도킹 미션 Position Control 오차 콜백
+        
+        수신 형식: [x_error, y_error, desired_psi]
+        - x_error: body-frame X 오차 (미터, 전방)
+        - y_error: body-frame Y 오차 (미터, 좌측)
+        - desired_psi: 목표 헤딩 (도)
+        """
+        if len(msg.data) >= 2:
+            self.dock_position_error = {
+                'x_error': float(msg.data[0]),
+                'y_error': float(msg.data[1]),
+                'desired_psi': float(msg.data[2]) if len(msg.data) >= 3 else None
+            }
+        else:
+            self.dock_position_error = None
+
     # ============================================================================
     # 플롯 업데이트
     # ============================================================================
@@ -1265,6 +1336,14 @@ class UnifiedVizNode(Node):
             # 5. LOS target
             if self.los_target:
                 self.plot_manager.update_los_target(self.los_target, [self.current_position[1], self.current_position[0]])
+
+            # 5-1. 도킹 미션 Position Control 오차 시각화
+            if self.dock_position_error and self.current_position is not None and self.current_heading is not None:
+                self.plot_manager.update_dock_position_error(
+                    self.dock_position_error,
+                    self.current_position,
+                    self.current_heading
+                )
 
             # 6. 웨이포인트
             self.plot_manager.update_waypoints(self.waypoints, self.current_waypoint)

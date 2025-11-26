@@ -663,6 +663,34 @@ class MissionLoopExecutor:
         self.thruster_positions = (left_pos, right_pos)
         self.target_depth = target_depth
 
+        # Position Control 모드일 때 오차 정보 발행 (시각화용 및 PX4 직접 발행)
+        dock_mission = self.mission_manager.missions.get(MissionType.DOCK_MODE)
+        if dock_mission and hasattr(dock_mission, 'control_mode') and dock_mission.control_mode == 'POSITION_CONTROL':
+            if hasattr(dock_mission, 'last_x_error') and hasattr(dock_mission, 'last_y_error'):
+                desired_psi = dock_mission.desired_psi if hasattr(dock_mission, 'desired_psi') else None
+                # 시각화용 발행
+                self.ros_comm.publish_dock_position_error(
+                    dock_mission.last_x_error,
+                    dock_mission.last_y_error,
+                    desired_psi
+                )
+                
+                # PX4 직접 발행: body-frame → world-frame 변환
+                x_error_body = dock_mission.last_x_error
+                y_error_body = dock_mission.last_y_error
+                agent_heading = self.sensor_handler.agent_heading
+                if agent_heading is not None:
+                    heading_rad = np.radians(agent_heading)
+                    cos_h = np.cos(heading_rad)
+                    sin_h = np.sin(heading_rad)
+                    
+                    # Body-frame → World-frame 변환 (NED)
+                    # error_north = x_error_body * cos_h - y_error_body * sin_h
+                    # error_east = x_error_body * sin_h + y_error_body * cos_h
+                    
+                    # PX4 position_error 토픽으로 직접 발행 (desired_psi 포함)
+                    self.ros_comm.publish_px4_position_command(x_error_body, y_error_body, desired_psi)
+
         self._publish_control_info(left_thrust, right_thrust, "DOCK_MISSION")
         return left_thrust, right_thrust
 

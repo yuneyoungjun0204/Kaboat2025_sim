@@ -800,12 +800,19 @@ class DockMission(BaseMissionStrategy):
         self.phase_start_time: Optional[float] = None
         self.is_completed = False
         
+        # 제어 모드 ('LOS' 또는 'POSITION_CONTROL')
+        self.control_mode = "LOS"  # 기본값: LOS 가이던스
+        
         # 도킹 포인트 정보
         self.dock_index: Optional[int] = None  # 1, 2, 또는 3
         self.dock_points: Optional[List[List[List[float]]]] = None  # [[[dock_point], [aux_point]], ...]
         self.dock_point_global: Optional[np.ndarray] = None  # 전역 좌표 도킹 포인트 [Easting, Northing]
         self.aux_point_global: Optional[np.ndarray] = None  # 전역 좌표 보조 포인트 [Easting, Northing]
         self.initial_position: Optional[np.ndarray] = None  # 미션 시작 위치 [Easting, Northing]
+        
+        # Position control 목표 위치 (world-frame)
+        self.target_position: Optional[np.ndarray] = None  # [Easting, Northing]
+        self.desired_psi: Optional[float] = None  # 목표 헤딩 (도)
         
         # LOS 가이던스
         self.los_guidance = LOSGuidance()
@@ -819,17 +826,24 @@ class DockMission(BaseMissionStrategy):
         
         # Body-force 명령 저장 (ROS 퍼블리시용)
         self.last_sway_force = self.last_yaw_moment = self.last_surge_velocity = 0.0
+        
+        # Position control 오차 저장 (시각화용)
+        self.last_x_error = 0.0
+        self.last_y_error = 0.0
 
     def reset(self):
         """미션 상태 초기화"""
         self.docking_phase = "APPROACHING"
         self.phase_start_time = None
         self.is_completed = False
+        self.control_mode = "LOS"
         self.dock_index = None
         self.dock_points = None
         self.dock_point_global = None
         self.aux_point_global = None
         self.initial_position = None
+        self.target_position = None
+        self.desired_psi = None
 
     def _body_to_world_frame(self, body_x: float, body_y: float,
                              robot_pos: np.ndarray, robot_heading: float) -> np.ndarray:
@@ -839,20 +853,27 @@ class DockMission(BaseMissionStrategy):
         Args:
             body_x: body-frame x 좌표 (전방, 미터)
             body_y: body-frame y 좌표 (좌측, 미터)
-            robot_pos: 로봇 현재 위치 [Easting, Northing] (world-frame)
+            robot_pos: 로봇 현재 위치 [Northing, Easting] (world-frame)
             robot_heading: 로봇 현재 헤딩 (도, 0=North, 90=East)
 
         Returns:
-            np.ndarray: world-frame 좌표 [Easting, Northing]
+            np.ndarray: world-frame 좌표 [Northing, Easting]
         """
         heading_rad = np.radians(robot_heading)
         cos_h = np.cos(heading_rad)
         sin_h = np.sin(heading_rad)
 
-        easting = robot_pos[0] + (body_x * sin_h + body_y * cos_h)
-        northing = robot_pos[1] + (body_x * cos_h - body_y * sin_h)
+        # robot_pos는 [Northing, Easting] 순서
+        # body-frame → world-frame 변환
+        # x: 전방 (body-frame) → North 방향 (world-frame)
+        # y: 좌측 (body-frame) → West 방향 (world-frame, 음수)
+        delta_northing = body_x * cos_h - body_y * sin_h  # 전방은 North, 좌측은 -East
+        delta_easting = body_x * sin_h + body_y * cos_h   # 전방은 East, 좌측은 North
 
-        return np.array([easting, northing], dtype=np.float32)
+        northing = robot_pos[0] + delta_northing
+        easting = robot_pos[1] + delta_easting
+
+        return np.array([northing, easting], dtype=np.float32)
 
     def get_last_body_forces(self) -> Tuple[float, float, float]:
         """최근 SWAY/YAW/SURGE 명령 반환"""
@@ -940,21 +961,73 @@ class DockMission(BaseMissionStrategy):
                         self._set_body_forces(0.0, 0.0, 0.0)
                         return 0.0, 0.0, 0.0, 0.0, None
                     
-                    # 상대 좌표를 전역 좌표로 변환
-                    dock_point_rel = np.array(selected_dock[0], dtype=np.float32)  # [Easting, Northing] 상대 좌표
-                    aux_point_rel = np.array(selected_dock[1], dtype=np.float32)  # [Easting, Northing] 상대 좌표
+                    # dock_points가 위경도인지 상대 좌표인지 확인
+                    # 위경도: 값이 -90~90 (위도), -180~180 (경도) 범위
+                    dock_point_input = selected_dock[0]
+                    aux_point_input = selected_dock[1]
                     
-                    # body-frame → world-frame 변환 (미션 시작 위치와 헤딩 기준)
-                    # 상대 좌표는 미션 시작 위치를 기준으로 함
-                    self.dock_point_global = self.initial_position + dock_point_rel
-                    self.aux_point_global = self.initial_position + aux_point_rel
+                    # 위경도 판단: 위도는 -90~90, 경도는 -180~180 범위
+                    is_gps_coords = (
+                        len(dock_point_input) >= 2 and len(aux_point_input) >= 2 and
+                        -90 <= dock_point_input[0] <= 90 and -180 <= dock_point_input[1] <= 180 and
+                        -90 <= aux_point_input[0] <= 90 and -180 <= aux_point_input[1] <= 180
+                    )
+                    
+                    if is_gps_coords:
+                        # 위경도 → 로컬 좌표 변환
+                        from ..mission.waypoint_manager import gps_to_local
+                        ref_lat = Constants.GPS_REFERENCE_LAT
+                        ref_lon = Constants.GPS_REFERENCE_LON
+                        
+                        dock_lat, dock_lon = dock_point_input[0], dock_point_input[1]
+                        aux_lat, aux_lon = aux_point_input[0], aux_point_input[1]
+                        
+                        # gps_to_local은 (lat, lon, ref_lat, ref_lon) → (lon_m, lat_m) = (Easting, Northing) 반환
+                        dock_easting, dock_northing = gps_to_local(dock_lat, dock_lon, ref_lat, ref_lon)
+                        aux_easting, aux_northing = gps_to_local(aux_lat, aux_lon, ref_lat, ref_lon)
+                        
+                        # [Northing, Easting] 형식으로 저장 (agent_position과 동일한 순서)
+                        # 위경도 변환 결과는 기준점 기준 전역 좌표이므로 initial_position을 더하지 않음
+                        self.dock_point_global = np.array([dock_northing, dock_easting], dtype=np.float32)
+                        self.aux_point_global = np.array([aux_northing, aux_easting], dtype=np.float32)
+                        
+                        if logger:
+                            logger.info(
+                                f"📍 도킹 포인트 위경도 변환: "
+                                f"도킹=({dock_lat:.6f}, {dock_lon:.6f}) → [Northing={dock_northing:.2f}, Easting={dock_easting:.2f}], "
+                                f"보조=({aux_lat:.6f}, {aux_lon:.6f}) → [Northing={aux_northing:.2f}, Easting={aux_easting:.2f}]"
+                            )
+                    else:
+                        # 상대 좌표로 처리 (미션 시작 위치 기준)
+                        # 입력이 [Easting, Northing] 순서일 수 있으므로 [Northing, Easting]로 변환
+                        dock_point_rel = np.array(dock_point_input, dtype=np.float32)
+                        aux_point_rel = np.array(aux_point_input, dtype=np.float32)
+                        
+                        # [Easting, Northing] → [Northing, Easting] 변환 (agent_position 순서와 일치)
+                        if len(dock_point_rel) >= 2:
+                            dock_point_rel = np.array([dock_point_rel[1], dock_point_rel[0]], dtype=np.float32)
+                        if len(aux_point_rel) >= 2:
+                            aux_point_rel = np.array([aux_point_rel[1], aux_point_rel[0]], dtype=np.float32)
+                        
+                        # 상대 좌표를 전역 좌표로 변환 (미션 시작 위치 기준)
+                        # initial_position은 [Northing, Easting] 순서
+                        self.dock_point_global = self.initial_position + dock_point_rel
+                        self.aux_point_global = self.initial_position + aux_point_rel
                     
                     if logger:
                         logger.info(
                             f"🎯 도킹 미션 시작: 스테이션 {self.dock_index}, "
-                            f"도킹 포인트=[{self.dock_point_global[0]:.2f}, {self.dock_point_global[1]:.2f}], "
-                            f"보조 포인트=[{self.aux_point_global[0]:.2f}, {self.aux_point_global[1]:.2f}]"
+                            f"도킹 포인트=[Northing={self.dock_point_global[0]:.2f}, Easting={self.dock_point_global[1]:.2f}], "
+                            f"보조 포인트=[Northing={self.aux_point_global[0]:.2f}, Easting={self.aux_point_global[1]:.2f}], "
+                            f"agent_position=[Northing={agent_position[0]:.2f}, Easting={agent_position[1]:.2f}]"
                         )
+            
+            # 제어 모드 설정
+            self.control_mode = mission_params.get('dock_control_mode', 'LOS').upper()
+            if self.control_mode not in ['LOS', 'POSITION_CONTROL']:
+                if logger:
+                    logger.warn(f"DOCK_MODE: 잘못된 제어 모드 '{self.control_mode}', LOS로 설정")
+                self.control_mode = 'LOS'
             
             # 제어 파라미터 업데이트
             self.approach_time = mission_params.get('dock_approach_time', self.approach_time)
@@ -962,17 +1035,56 @@ class DockMission(BaseMissionStrategy):
             self.approach_speed = mission_params.get('dock_approach_speed', self.approach_speed)
             self.reverse_speed = mission_params.get('dock_reverse_speed', self.reverse_speed)
             self.dock_reach_radius = mission_params.get('dock_reach_radius', self.dock_reach_radius)
-
-        # 도킹 포인트가 설정되지 않은 경우
-        if self.dock_point_global is None or self.aux_point_global is None:
-            if logger:
-                logger.warn("DOCK_MODE: 도킹 포인트가 설정되지 않았습니다. 정지")
-            self._set_body_forces(0.0, 0.0, 0.0)
-            return 0.0, 0.0, 0.0, 0.0, None
+            
+            # Position control 파라미터
+            # target_position은 dock_point_global을 사용 (고정된 도킹 포인트)
+            if self.dock_point_global is not None:
+                self.target_position = self.dock_point_global.copy()
+                if logger:
+                    logger.info(
+                        f"🎯 Position Control: target_position을 dock_point_global로 설정 "
+                        f"[Northing={self.target_position[0]:.2f}, Easting={self.target_position[1]:.2f}]"
+                    )
+            elif 'x_error' in mission_params and 'y_error' in mission_params:
+                # dock_point_global이 없는 경우에만 x_error, y_error 사용 (fallback)
+                x_error = mission_params['x_error']
+                y_error = mission_params['y_error']
+                
+                if logger:
+                    logger.warn(
+                        f"⚠️ Position Control: dock_point_global이 없어 x_error, y_error 사용 "
+                        f"(x_error={x_error:.2f}m, y_error={y_error:.2f}m)"
+                    )
+                
+                # body-frame → world-frame 변환
+                self.target_position = self._body_to_world_frame(
+                    x_error, y_error, agent_position, agent_heading
+                )
+            
+            # x_error, y_error는 body-frame 기준 오차 (제어 계산용, target_position 설정과는 별개)
+            if 'x_error' in mission_params and 'y_error' in mission_params:
+                self.x_error_body = mission_params['x_error']
+                self.y_error_body = mission_params['y_error']
+            else:
+                self.x_error_body = 0.0
+                self.y_error_body = 0.0
+                
+            if 'desired_psi' in mission_params:
+                self.desired_psi = mission_params['desired_psi']
 
         # 도킹 단계별 처리
         if self.docking_phase == "APPROACHING":
-            return self._execute_approaching_phase(agent_position, agent_heading, logger)
+            if self.control_mode == "POSITION_CONTROL":
+                return self._execute_position_control_phase(agent_position, agent_heading, logger)
+            else:
+                # LOS 가이던스 모드
+                # 도킹 포인트가 설정되지 않은 경우
+                if self.dock_point_global is None or self.aux_point_global is None:
+                    if logger:
+                        logger.warn("DOCK_MODE: 도킹 포인트가 설정되지 않았습니다. 정지")
+                    self._set_body_forces(0.0, 0.0, 0.0)
+                    return 0.0, 0.0, 0.0, 0.0, None
+                return self._execute_approaching_phase(agent_position, agent_heading, logger)
         elif self.docking_phase == "REVERSING":
             return self._execute_reversing_phase(logger)
         else:
@@ -986,7 +1098,7 @@ class DockMission(BaseMissionStrategy):
         접근 단계: LOS 가이던스를 사용하여 도킹 포인트로 접근
 
         Args:
-            agent_position: 로봇 현재 위치 [Easting, Northing]
+            agent_position: 로봇 현재 위치 [Northing, Easting]
             agent_heading: 로봇 현재 헤딩 (도, 0=North, 90=East)
             logger: 로거
 
@@ -994,6 +1106,14 @@ class DockMission(BaseMissionStrategy):
             Tuple: (left_thrust, right_thrust, left_pos, right_pos, target_depth)
         """
         # 도킹 포인트까지의 거리 계산
+        # 디버깅: 실제 값 확인
+        if logger:
+            logger.info(
+                f"🔍 거리 계산 디버깅: "
+                f"agent_position=[Northing={agent_position[0]:.2f}, Easting={agent_position[1]:.2f}], "
+                f"dock_point_global=[Northing={self.dock_point_global[0]:.2f}, Easting={self.dock_point_global[1]:.2f}], "
+                f"차이=[Northing={agent_position[0] - self.dock_point_global[0]:.2f}, Easting={agent_position[1] - self.dock_point_global[1]:.2f}]"
+            )
         distance_to_dock = np.linalg.norm(agent_position - self.dock_point_global)
         
         # 도킹 포인트 도달 확인
@@ -1027,8 +1147,8 @@ class DockMission(BaseMissionStrategy):
             target_name = "도킹 포인트"
 
         # 목표 방향 계산 (도)
-        delta = target_point - agent_position
-        target_heading_deg = np.degrees(np.arctan2(delta[0], delta[1]))  # atan2(Easting, Northing)
+        delta = target_point - agent_position  # [Northing, Easting]
+        target_heading_deg = np.degrees(np.arctan2(delta[1], delta[0]))  # atan2(Easting, Northing) = atan2(delta[1], delta[0])
         
         # 헤딩 오차 계산 (도)
         heading_error = calculate_heading_error(agent_heading, target_heading_deg)
@@ -1062,6 +1182,111 @@ class DockMission(BaseMissionStrategy):
                 f"Dock APPROACHING [{target_name}]: "
                 f"거리={distance_to_dock:.2f}m, 헤딩오차={heading_error:.1f}°, "
                 f"linear={linear_velocity:.3f}, angular={angular_velocity:.3f}, "
+                f"L={left_thrust:.1f}, R={right_thrust:.1f}"
+            )
+        
+        return left_thrust, right_thrust, left_pos, right_pos, None
+
+    def _execute_position_control_phase(
+        self, agent_position: np.ndarray, agent_heading: float, logger
+    ) -> Tuple[float, float, float, float, Optional[float]]:
+        """
+        Position Control 단계: x_error, y_error, desired_psi 기반 제어
+
+        Args:
+            agent_position: 로봇 현재 위치 [Easting, Northing]
+            agent_heading: 로봇 현재 헤딩 (도, 0=North, 90=East)
+            logger: 로거
+
+        Returns:
+            Tuple: (left_thrust, right_thrust, left_pos, right_pos, target_depth)
+        """
+        # 목표 위치가 설정되지 않은 경우
+        if self.target_position is None:
+            if logger:
+                logger.warn("DOCK_MODE POSITION_CONTROL: 목표 위치가 설정되지 않았습니다. 정지")
+            self._set_body_forces(0.0, 0.0, 0.0)
+            return 0.0, 0.0, 0.0, 0.0, None
+
+        # 목표 위치까지의 거리 계산
+        # 디버깅: 실제 값 확인
+        if logger:
+            logger.info(
+                f"🔍 Position Control 디버깅: "
+                f"agent_position=[Northing={agent_position[0]:.2f}, Easting={agent_position[1]:.2f}], "
+                f"target_position=[Northing={self.target_position[0]:.2f}, Easting={self.target_position[1]:.2f}], "
+                f"position_error=[Northing={self.target_position[0] - agent_position[0]:.2f}, Easting={self.target_position[1] - agent_position[1]:.2f}]"
+            )
+        position_error = [self.target_position[1] - agent_position[0], self.target_position[0] - agent_position[1]]
+        distance_to_target = np.linalg.norm(position_error)
+        
+        # 목표 위치 도달 확인
+        if distance_to_target < self.dock_reach_radius:
+            # 목표 위치 도달, 후진 단계로 전환
+            self.docking_phase = "REVERSING"
+            self.phase_start_time = time.time()
+            if logger:
+                logger.info(f"🛑 목표 위치 도달 (거리={distance_to_target:.2f}m)! REVERSING 단계 시작")
+            self._set_body_forces(0.0, 0.0, 0.0)
+            return 0.0, 0.0, 0.0, 0.0, None
+
+        # Position control: x_error, y_error 기반 제어
+        # position_error는 world-frame이므로 body-frame으로 변환
+        heading_rad = np.radians(agent_heading)
+        cos_h = np.cos(heading_rad)
+        sin_h = np.sin(heading_rad)
+        
+        # World-frame → Body-frame 변환
+        x_error_body = position_error[0] * sin_h + position_error[1] * cos_h  # 전방
+        y_error_body = position_error[0] * cos_h - position_error[1] * sin_h  # 좌측
+        # x_error_body = position_error[1] 
+        # y_error_body = position_error[0]
+        # 헤딩 제어
+        if self.desired_psi is not None:
+            heading_error = calculate_heading_error(agent_heading, self.desired_psi)
+            heading_error_rad = np.radians(heading_error)
+        else:
+            # desired_psi가 없으면 목표 방향으로 헤딩
+            target_heading_deg = np.degrees(np.arctan2(position_error[0], position_error[1]))
+            heading_error = calculate_heading_error(agent_heading, target_heading_deg)
+            heading_error_rad = np.radians(heading_error)
+
+        # 제어 계산
+        # 선속도: x_error에 비례 (전방)
+        max_speed = self.approach_speed
+        distance_factor = min(1.0, distance_to_target / 10.0)  # 10m 이내에서 감소
+        linear_velocity = max_speed * distance_factor
+        
+        # 각속도: 헤딩 오차에 비례
+        angular_gain = 0.5
+        angular_velocity = angular_gain * heading_error_rad
+        angular_velocity = np.clip(angular_velocity, -1.0, 1.0)
+        
+        # Sway force: y_error에 비례 (좌우)
+        sway_gain = 0.3
+        sway_force = sway_gain * y_error_body
+        sway_force = np.clip(sway_force, -0.5, 0.5)
+        
+        # Body forces로 변환
+        surge_velocity = linear_velocity
+        yaw_moment = angular_velocity * 0.3  # 게인 조정
+        
+        # 2-Motor Vectored Thruster Allocation
+        left_thrust, right_thrust, left_pos, right_pos = body_forces_to_thruster_commands(
+            surge_velocity, yaw_moment, sway_force, self.thrust_scale, use_vectored_thrusters=True
+        )
+        self._set_body_forces(sway_force, yaw_moment, surge_velocity)
+        
+        # Position control 오차 저장 (시각화용)
+        self.last_x_error = x_error_body
+        self.last_y_error = y_error_body
+        
+        if logger:
+            logger.info(
+                f"Dock POSITION_CONTROL: "
+                f"거리={distance_to_target:.2f}m, x_error={x_error_body:.2f}m, y_error={y_error_body:.2f}m, "
+                f"헤딩오차={heading_error:.1f}°, "
+                f"surge={surge_velocity:.3f}, sway={sway_force:.3f}, yaw={angular_velocity:.3f}, "
                 f"L={left_thrust:.1f}, R={right_thrust:.1f}"
             )
         

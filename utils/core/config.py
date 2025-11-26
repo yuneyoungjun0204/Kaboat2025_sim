@@ -239,13 +239,33 @@ class Constants:
         # MODE=1 (GPS 좌표) 예시: (WAYPOINT_MODE를 1로 변경 후 사용)
         # (-33.8575, 151.2160, 'DOCK_MODE', DEFAULT_WAYPOINT_RADIUS,  {'target_shape': 'red_square', 'los_delta': 15.0}),
         # (36.39603892, 127.40173437, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {'los_delta': 3.0}),
-        (36.3960382, 127.40173437, 'STOP', DEFAULT_WAYPOINT_RADIUS, {'stop_duration': 5.0}),
-        (36.3960382, 127.40173437, 'PASS_BETWEEN_BUOYS', DEFAULT_WAYPOINT_RADIUS, {
-            'previous_waypoint_lat': 36.39603892,
-            'previous_waypoint_lon': 127.40173437
-        }),
+        # (36.3960382, 127.40173437, 'STOP', DEFAULT_WAYPOINT_RADIUS, {'stop_duration': 5.0}),
+        # (36.3960382, 127.40173437, 'PASS_BETWEEN_BUOYS', DEFAULT_WAYPOINT_RADIUS, {
+        #     'previous_waypoint_lat': 36.39603892,
+        #     'previous_waypoint_lon': 127.40173437
+        # }),
         
-        # (-33.8575, 151.2160, 'DOCK_MODE', DEFAULT_WAYPOINT_RADIUS,  {'target_shape': 'red_square', 'los_delta': 15.0}),
+        (36.3960382, 127.40173437, 'DOCK_MODE', DEFAULT_WAYPOINT_RADIUS, {
+            'dock_control_mode': 'POSITION_CONTROL',  # 'LOS' 또는 'POSITION_CONTROL'
+            'dock_index': 1,  # 도킹 스테이션 번호 (1-6)
+            'dock_points': [  # 도킹 포인트 리스트 [[[dock_point], [aux_point]], ...]
+                # 위경도 형식: [[lat, lon], [lat, lon]] 또는 상대 좌표: [[Easting, Northing], [Easting, Northing]]
+                # 위경도는 -90~90 (위도), -180~180 (경도) 범위로 자동 감지
+                [[36.3960382, 127.40173437], [36.3960382, 127.40173437]],  # 스테이션 1: [도킹 포인트(위경도), 보조 포인트(위경도)]
+                [[36.3960382, 127.40173437], [36.3960382, 127.40173437]],  # 스테이션 2
+                [[36.3960382, 127.40173437], [36.3960382, 127.40173437]],  # 스테이션 3
+            ],
+            'dock_approach_time': 30.0,  # 접근 단계 시간 (초)
+            'dock_reverse_time': 5.0,  # 후진 단계 시간 (초)
+            'dock_approach_speed': 0.5,  # 접근 속도
+            'dock_reverse_speed': 0.3,  # 후진 속도
+            'dock_reach_radius': 3.0,  # 도킹 포인트 도달 반경 (미터)
+            # Position Control 모드용 파라미터 (control_mode='POSITION_CONTROL'일 때 사용)
+            'x_error': 0.0,  # body-frame x 오차 (미터, 전방)
+            'y_error': 0.0,  # body-frame y 오차 (미터, 좌측)
+            'desired_psi': 10.0,  # 목표 헤딩 (도, 0=North)
+            'los_delta': 15.0  # LOS 가이던스 delta (LOS 모드용)
+        }),
         # (100, 10, 'ROTATION', DEFAULT_WAYPOINT_RADIUS, {'desired_angle': 70.0}),
         # (36.3960382, 127.40173437, 'CIRCLE_BUOY', DEFAULT_WAYPOINT_RADIUS, {'length': 14.0, 'angle': 45.0, 'turn_flag': 1, 'radius': 3.0, 'los_delta': 10.0}),
         # (-33.8580, 151.2165, 'DOCK_MODE', DEFAULT_WAYPOINT_RADIUS, {'target_shape': 'red_square', 'los_delta': 15.0}),
@@ -511,6 +531,7 @@ class Constants:
         CIRCLE_BUOY_CURRENT_WAYPOINT = '/vrx/circle_buoy_current_waypoint'  # CIRCLE_BUOY 미션 현재 추종 웨이포인트
         ALL_WAYPOINTS = '/vrx/all_waypoints'  # 모든 웨이포인트 정보 (미션 타입 포함)
         GPS_REFERENCE = '/vrx/gps_reference'  # GPS 기준점 정보 [waypoint_mode, ref_lat, ref_lon]
+        DOCK_POSITION_ERROR = '/vrx/dock_position_error'  # 도킹 미션 position control 오차 [x_error, y_error, desired_psi]
 
         # 장애물 회피용 토픽
         AVOID_YAW = '/avoid_yaw'  # ONNX 모드가 아닐 때 0, 1 번갈아 발행
@@ -556,8 +577,8 @@ class Constants:
 
         # 축 범위 설정
         AXIS_MARGIN = 200.0
-        AXIS_MARGIN_X = 60.0
-        AXIS_MARGIN_Y = 60.0
+        AXIS_MARGIN_X = 40.0
+        AXIS_MARGIN_Y = 40.0
 
         # 배 크기 및 안전 여유
         BOAT_WIDTH = 5.0

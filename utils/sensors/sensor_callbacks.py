@@ -341,7 +341,6 @@ class SensorCallbackHandler:
                 self.initial_lat = msg.lat
                 self.initial_lon = msg.lon
                 self.reference_point_set = True
-
                 self.logger.info(
                     f"로컬 모드: 첫 GPS 위치를 기준점으로 설정 - lat={msg.lat:.8f}, lon={msg.lon:.8f}"
                 )
