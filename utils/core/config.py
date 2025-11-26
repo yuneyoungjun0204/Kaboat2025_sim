@@ -248,7 +248,16 @@ class Constants:
         #     'previous_waypoint_lon': 127.40173437
         # }),
         
-        (36.3960382, 127.40173437, 'DOCK_MODE', DEFAULT_WAYPOINT_RADIUS, {
+
+
+        (36.39603745, 127.40173195, 'PASS_BETWEEN_BUOYS', DEFAULT_WAYPOINT_RADIUS, {
+            'waypoint_sequence': [
+                (36.39602843, 127.40164481),  # 첫 번째 경유점
+                # (36.39604000, 127.40165000),  # 두 번째 경유점 (필요시 추가)
+                # (36.39605000, 127.40166000),  # 세 번째 경유점 (필요시 추가)
+            ]
+        }),
+        (36.39603715, 127.40173398, 'DOCK_MODE', DEFAULT_WAYPOINT_RADIUS,{
             'dock_control_mode': 'POSITION_CONTROL',  # 'LOS' 또는 'POSITION_CONTROL'
             'dock_index': 1,  # 도킹 스테이션 번호 (1-6)
             'dock_points': [  # 도킹 포인트 리스트 [[[dock_point], [aux_point]], ...]
@@ -258,24 +267,65 @@ class Constants:
                 [[36.3960382, 127.40173437], [36.3960382, 127.40173437]],  # 스테이션 2
                 [[36.3960382, 127.40173437], [36.3960382, 127.40173437]],  # 스테이션 3
             ],
-            'dock_approach_time': 30.0,  # 접근 단계 시간 (초)
-            'dock_reverse_time': 5.0,  # 후진 단계 시간 (초)
-            'dock_approach_speed': 0.5,  # 접근 속도
-            'dock_reverse_speed': 0.3,  # 후진 속도
-            'dock_reach_radius': 3.0,  # 도킹 포인트 도달 반경 (미터)
-            # Position Control 모드용 파라미터 (control_mode='POSITION_CONTROL'일 때 사용)
-            'x_error': 0.0,  # body-frame x 오차 (미터, 전방)
-            'y_error': 0.0,  # body-frame y 오차 (미터, 좌측)
-            'desired_psi': 10.0,  # 목표 헤딩 (도, 0=North)
-            'los_delta': 15.0  # LOS 가이던스 delta (LOS 모드용)
         }),
-        # (100, 10, 'ROTATION', DEFAULT_WAYPOINT_RADIUS, {'desired_angle': 70.0}),
-        # (36.3960382, 127.40173437, 'CIRCLE_BUOY', DEFAULT_WAYPOINT_RADIUS, {'length': 14.0, 'angle': 45.0, 'turn_flag': 1, 'radius': 3.0, 'los_delta': 10.0}),
-        # (-33.8580, 151.2165, 'DOCK_MODE', DEFAULT_WAYPOINT_RADIUS, {'target_shape': 'red_square', 'los_delta': 15.0}),
-        (36.3960382, 127.40173437, 'STOP', DEFAULT_WAYPOINT_RADIUS, {
-            'stop_duration': 5.0,  # 정지 시간 (초)
-            'desired_psi': 0.0  # 목표 헤딩 (도, 0=North, 선택사항)
-        }),
+        (36.39625154, 127.40154380, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {'los_delta': 3.0}),
+        (36.39624999, 127.40153864, 'CIRCLE_BUOY', DEFAULT_WAYPOINT_RADIUS, {'length': 14.0, 'angle': 45.0, 'turn_flag': 1, 'radius': 2.0, 'los_delta': 10.0}),
+        (36.39602297, 127.40158252, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {'los_delta': 3.0}),
+
+
+# [INFO] [1764182995.836597049] [local_position_to_gps]: 📍 GPS: lat=36.39603715°, lon=127.40173398
+#         36.39600545°, lon=127.40155312°, alt=45.05m | NED: x=7.45m, y=-9.25m, z=4.72m | Speed: 0.09 m/s | Valid: 3767/3767
+# [INFO] [1764182178.856123390] [local_position_to_gps]: 📍 GPS: lat=36.39603745°, lon=127.40173195°, alt=45.84m | NED: x=11.01m, y=6.77m, z=3.93m | Speed: 0.04 m/s | Valid: 10187/10187
+
+# [INFO] [1764182232.064247238] [local_position_to_gps]: 📍 GPS: lat=36.39614997°, lon=127.40175254°, alt=46.15m | NED: x=23.54m, y=8.61m, z=3.63m | Speed: 0.52 m/s | Valid: 15615/15615
+# 0m, z=3.74m | Speed: 0.58 m/s | Valid: 21966/21966
+# [INFO] [1764182295.412036658] [local_position_to_gps]: 📍 GPS: lat=36.39625154°, lon=127.40154380°, alt=46.01m | NED: x=34.85m, y=-10.09m, z=3.76m | Speed: 0.47 m/s | Valid: 22066/22066
+# [INFO] [1764182296.419163341] [local_position_to_gps]: 📍 GPS: lat=36.39624999°, lon=127.40153864°, alt=45.91m | NED: x=34.68m, y=-10.55m, z=3.87m | Speed: 0.51 m/s | Valid: 22167/22167
+
+
+
+
+# 36.39602297°, lon=127.40158252°, alt=45.16m | NED: x=9.40m, y=-6.62m, z=4.61m | Speed: 0.31 m/s | Valid: 32371/32371
+
+
+
+
+
+# [INFO] [1764182351.883063560] [local_position_to_gps]: 📍 GPS: lat=36.39602843°, lon=127.40164481°, alt=45.13m | NED: x=10.01m, y=-1.04m, z=4.65m | Speed: 0.51 m/s | Valid: 33568/33568
+# m, z=4.30m | Speed: 0.45 m/s | Valid: 34465/34465
+# [INFO] [1764182355.887479978] [local_position_to_gps]: 📍 GPS: lat=36.39604647°, lon=127.40170185°, alt=45.61m | NED: x=12.02m, y=4.07m, z=4.17m | Speed: 0.40 m/s | Valid: 34766/34766
+
+
+
+
+        # (36.3960382, 127.40173437, 'DOCK_MODE', DEFAULT_WAYPOINT_RADIUS, {
+        #     'dock_control_mode': 'POSITION_CONTROL',  # 'LOS' 또는 'POSITION_CONTROL'
+        #     'dock_index': 1,  # 도킹 스테이션 번호 (1-6)
+        #     'dock_points': [  # 도킹 포인트 리스트 [[[dock_point], [aux_point]], ...]
+        #         # 위경도 형식: [[lat, lon], [lat, lon]] 또는 상대 좌표: [[Easting, Northing], [Easting, Northing]]
+        #         # 위경도는 -90~90 (위도), -180~180 (경도) 범위로 자동 감지
+        #         [[36.3960382, 127.40173437], [36.3960382, 127.40173437]],  # 스테이션 1: [도킹 포인트(위경도), 보조 포인트(위경도)]
+        #         [[36.3960382, 127.40173437], [36.3960382, 127.40173437]],  # 스테이션 2
+        #         [[36.3960382, 127.40173437], [36.3960382, 127.40173437]],  # 스테이션 3
+        #     ],
+        #     'dock_approach_time': 30.0,  # 접근 단계 시간 (초)
+        #     'dock_reverse_time': 5.0,  # 후진 단계 시간 (초)
+        #     'dock_approach_speed': 0.5,  # 접근 속도
+        #     'dock_reverse_speed': 0.3,  # 후진 속도
+        #     'dock_reach_radius': 3.0,  # 도킹 포인트 도달 반경 (미터)
+        #     # Position Control 모드용 파라미터 (control_mode='POSITION_CONTROL'일 때 사용)
+        #     'x_error': 0.0,  # body-frame x 오차 (미터, 전방)
+        #     'y_error': 0.0,  # body-frame y 오차 (미터, 좌측)
+        #     'desired_psi': 10.0,  # 목표 헤딩 (도, 0=North)
+        #     'los_delta': 15.0  # LOS 가이던스 delta (LOS 모드용)
+        # }),
+        # # (100, 10, 'ROTATION', DEFAULT_WAYPOINT_RADIUS, {'desired_angle': 70.0}),
+        # # (36.3960382, 127.40173437, 'CIRCLE_BUOY', DEFAULT_WAYPOINT_RADIUS, {'length': 14.0, 'angle': 45.0, 'turn_flag': 1, 'radius': 3.0, 'los_delta': 10.0}),
+        # # (-33.8580, 151.2165, 'DOCK_MODE', DEFAULT_WAYPOINT_RADIUS, {'target_shape': 'red_square', 'los_delta': 15.0}),
+        # (36.3960382, 127.40173437, 'STOP', DEFAULT_WAYPOINT_RADIUS, {
+        #     'stop_duration': 5.0,  # 정지 시간 (초)
+        #     'desired_psi': 0.0  # 목표 헤딩 (도, 0=North, 선택사항)
+        # }),
         
 
 

@@ -816,6 +816,7 @@ class MissionLoopExecutor:
         # 도킹 미션 단계 확인: REVERSING 단계에서는 velocity 제어 모드 사용
         is_dock_mode = (mission_type == MissionType.DOCK_MODE)
         is_dock_reversing = False
+        is_dock_position_control = False  # 기본값 초기화
         if is_dock_mode:
             dock_mission = self.mission_manager.missions.get(MissionType.DOCK_MODE)
             if dock_mission and hasattr(dock_mission, 'docking_phase'):
@@ -930,3 +931,8 @@ class MissionLoopExecutor:
             accumulated_angle=accumulated_angle,
             depth_map=depth_map  # Depth map 전달
         )
+
+
+
+
+
