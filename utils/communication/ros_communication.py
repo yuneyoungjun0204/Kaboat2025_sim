@@ -263,7 +263,7 @@ class ROSCommunicationManager:
         self.publishers['all_waypoints'] = self.node.create_publisher(
             Float64MultiArray, Constants.Topics.ALL_WAYPOINTS, Constants.QueueSizes.STATUS
         )
-        
+
         # GPS 기준점 정보 퍼블리셔 (시각화용)
         self.publishers['gps_reference'] = self.node.create_publisher(
             Float64MultiArray, Constants.Topics.GPS_REFERENCE, Constants.QueueSizes.STATUS

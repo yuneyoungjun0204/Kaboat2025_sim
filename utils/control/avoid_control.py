@@ -460,7 +460,7 @@ class AvoidanceController:
             current_pos, waypoint_start, waypoint_end
         )
 
-        return los_target
+        return [los_target[1], los_target[0]]
 
     def check_obstacles_and_get_control(self, current_pos: np.ndarray, los_target: np.ndarray,
                                        agent_heading: float, lidar_distances: np.ndarray,

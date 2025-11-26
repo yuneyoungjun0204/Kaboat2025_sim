@@ -479,7 +479,7 @@ class UnifiedPlotManager:
         """
         # 마커
         marker = self.ax_main.scatter(
-            [los_target[1]], [los_target[0]],
+            [los_target[0]], [los_target[1]],
             c='magenta', marker='D', s=150, alpha=0.9,
             edgecolors='darkmagenta', linewidths=2, zorder=8
         )
@@ -487,8 +487,8 @@ class UnifiedPlotManager:
 
         # 연결선
         line, = self.ax_main.plot(
-            [robot_pos[1], los_target[1]],
-            [robot_pos[0], los_target[0]],
+            [robot_pos[1], los_target[0]],
+            [robot_pos[0], los_target[1]],
             'm--', alpha=0.7, linewidth=2.5, zorder=7
         )
         self.dynamic_elements.append(line)
