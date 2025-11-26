@@ -156,7 +156,8 @@ class WaypointManager:
             'OBSTACLE_AVOID': MissionType.OBSTACLE_AVOID,
             'HEADING_ALIGN': MissionType.HEADING_ALIGN,
             'DOCK_MODE': MissionType.DOCK_MODE,
-            'ROTATION': MissionType.ROTATION
+            'ROTATION': MissionType.ROTATION,
+            'STOP': MissionType.STOP
         }
 
         for x, y, mission_type_str, radius, params in Constants.PREDEFINED_WAYPOINTS:

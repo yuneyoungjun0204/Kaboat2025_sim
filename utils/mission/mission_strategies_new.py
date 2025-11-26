@@ -510,7 +510,8 @@ class CircleBuoyMission(BaseMissionStrategy):
                     right_point = self._calculate_point_at_angle(agent_position, agent_heading, side_distance, angle)
                     left_point = self._calculate_point_at_angle(agent_position, agent_heading, side_distance, -angle)
                     front_point = self._calculate_point_at_angle(agent_position, agent_heading, length, 0.0)
-                    start_point = np.array([agent_position[0], agent_position[1]], dtype=np.float32)  # 현재 위치
+                    # agent_position은 [Easting, Northing] 순서이므로 [Northing, Easting]으로 변환
+                    start_point = np.array([agent_position[1], agent_position[0]], dtype=np.float32)  # [Northing, Easting]
                     
                     # turn_flag에 따라 순서 결정
                     if turn_flag == 0:  # 시계방향: +angle → 정면 → -angle → 시작위치
@@ -520,7 +521,8 @@ class CircleBuoyMission(BaseMissionStrategy):
                 else:
                     # angle이 0이면 정면만
                     front_point = self._calculate_point_at_angle(agent_position, agent_heading, length, 0.0)
-                    start_point = np.array([agent_position[0], agent_position[1]], dtype=np.float32)
+                    # agent_position은 [Easting, Northing] 순서이므로 [Northing, Easting]으로 변환
+                    start_point = np.array([agent_position[1], agent_position[0]], dtype=np.float32)  # [Northing, Easting]
                     self.target_points = [front_point, start_point]
             
             if logger:
@@ -541,7 +543,8 @@ class CircleBuoyMission(BaseMissionStrategy):
                 right_point = self._calculate_point_at_angle(agent_position, agent_heading, side_distance, angle)
                 left_point = self._calculate_point_at_angle(agent_position, agent_heading, side_distance, -angle)
                 front_point = self._calculate_point_at_angle(agent_position, agent_heading, length, 0.0)
-                start_point = np.array([agent_position[0], agent_position[1]], dtype=np.float32)
+                # agent_position은 [Easting, Northing] 순서이므로 [Northing, Easting]으로 변환
+                start_point = np.array([agent_position[1], agent_position[0]], dtype=np.float32)  # [Northing, Easting]
                 
                 if turn_flag == 0:
                     self.target_points = [right_point, front_point, left_point, start_point]
@@ -549,7 +552,8 @@ class CircleBuoyMission(BaseMissionStrategy):
                     self.target_points = [left_point, front_point, right_point, start_point]
             else:
                 front_point = self._calculate_point_at_angle(agent_position, agent_heading, length, 0.0)
-                start_point = np.array([agent_position[0], agent_position[1]], dtype=np.float32)
+                # agent_position은 [Easting, Northing] 순서이므로 [Northing, Easting]으로 변환
+                start_point = np.array([agent_position[1], agent_position[0]], dtype=np.float32)  # [Northing, Easting]
                 self.target_points = [front_point, start_point]
 
         # 현재 목표 웨이포인트
@@ -563,8 +567,10 @@ class CircleBuoyMission(BaseMissionStrategy):
         target_point = self.target_points[self.current_waypoint_index]
         
         # 목표 포인트까지의 거리 계산
-        # agent_position: [Easting, Northing], target_point: [Easting, Northing]
-        delta = target_point - agent_position
+        # target_point: [Northing, Easting], agent_position: [Easting, Northing]
+        # 계산을 위해 target_point를 [Easting, Northing] 순서로 변환
+        target_point_east_north = np.array([target_point[1], target_point[0]])  # [Easting, Northing]
+        delta = target_point_east_north - agent_position
         distance = np.linalg.norm(delta)
 
         # 웨이포인트 도달 판정 (radius 이내)
@@ -597,7 +603,9 @@ class CircleBuoyMission(BaseMissionStrategy):
             
             # 다음 웨이포인트로 업데이트
             target_point = self.target_points[self.current_waypoint_index]
-            delta = target_point - agent_position
+            # target_point: [Northing, Easting] → [Easting, Northing] 변환
+            target_point_east_north = np.array([target_point[1], target_point[0]])
+            delta = target_point_east_north - agent_position
             distance = np.linalg.norm(delta)
 
         # atan2 방식으로 목표 헤딩 계산

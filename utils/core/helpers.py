@@ -68,33 +68,25 @@ def find_buoy_with_fallback(
     logger=None
 ) -> Tuple[Optional[Dict], str]:
     """
-    부표 탐지: 추적값 우선, 없으면 원본 측정값 사용
+    부표 탐지: 추적값만 사용 (원본 측정값 사용 안 함)
 
     Args:
         label: 찾을 부표 라벨 ('red_cone', 'green_cone', 'blue_buoy' 등)
         detected_objects: 추적된 객체 리스트 (IMM-PDAF 출력)
-        raw_detections: 원본 탐지 결과 (NanoOWL 직접 출력)
+        raw_detections: 원본 탐지 결과 (미사용, 호환성 유지)
         logger: 로거
 
     Returns:
         Tuple[Optional[Dict], str]: (부표 딕셔너리, 데이터 소스)
-            데이터 소스는 'TRACKED' 또는 'RAW'
+            데이터 소스는 'TRACKED' 또는 'NONE'
     """
-    # 1. 추적값에서 먼저 찾기
+    # 추적값에서만 찾기 (원본 측정값 사용 안 함)
     if detected_objects:
         for det in detected_objects:
             if det['label'] == label:
                 return det, "TRACKED"
 
-    # 2. 원본 측정값에서 찾기
-    if raw_detections:
-        for det in raw_detections:
-            if det['label'] == label:
-                if logger:
-                    logger.info(f"⚠️ {label}: 추정값 없음 → 측정값 사용")
-                return det, "RAW"
-
-    # 3. 둘 다 없으면 None
+    # 추적값이 없으면 None 반환
     return None, "NONE"
 
 

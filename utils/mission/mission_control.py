@@ -239,7 +239,8 @@ class ObstacleAvoidExecutor:
         filtered_linear, filtered_angular = self.avoidance_controller.apply_filters(
             linear_vel, angular_vel
         )
-        self.onnx_controller.update_previous_inputs(filtered_angular, filtered_linear)
+        if self.onnx_controller is not None:
+            self.onnx_controller.update_previous_inputs(filtered_angular, filtered_linear)
 
         return filtered_linear, filtered_angular
 
@@ -266,6 +267,10 @@ class ObstacleAvoidExecutor:
 
     def _get_onnx_control(self) -> Tuple[float, float]:
         """ONNX 제어 래퍼 (v2 API - previous/next waypoint 제거)"""
+        # 지연 로딩된 경우 기본값 반환
+        if self.onnx_controller is None:
+            return 0.0, 0.0
+        
         current, previous, next_wp = self.mission_executor.get_waypoint_positions()
         return self.onnx_controller.get_control(
             self.sensor_handler.lidar_distances,
@@ -376,12 +381,13 @@ class MissionLoopExecutor:
 
     def _initialize_parameters_once(self):
         """파라미터를 한 번만 초기화 (Jetson 최적화)"""
-        # 탐지 시스템 파라미터
-        detection_params = self.param_manager.get_detection_parameters()
-        if detection_params:
-            self.detection_system.update_parameters(
-                **{k: v for k, v in detection_params.items() if v is not None}
-            )
+        # 탐지 시스템 파라미터 (지연 로딩된 경우 스킵)
+        if self.detection_system is not None:
+            detection_params = self.param_manager.get_detection_parameters()
+            if detection_params:
+                self.detection_system.update_parameters(
+                    **{k: v for k, v in detection_params.items() if v is not None}
+                )
 
         # 트래커 파라미터
         tracker_params = self.param_manager.get_tracker_parameters()
@@ -457,12 +463,13 @@ class MissionLoopExecutor:
         if thrust_scale:
             self.mission_manager.update_thrust_scale(thrust_scale)
 
-        # 부표 미션 및 도킹 미션만 추가 파라미터 업데이트
+        # 부표 미션 및 도킹 미션만 추가 파라미터 업데이트 (지연 로딩된 경우 스킵)
         if mission_type in [MissionType.PASS_BETWEEN_BUOYS, MissionType.CIRCLE_BUOY, MissionType.DOCK_MODE]:
-            detection_params = self.param_manager.get_detection_parameters()
-            self.detection_system.update_parameters(
-                **{k: v for k, v in detection_params.items() if v is not None}
-            )
+            if self.detection_system is not None:
+                detection_params = self.param_manager.get_detection_parameters()
+                self.detection_system.update_parameters(
+                    **{k: v for k, v in detection_params.items() if v is not None}
+                )
 
             tracker_params = self.param_manager.get_tracker_parameters()
             if tracker_params.get('max_coast_frames'):
@@ -472,6 +479,11 @@ class MissionLoopExecutor:
 
     def _perform_detection_and_tracking(self, mission_type: MissionType):
         """객체 탐지 및 추적"""
+        # 지연 로딩된 경우 스킵
+        if self.detection_system is None:
+            self.raw_detections = []
+            return
+        
         self.raw_detections = self.detection_system.detect_objects(
             self.sensor_handler.current_image, mission_type
         )

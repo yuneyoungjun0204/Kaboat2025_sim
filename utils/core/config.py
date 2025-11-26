@@ -239,15 +239,18 @@ class Constants:
         # MODE=1 (GPS 좌표) 예시: (WAYPOINT_MODE를 1로 변경 후 사용)
         # (-33.8575, 151.2160, 'DOCK_MODE', DEFAULT_WAYPOINT_RADIUS,  {'target_shape': 'red_square', 'los_delta': 15.0}),
         # (36.39603892, 127.40173437, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {'los_delta': 3.0}),
-        # (36.3960382, 127.40173437, 'PASS_BETWEEN_BUOYS', DEFAULT_WAYPOINT_RADIUS, {
-        #     'previous_waypoint_lat': 36.39603892,
-        #     'previous_waypoint_lon': 127.40173437
-        # }),
+        (36.3960382, 127.40173437, 'STOP', DEFAULT_WAYPOINT_RADIUS, {'stop_duration': 5.0}),
+        (36.3960382, 127.40173437, 'PASS_BETWEEN_BUOYS', DEFAULT_WAYPOINT_RADIUS, {
+            'previous_waypoint_lat': 36.39603892,
+            'previous_waypoint_lon': 127.40173437
+        }),
+        
         # (-33.8575, 151.2160, 'DOCK_MODE', DEFAULT_WAYPOINT_RADIUS,  {'target_shape': 'red_square', 'los_delta': 15.0}),
         # (100, 10, 'ROTATION', DEFAULT_WAYPOINT_RADIUS, {'desired_angle': 70.0}),
-        (36.3960382, 127.40173437, 'CIRCLE_BUOY', DEFAULT_WAYPOINT_RADIUS, {'length': 14.0, 'angle': 45.0, 'turn_flag': 1, 'radius': 2.0, 'los_delta': 10.0}),
+        # (36.3960382, 127.40173437, 'CIRCLE_BUOY', DEFAULT_WAYPOINT_RADIUS, {'length': 14.0, 'angle': 45.0, 'turn_flag': 1, 'radius': 3.0, 'los_delta': 10.0}),
         # (-33.8580, 151.2165, 'DOCK_MODE', DEFAULT_WAYPOINT_RADIUS, {'target_shape': 'red_square', 'los_delta': 15.0}),
-        # (-33.8585, 151.2170, 'STOP', DEFAULT_WAYPOINT_RADIUS, {'stop_duration': 5.0}),
+        (36.3960382, 127.40173437, 'STOP', DEFAULT_WAYPOINT_RADIUS, {'stop_duration': 5.0}),
+        
 
 
         #####square 33
@@ -586,8 +589,8 @@ class Constants:
     # ============================================================================
     class VisualizationParams:
         """시각화 시스템 파라미터"""
-        # 탐지 임계값
-        DETECTION_THRESHOLD = 1.004
+        # 탐지 임계값 (NanoOWL: 낮을수록 더 많은 탐지, 일반적으로 0.01~0.1 사용)
+        DETECTION_THRESHOLD = 0.1  # 0.0004에서 0.01로 상향 조정 (탐지 개선)
         MIN_BOX_AREA = 2
         MAX_BOX_AREA = 800000
         MIN_DEPTH_THRESHOLD = 0.12  # 최소 깊이 (미터)

@@ -304,7 +304,8 @@ class VRXSystemFactory:
     def create_all_components(
         self,
         setup_ros: bool = False,
-        ros_callbacks: Optional[Dict[str, Any]] = None
+        ros_callbacks: Optional[Dict[str, Any]] = None,
+        lazy_load: bool = True
     ) -> Dict[str, Any]:
         """
         모든 시스템 컴포넌트를 한 번에 생성
@@ -312,6 +313,7 @@ class VRXSystemFactory:
         Args:
             setup_ros: ROS2 통신 설정 여부
             ros_callbacks: ROS2 콜백 함수들 (setup_ros=True일 때 필수)
+            lazy_load: 무거운 컴포넌트 지연 로딩 (시작 시간 단축)
 
         Returns:
             Dict[str, Any]: 생성된 모든 컴포넌트
@@ -342,11 +344,19 @@ class VRXSystemFactory:
         self.logger.info("VRX 시스템 컴포넌트 초기화 시작")
         self.logger.info("=" * 80)
 
-        # 1. 깊이 추정기
-        depth_estimator = self.create_depth_estimator()
+        # 1. 깊이 추정기 (지연 로딩)
+        if lazy_load:
+            self.logger.info("⏭️  깊이 추정기 지연 로딩 (첫 이미지 수신 시 초기화)")
+            depth_estimator = None
+        else:
+            depth_estimator = self.create_depth_estimator()
 
-        # 2. 객체 탐지 시스템
-        detection_system = self.create_detection_system(depth_estimator)
+        # 2. 객체 탐지 시스템 (지연 로딩)
+        if lazy_load:
+            self.logger.info("⏭️  객체 탐지 시스템 지연 로딩 (첫 이미지 수신 시 초기화)")
+            detection_system = None
+        else:
+            detection_system = self.create_detection_system(depth_estimator)
 
         # 3. 센서 시스템
         sensor_manager, sensor_handler = self.create_sensor_system()
@@ -361,8 +371,12 @@ class VRXSystemFactory:
         # 6. 시각화 및 파라미터
         visualization, param_manager = self.create_visualization_system()
 
-        # 7. ONNX 컨트롤러
-        onnx_controller = self.create_onnx_controller()
+        # 7. ONNX 컨트롤러 (지연 로딩)
+        if lazy_load:
+            self.logger.info("⏭️  ONNX 컨트롤러 지연 로딩 (첫 장애물 회피 시 초기화)")
+            onnx_controller = None
+        else:
+            onnx_controller = self.create_onnx_controller()
 
         # 8. 트래커
         tracker = self.create_tracker()
