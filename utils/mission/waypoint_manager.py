@@ -163,6 +163,30 @@ class WaypointManager:
             mission_type = mission_type_map.get(mission_type_str)
             if mission_type:
                 # waypoint_mode에 따라 is_gps 자동 설정
+                # PASS_BETWEEN_BUOYS에서 waypoint_sequence가 있으면 자동 확장
+                if (mission_type == MissionType.PASS_BETWEEN_BUOYS and
+                        params and 'waypoint_sequence' in params):
+                    sequence = params.get('waypoint_sequence') or []
+                    # 기존 x, y를 첫 번째 웨이포인트로 포함
+                    full_sequence = [(x, y)] + [
+                        coord for coord in sequence if coord and len(coord) >= 2
+                    ]
+                    # 원본 params 변형 방지
+                    base_params = params.copy()
+                    base_params.pop('waypoint_sequence', None)
+
+                    for idx, (seq_x, seq_y) in enumerate(full_sequence):
+                        wp_params = base_params.copy()
+                        if idx > 0:
+                            prev_lat, prev_lon = full_sequence[idx - 1]
+                            wp_params['previous_waypoint_lat'] = prev_lat
+                            wp_params['previous_waypoint_lon'] = prev_lon
+                        self.add_waypoint(
+                            seq_x, seq_y, mission_type, radius,
+                            wp_params, is_gps=None
+                        )
+                    continue
+
                 self.add_waypoint(x, y, mission_type, radius, params, is_gps=None)
 
     def check_waypoint_reached(self, agent_position: np.ndarray) -> Optional[Dict]:
