@@ -1237,8 +1237,8 @@ class DockMission(BaseMissionStrategy):
         sin_h = np.sin(heading_rad)
         
         # World-frame → Body-frame 변환
-        x_error_body = position_error[0] * sin_h + position_error[1] * cos_h  # 전방
-        y_error_body = position_error[0] * cos_h - position_error[1] * sin_h  # 좌측
+        x_error_body = position_error[0] * cos_h + position_error[1] * sin_h  # 전방
+        y_error_body = position_error[0] * sin_h - position_error[1] * cos_h  # 좌측
         # x_error_body = position_error[1] 
         # y_error_body = position_error[0]
         # 헤딩 제어
@@ -1416,6 +1416,7 @@ class StopMission(BaseMissionStrategy):
         super().__init__(thrust_scale)
         self.stop_start_time: Optional[float] = None
         self.stop_duration: float = Constants.STOP_DEFAULT_DURATION
+        self.desired_psi: Optional[float] = None  # 목표 헤딩 (도, 0=North)
         self.is_completed: bool = False
 
     def reset(self):
@@ -1434,7 +1435,7 @@ class StopMission(BaseMissionStrategy):
         지정된 시간 동안 정지
 
         Args:
-            mission_params: {'stop_duration': float} - 정지 시간 (초)
+            mission_params: {'stop_duration': float, 'desired_psi': float} - 정지 시간 (초), 목표 헤딩 (도)
             logger: 로거
 
         Returns:
@@ -1446,12 +1447,16 @@ class StopMission(BaseMissionStrategy):
             self.stop_start_time = time.time()
             self.is_completed = False
             
-            # 파라미터에서 정지 시간 가져오기
+            # 파라미터에서 정지 시간 및 목표 헤딩 가져오기
             if mission_params:
                 self.stop_duration = mission_params.get('stop_duration', Constants.STOP_DEFAULT_DURATION)
+                self.desired_psi = mission_params.get('desired_psi', None)  # 목표 헤딩 (도)
             
             if logger:
-                logger.info(f"🛑 STOP 미션 시작: {self.stop_duration:.1f}초 정지")
+                if self.desired_psi is not None:
+                    logger.info(f"🛑 STOP 미션 시작: {self.stop_duration:.1f}초 정지, 목표 헤딩: {self.desired_psi:.1f}°")
+                else:
+                    logger.info(f"🛑 STOP 미션 시작: {self.stop_duration:.1f}초 정지")
 
         # 경과 시간 확인
         import time

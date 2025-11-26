@@ -410,7 +410,13 @@ class MissionLoopExecutor:
             # 1. 현재 미션 확인
             mission_type = self._get_effective_mission()
             if mission_type is None:
+                # 미션이 없을 때: PX4에 0 명령 발행
                 self.ros_comm.publish_thrust_commands(0.0, 0.0)
+                current_yaw_rad = np.radians(self.sensor_handler.agent_heading) if self.sensor_handler.agent_heading is not None else 0.0
+                self.ros_comm.publish_desired_control(
+                    0.0, 0.0, 0.0,
+                    current_yaw=current_yaw_rad, is_dock_mode=False
+                )
                 return
 
             # 2. 파라미터 업데이트 (거의 안함 - Jetson 최적화)
@@ -422,7 +428,14 @@ class MissionLoopExecutor:
                 self.sensor_handler.agent_position
             )
             if mission_completed:
+                # 모든 미션 완료: PX4에 0 명령 발행
                 self.ros_comm.publish_thrust_commands(0.0, 0.0)
+                # PX4 브릿지에도 0 명령 발행 (속도 제어 모드로 전환)
+                current_yaw_rad = np.radians(self.sensor_handler.agent_heading) if self.sensor_handler.agent_heading is not None else 0.0
+                self.ros_comm.publish_desired_control(
+                    0.0, 0.0, 0.0,
+                    current_yaw=current_yaw_rad, is_dock_mode=False
+                )
                 return
 
             # 4. 객체 탐지 및 추적 (부표 미션 및 도킹 미션)
@@ -664,8 +677,11 @@ class MissionLoopExecutor:
         self.target_depth = target_depth
 
         # Position Control 모드일 때 오차 정보 발행 (시각화용 및 PX4 직접 발행)
+        # REVERSING 단계에서는 position 제어를 사용하지 않음
         dock_mission = self.mission_manager.missions.get(MissionType.DOCK_MODE)
-        if dock_mission and hasattr(dock_mission, 'control_mode') and dock_mission.control_mode == 'POSITION_CONTROL':
+        is_reversing = dock_mission and hasattr(dock_mission, 'docking_phase') and dock_mission.docking_phase == "REVERSING"
+        
+        if dock_mission and hasattr(dock_mission, 'control_mode') and dock_mission.control_mode == 'POSITION_CONTROL' and not is_reversing:
             if hasattr(dock_mission, 'last_x_error') and hasattr(dock_mission, 'last_y_error'):
                 desired_psi = dock_mission.desired_psi if hasattr(dock_mission, 'desired_psi') else None
                 # 시각화용 발행
@@ -690,6 +706,22 @@ class MissionLoopExecutor:
                     
                     # PX4 position_error 토픽으로 직접 발행 (desired_psi 포함)
                     self.ros_comm.publish_px4_position_command(x_error_body, y_error_body, desired_psi)
+            
+
+        # # REVERSING 단계에서 velocity 제어 명령 발행 (각도 고정)
+        # if is_reversing:
+        #     # reverse_speed를 velocity로 사용
+        #     reverse_speed = dock_mission.reverse_speed if hasattr(dock_mission, 'reverse_speed') else -0.3
+        #     # 각도 고정: desired_moment = 0.0, current_yaw 사용
+        #     current_yaw_rad = np.radians(self.sensor_handler.agent_heading) if self.sensor_handler.agent_heading is not None else 0.0
+        #     # velocity 제어 모드로 발행 (is_dock_mode=False)
+        #     self.ros_comm.publish_desired_control(
+        #         -0.5,  # desired_speed
+        #         0.0,            # desired_moment (각도 고정)
+        #         0.0,            # desired_force_y
+        #         current_yaw=current_yaw_rad,
+        #         is_dock_mode=False  # velocity 제어 모드
+        #     )
 
         self._publish_control_info(left_thrust, right_thrust, "DOCK_MISSION")
         return left_thrust, right_thrust
@@ -698,8 +730,10 @@ class MissionLoopExecutor:
         """정지 미션 실행"""
         wp_params = self.waypoint_manager.get_current_mission_params()
         params = self.param_manager.get_mission_parameters(MissionType.STOP, wp_params)
+        agent_heading = self.sensor_handler.agent_heading if self.sensor_handler.agent_heading is not None else 0.0
         left, right = self.mission_executor.execute_stop(
             params,
+            agent_heading,
             self.logger
         )
         self._publish_control_info(left, right, "STOP_MISSION")
@@ -772,12 +806,56 @@ class MissionLoopExecutor:
         
         # 현재 yaw를 라디안으로 변환
         current_yaw_rad = np.radians(self.sensor_handler.agent_heading) if self.sensor_handler.agent_heading is not None else 0.0
+        
+        # STOP 미션일 때: 속도와 각도를 0으로 명령
+        # if mission_type == MissionType.STOP:
+        #     # velocity와 yaw를 모두 0으로 설정하여 PX4에 직접 발행
+        #     self.ros_comm.publish_px4_velocity_command(0.0, 0.0)
+        #     return
+        
+        # 도킹 미션 단계 확인: REVERSING 단계에서는 velocity 제어 모드 사용
         is_dock_mode = (mission_type == MissionType.DOCK_MODE)
+        is_dock_reversing = False
+        if is_dock_mode:
+            dock_mission = self.mission_manager.missions.get(MissionType.DOCK_MODE)
+            if dock_mission and hasattr(dock_mission, 'docking_phase'):
+                is_dock_reversing = (dock_mission.docking_phase == "REVERSING")
+        
+            # REVERSING 단계에서는 velocity 제어 모드 사용 (position 제어 비활성화)
+            is_dock_position_control = is_dock_mode and not is_dock_reversing
+            # REVERSING 단계에서는 명시적으로 velocity 명령 발행 (현재 헤딩 유지)
+            if is_dock_reversing:
+                # velocity 제어 모드로 전환
+                from ..core.config import Constants
+            # STOP 미션일 때: 속도와 각도를 0으로 명령
+                velocity = float(desired_speed) * Constants.PX4.VELOCITY_SCALE
+                velocity = np.clip(velocity, Constants.PX4.MIN_VELOCITY, Constants.PX4.MAX_VELOCITY)
+                # 현재 헤딩 유지 (yaw_moment가 0이므로 target_yaw = current_yaw)
+                self.ros_comm.publish_px4_velocity_command(-1.0, current_yaw_rad)
+        elif mission_type == MissionType.STOP:
+            # STOP 미션: velocity는 0, yaw는 desired_psi 사용 (없으면 현재 각도 유지)
+            stop_mission = self.mission_manager.missions.get(MissionType.STOP)
+            if stop_mission and hasattr(stop_mission, 'desired_psi') and stop_mission.desired_psi is not None:
+                # desired_psi를 라디안으로 변환
+                desired_psi_rad = np.radians(stop_mission.desired_psi)
+                self.ros_comm.publish_px4_velocity_command(0.0, current_yaw_rad)
+            else:
+                # desired_psi가 없으면 현재 각도 유지
+                self.ros_comm.publish_px4_velocity_command(0.0, current_yaw_rad)
+        else:
+            self.ros_comm.publish_desired_control(
+                desired_speed, desired_moment, desired_force_y,
+                current_yaw=current_yaw_rad, is_dock_mode=is_dock_position_control
+            )
 
-        self.ros_comm.publish_desired_control(
-            desired_speed, desired_moment, desired_force_y,
-            current_yaw=current_yaw_rad, is_dock_mode=is_dock_mode
-        )
+        # # REVERSING 단계에서는 명시적으로 velocity 명령 발행 (현재 헤딩 유지)
+        # if is_dock_reversing:
+        #     # velocity 제어 모드로 전환
+        #     from ..core.config import Constants
+        #     velocity = float(desired_speed) * Constants.PX4.VELOCITY_SCALE
+        #     velocity = np.clip(velocity, Constants.PX4.MIN_VELOCITY, Constants.PX4.MAX_VELOCITY)
+        #     # 현재 헤딩 유지 (yaw_moment가 0이므로 target_yaw = current_yaw)
+        #     self.ros_comm.publish_px4_velocity_command(-0.5, current_yaw_rad)
 
         # PX4 브릿지 명령은 publish_desired_control 내에서 자동으로 발행됨
 

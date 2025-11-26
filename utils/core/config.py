@@ -109,9 +109,12 @@ class Constants:
 
         # 제어 파라미터
         MAX_VELOCITY = 2.0          # 최대 전진 속도 (m/s)
-        MIN_VELOCITY = 0.2
+        MIN_VELOCITY = -1.0
         MAX_YAW_RATE = 1.0          # 최대 yaw rate (rad/s)
         CONTROL_RATE_HZ = 50.0      # 제어 주기 (Hz)
+        Linear_scale = 1.4
+        yaw_scale = 1.4
+        linear_add=0.35
 
         # 좌표계 원점 (LLA to NED 변환용)
         # LAT_ORIGIN = -33.72259952421798   # Sydney Regatta Centre
@@ -233,7 +236,7 @@ class Constants:
         # (0, 0, 'PASS_BETWEEN_BUOYS', DEFAULT_WAYPOINT_RADIUS, {}),
 
 # 36.39603706°, lon=127.40173229
-        # STOP 미션 예시: (x, y, 'STOP', DEFAULT_WAYPOINT_RADIUS, {'stop_duration': 5.0})
+        # STOP 미션 예시: (x, y, 'STOP', DEFAULT_WAYPOINT_RADIUS, {'stop_duration': 5.0, 'desired_psi': 0.0})
         # (100, 50, 'STOP', DEFAULT_WAYPOINT_RADIUS, {'stop_duration': 3.0}),  # 3초 정지
 
         # MODE=1 (GPS 좌표) 예시: (WAYPOINT_MODE를 1로 변경 후 사용)
@@ -269,7 +272,10 @@ class Constants:
         # (100, 10, 'ROTATION', DEFAULT_WAYPOINT_RADIUS, {'desired_angle': 70.0}),
         # (36.3960382, 127.40173437, 'CIRCLE_BUOY', DEFAULT_WAYPOINT_RADIUS, {'length': 14.0, 'angle': 45.0, 'turn_flag': 1, 'radius': 3.0, 'los_delta': 10.0}),
         # (-33.8580, 151.2165, 'DOCK_MODE', DEFAULT_WAYPOINT_RADIUS, {'target_shape': 'red_square', 'los_delta': 15.0}),
-        (36.3960382, 127.40173437, 'STOP', DEFAULT_WAYPOINT_RADIUS, {'stop_duration': 5.0}),
+        (36.3960382, 127.40173437, 'STOP', DEFAULT_WAYPOINT_RADIUS, {
+            'stop_duration': 5.0,  # 정지 시간 (초)
+            'desired_psi': 0.0  # 목표 헤딩 (도, 0=North, 선택사항)
+        }),
         
 
 
@@ -330,7 +336,7 @@ class Constants:
 
     ONNX_V_SCALE = 1.0
     ONNX_W_SCALE = 1.0
-    ONNX_LINEAR_VELOCITY_RANGE = (0.2, 1.0)
+    ONNX_LINEAR_VELOCITY_RANGE = (-1.0, 2.0)
     ONNX_ANGULAR_VELOCITY_RANGE = (-1.0, 1.0)
 
     # ============================================================================

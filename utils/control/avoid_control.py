@@ -499,6 +499,8 @@ class AvoidanceController:
                 current_pos, los_target, agent_heading
             )
             use_direct_control = True
+        linear_velocity = np.clip(linear_velocity*Constants.PX4.Linear_scale+Constants.PX4.linear_add, -1.0, 2.0)
+        angular_velocity = np.clip(angular_velocity*Constants.PX4.yaw_scale, -2.0, 2.0)
 
         return use_direct_control, linear_velocity, angular_velocity, check_area_points
 

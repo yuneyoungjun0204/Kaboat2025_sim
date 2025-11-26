@@ -240,7 +240,8 @@ class PX4OffboardBridge(Node):
             use_position = self.use_position_control
 
             # 속도 제어 명령
-            velocity = min(2.0,self.velocity_cmd*1.4+0.45)
+            # velocity = min(2.0,self.velocity_cmd*1.4+0.45)
+            velocity = self.velocity_cmd
             yaw = self.yaw_cmd
 
             # 위치 제어 명령
@@ -253,7 +254,7 @@ class PX4OffboardBridge(Node):
         # 명령이 수신되지 않았으면 기본값으로 발행 (PX4 연결 유지)
         if not cmd_received:
             self.publish_offboard_control_mode(timestamp, position=False, velocity=True)
-            self.publish_velocity_setpoint(timestamp, 0.0, 0.0)
+            self.publish_velocity_setpoint(timestamp, yaw, 0.0)
             return
 
         # === 제어 모드에 따라 메시지 발행 ===

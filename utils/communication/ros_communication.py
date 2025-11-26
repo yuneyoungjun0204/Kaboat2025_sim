@@ -550,6 +550,7 @@ class ROSCommunicationManager:
             # 위치 제어 모드이므로 velocity/yaw 명령은 발행하지 않음
             # position_error는 mission_control.py의 _execute_dock_mission에서 직접 발행됨
             pass
+        
         else:
             # 일반 모드: velocity/yaw만 발행
             self.publish_px4_velocity_command(velocity, target_yaw)

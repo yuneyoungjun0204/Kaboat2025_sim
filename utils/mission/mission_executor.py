@@ -101,8 +101,8 @@ class MissionExecutor:
             logger=logger
         )
 
-    def execute_stop(self, mission_params: Dict[str, Any],
-                     logger) -> Tuple[float, float]:
+    def execute_stop(self, mission_params: Dict[str, Any],agent_heading: float,
+                     logger) -> Tuple[float, float,float]:
         """정지 미션 실행"""
         result = self.mission_manager.execute_mission(
             MissionType.STOP,
@@ -114,7 +114,7 @@ class MissionExecutor:
         # 일단 result가 tuple이면 그대로 반환, 아니면 변환
         if isinstance(result, tuple) and len(result) >= 2:
             return result[0], result[1]
-        return 0.0, 0.0
+        return 0.0, agent_heading
 
     def execute_dock_mission(self, detected_objects: list, current_image,
                              agent_heading: float,
