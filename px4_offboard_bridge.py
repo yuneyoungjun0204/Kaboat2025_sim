@@ -210,7 +210,7 @@ class PX4OffboardBridge(Node):
             self.y_error = float(msg.data[1])
             # desired_psi가 있으면 저장 (DOCK_MODE일 때)
             if len(msg.data) >= 3:
-                self.desired_psi = float(msg.data[2])
+                self.desired_psi = float(3.0)
             else:
                 self.desired_psi = None
             self.command_received = True
@@ -263,7 +263,7 @@ class PX4OffboardBridge(Node):
             self.publish_offboard_control_mode(timestamp, position=True, velocity=False)
             # desired_psi가 있으면 사용 (DOCK_MODE), 없으면 기본 yaw 사용
             target_yaw = desired_psi if desired_psi is not None else yaw
-            self.publish_position_setpoint(timestamp, x_err, y_err, target_yaw)
+            self.publish_position_setpoint(timestamp, x_err, y_err, 1.7)
         else:
             # 속도 제어 모드
             self.publish_offboard_control_mode(timestamp, position=False, velocity=True)

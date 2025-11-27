@@ -466,14 +466,14 @@ class CircleBuoyMission(BaseMissionStrategy):
         # 위치/헤딩 정보가 없으면 정지
         if agent_position is None or agent_heading is None:
             if logger:
-                logger.warn("CIRCLE_BUOY: 위치/헤딩 정보 없음 - 정지")
+                # logger.warn("CIRCLE_BUOY: 위치/헤딩 정보 없음 - 정지")
             return 0.0, 0.0, 0.0, 0.0
 
         # length 파라미터 확인 (음수 허용: 뒤로 가는 경우)
         length = mission_params.get('length', 20.0)
         if length == 0:
             if logger:
-                logger.warn(f"CIRCLE_BUOY: length 값이 0입니다 ({length}) - 정지")
+                # logger.warn(f"CIRCLE_BUOY: length 값이 0입니다 ({length}) - 정지")
             return 0.0, 0.0, 0.0, 0.0
 
         # angle 파라미터 확인 (기본값: 0도, angle이 없으면 정면만)
@@ -502,7 +502,7 @@ class CircleBuoyMission(BaseMissionStrategy):
                         self.target_points.append(point)
                 
                 if logger:
-                    logger.info(f"📍 CIRCLE_BUOY: 직접 좌표 사용 ({len(self.target_points)}개 웨이포인트)")
+                    # logger.info(f"📍 CIRCLE_BUOY: 직접 좌표 사용 ({len(self.target_points)}개 웨이포인트)")
             else:
                 # 자동 생성 (기존 로직)
                 if angle != 0.0:
@@ -510,6 +510,8 @@ class CircleBuoyMission(BaseMissionStrategy):
                     right_point = self._calculate_point_at_angle(agent_position, agent_heading, side_distance, angle)
                     left_point = self._calculate_point_at_angle(agent_position, agent_heading, side_distance, -angle)
                     front_point = self._calculate_point_at_angle(agent_position, agent_heading, length, 0.0)
+                    print(agent_heading)
+                    print(agent_pos)
                     # agent_position은 [Easting, Northing] 순서이므로 [Northing, Easting]으로 변환
                     start_point = np.array([agent_position[1], agent_position[0]], dtype=np.float32)  # [Northing, Easting]
                     
@@ -528,21 +530,21 @@ class CircleBuoyMission(BaseMissionStrategy):
             if logger:
                 direction_str = "시계방향" if turn_flag == 0 else "반시계방향"
                 logger.info(
-                    f"🎯 CIRCLE_BUOY 미션 시작: 위치=({agent_position[0]:.2f}, {agent_position[1]:.2f}), "
-                    f"헤딩={agent_heading:.1f}°, length={length:.1f}m, angle={angle:.1f}°, "
-                    f"방향={direction_str}, radius={radius:.1f}m"
+                    # f"🎯 CIRCLE_BUOY 미션 시작: 위치=({agent_position[0]:.2f}, {agent_position[1]:.2f}), "
+                    # f"헤딩={agent_heading:.1f}°, length={length:.1f}m, angle={angle:.1f}°, "
+                    # f"방향={direction_str}, radius={radius:.1f}m"
                 )
                 for i, wp in enumerate(self.target_points):
                     logger.info(
-                        f"📍 웨이포인트 {i}: ({wp[0]:.2f}, {wp[1]:.2f})"
+                        # f"📍 웨이포인트 {i}: ({wp[0]:.2f}, {wp[1]:.2f})"
                     )
 
         # 목표 포인트가 없으면 재생성
         if len(self.target_points) == 0:
             if angle != 0.0:
-                right_point = self._calculate_point_at_angle(agent_position, agent_heading, side_distance, angle)
-                left_point = self._calculate_point_at_angle(agent_position, agent_heading, side_distance, -angle)
-                front_point = self._calculate_point_at_angle(agent_position, agent_heading, length, 0.0)
+                # right_point = self._calculate_point_at_angle(agent_position, agent_heading, side_distance, angle)
+                # left_point = self._calculate_point_at_angle(agent_position, agent_heading, side_distance, -angle)
+                # front_point = self._calculate_point_at_angle(agent_position, agent_heading, length, 0.0)
                 # agent_position은 [Easting, Northing] 순서이므로 [Northing, Easting]으로 변환
                 start_point = np.array([agent_position[1], agent_position[0]], dtype=np.float32)  # [Northing, Easting]
                 
@@ -822,7 +824,7 @@ class DockMission(BaseMissionStrategy):
         self.reverse_time = Constants.DOCK_REVERSE_TIME
         self.approach_speed = Constants.DOCK_APPROACH_SPEED
         self.reverse_speed = Constants.DOCK_REVERSE_SPEED
-        self.dock_reach_radius = 3.0  # 도킹 포인트 도달 반경 (미터)
+        self.dock_reach_radius = 0.2  # 도킹 포인트 도달 반경 (미터)
         
         # Body-force 명령 저장 (ROS 퍼블리시용)
         self.last_sway_force = self.last_yaw_moment = self.last_surge_velocity = 0.0
@@ -1237,13 +1239,13 @@ class DockMission(BaseMissionStrategy):
         sin_h = np.sin(heading_rad)
         
         # World-frame → Body-frame 변환
-        x_error_body = position_error[0] * cos_h + position_error[1] * sin_h  # 전방
-        y_error_body = position_error[0] * sin_h - position_error[1] * cos_h  # 좌측
-        # x_error_body = position_error[1] 
-        # y_error_body = position_error[0]
+        x_error_body = position_error[1] * cos_h + position_error[0] * sin_h  # 전방
+        y_error_body = position_error[1] * sin_h - position_error[0] * cos_h  # 좌측
+        x_error_body = x_error_body/15
+        y_error_body = -y_error_body*15
         # 헤딩 제어
         if self.desired_psi is not None:
-            heading_error = calculate_heading_error(agent_heading, self.desired_psi)
+            heading_error = calculate_heading_error(agent_heading, 90)
             heading_error_rad = np.radians(heading_error)
         else:
             # desired_psi가 없으면 목표 방향으로 헤딩

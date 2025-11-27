@@ -31,7 +31,7 @@ class VRXMissionController(Node):
         self._log_header("VRX 통합 미션 제어 시스템 초기화")
 
         # 🚀 Jetson 최적화 비활성화 (시작 시간 단축)
-        # setup_jetson()
+        #setup_jetson()
 
         # 기본 설정
         self.bridge = CvBridge()
