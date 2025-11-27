@@ -250,13 +250,14 @@ class Constants:
         
 
 
-        # (36.39603745, 127.40173195, 'PASS_BETWEEN_BUOYS', DEFAULT_WAYPOINT_RADIUS, {
-        #     'waypoint_sequence': [
-        #         (36.39602843, 127.40164481),  # 첫 번째 경유점
-        #         # (36.39604000, 127.40165000),  # 두 번째 경유점 (필요시 추가)
-        #         # (36.39605000, 127.40166000),  # 세 번째 경유점 (필요시 추가)
-        #     ]
-        # }),36.39605077°, lon=127.40177172
+        (36.39603745, 127.40173195, 'PASS_BETWEEN_BUOYS', DEFAULT_WAYPOINT_RADIUS, {
+            'waypoint_sequence': [
+                (36.39602843, 127.40164481),  # 첫 번째 경유점
+                # (36.39604000, 127.40165000),  # 두 번째 경유점 (필요시 추가)
+                # (36.39605000, 127.40166000),  # 세 번째 경유점 (필요시 추가)
+            ]
+        }),
+        # 36.39605077°, lon=127.40177172
         # (36.39605077, 127.40177172, 'DOCK_MODE', 1,{
         #     'dock_control_mode': 'POSITION_CONTROL',  # 'LOS' 또는 'POSITION_CONTROL'
         #     'dock_index': 1,  # 도킹 스테이션 번호 (1-6)
@@ -270,7 +271,7 @@ class Constants:
         # }),
         # (36.39603745, 127.40173195,'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {'los_delta': 3.0}),
         # (36.39625154, 127.40154380, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {'los_delta': 3.0}),
-        (36.39603745, 127.40173195, 'CIRCLE_BUOY', DEFAULT_WAYPOINT_RADIUS, {'length': 8.0, 'angle': 45.0, 'turn_flag': 0, 'radius': 2.6, 'los_delta': 1.0}),
+        # (36.39603745, 127.40173195, 'CIRCLE_BUOY', DEFAULT_WAYPOINT_RADIUS, {'length': 8.0, 'angle': 45.0, 'turn_flag': 1, 'radius': 2.6, 'los_delta': 1.0}),
         # (36.39624999, 127.40153864, 'CIRCLE_BUOY', DEFAULT_WAYPOINT_RADIUS, {'length': 14.0, 'angle': 45.0, 'turn_flag': 1, 'radius': 2.0, 'los_delta': 10.0}),
         # (36.39602297, 127.40158252, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {'los_delta': 3.0}),
 

@@ -373,6 +373,7 @@ class CircleBuoyMission(BaseMissionStrategy):
         self.target_points: List[np.ndarray] = []  # 생성된 목표 포인트 리스트 [[Easting, Northing], ...]
         self.current_waypoint_index: int = 0  # 현재 추종 중인 웨이포인트 인덱스
         self.initial_position: Optional[np.ndarray] = None  # 미션 시작 위치
+        self.last_valid_position: Optional[np.ndarray] = None  # 최근 유효 위치 (GPS 미수신 대비)
 
     def reset(self):
         """미션 상태 초기화"""
@@ -381,6 +382,7 @@ class CircleBuoyMission(BaseMissionStrategy):
         self.target_points = []
         self.current_waypoint_index = 0
         self.initial_position = None
+        self.last_valid_position = None
 
     def _calculate_point_at_angle(self, robot_pos: np.ndarray, robot_heading: float, 
                                    distance: float, angle_offset: float) -> np.ndarray:
@@ -423,6 +425,46 @@ class CircleBuoyMission(BaseMissionStrategy):
         """
         return self._calculate_point_at_angle(robot_pos, robot_heading, length, 0.0)
 
+    @staticmethod
+    def _is_position_valid(position: Optional[np.ndarray]) -> bool:
+        """GPS 미수신(0,0)이나 NaN을 걸러내기 위한 헬퍼"""
+        if position is None:
+            return False
+        if not isinstance(position, np.ndarray):
+            position = np.array(position, dtype=np.float32)
+        if position.size < 2:
+            return False
+        if np.any(np.isnan(position)) or np.any(np.isinf(position)):
+            return False
+        return np.linalg.norm(position) > 1e-3
+
+    def _get_reference_position(
+        self,
+        agent_position: Optional[np.ndarray],
+        logger=None
+    ) -> Optional[np.ndarray]:
+        """
+        유효한 현재 위치를 반환하고, GPS 미수신 시 최근 위치로 폴백
+        """
+        if self._is_position_valid(agent_position):
+            # numpy 배열이 아닐 수 있으므로 복사 전에 변환
+            pos_array = (
+                agent_position.copy()
+                if isinstance(agent_position, np.ndarray)
+                else np.array(agent_position, dtype=np.float32)
+            )
+            self.last_valid_position = pos_array
+            return pos_array
+
+        if self.last_valid_position is not None:
+            if logger:
+                logger.warn(
+                    "CIRCLE_BUOY: 유효하지 않은 GPS 입력 감지 - 최근 위치를 사용합니다"
+                )
+            return self.last_valid_position.copy()
+
+        return None
+
     def get_target_points(self) -> List[np.ndarray]:
         """
         생성된 목표 포인트 리스트 반환 (시각화용)
@@ -463,17 +505,24 @@ class CircleBuoyMission(BaseMissionStrategy):
         Returns:
             Tuple[float, float, float, float]: (left_thrust, right_thrust, left_pos, right_pos)
         """
-        # 위치/헤딩 정보가 없으면 정지
-        if agent_position is None or agent_heading is None:
+        # 헤딩 정보가 없으면 정지
+        if agent_heading is None:
             if logger:
-                # logger.warn("CIRCLE_BUOY: 위치/헤딩 정보 없음 - 정지")
+                logger.warn("CIRCLE_BUOY: 헤딩 정보 없음 - 정지")
+            return 0.0, 0.0, 0.0, 0.0
+
+        # GPS가 들어오지 않는 경우 최근 유효 위치로 폴백
+        current_position = self._get_reference_position(agent_position, logger)
+        if current_position is None:
+            if logger:
+                logger.error("CIRCLE_BUOY: 유효한 위치 데이터를 확보할 수 없어 정지합니다")
             return 0.0, 0.0, 0.0, 0.0
 
         # length 파라미터 확인 (음수 허용: 뒤로 가는 경우)
         length = mission_params.get('length', 20.0)
         if length == 0:
             if logger:
-                # logger.warn(f"CIRCLE_BUOY: length 값이 0입니다 ({length}) - 정지")
+                logger.warn(f"CIRCLE_BUOY: length 값이 0입니다 ({length}) - 정지")
             return 0.0, 0.0, 0.0, 0.0
 
         # angle 파라미터 확인 (기본값: 0도, angle이 없으면 정면만)
@@ -486,7 +535,7 @@ class CircleBuoyMission(BaseMissionStrategy):
         # 미션 시작 시 목표 포인트 생성
         if self.mission_start_time is None:
             self.mission_start_time = time.time()
-            self.initial_position = agent_position.copy()
+            self.initial_position = current_position.copy()
             self.target_points = []
             self.current_waypoint_index = 0
             
@@ -502,18 +551,16 @@ class CircleBuoyMission(BaseMissionStrategy):
                         self.target_points.append(point)
                 
                 if logger:
-                    # logger.info(f"📍 CIRCLE_BUOY: 직접 좌표 사용 ({len(self.target_points)}개 웨이포인트)")
+                    logger.info(f"📍 CIRCLE_BUOY: 직접 좌표 사용 ({len(self.target_points)}개 웨이포인트)")
             else:
                 # 자동 생성 (기존 로직)
                 if angle != 0.0:
                     # +angle, -angle 포인트 생성
-                    right_point = self._calculate_point_at_angle(agent_position, agent_heading, side_distance, angle)
-                    left_point = self._calculate_point_at_angle(agent_position, agent_heading, side_distance, -angle)
-                    front_point = self._calculate_point_at_angle(agent_position, agent_heading, length, 0.0)
-                    print(agent_heading)
-                    print(agent_pos)
+                    right_point = self._calculate_point_at_angle(current_position, agent_heading, side_distance, angle)
+                    left_point = self._calculate_point_at_angle(current_position, agent_heading, side_distance, -angle)
+                    front_point = self._calculate_point_at_angle(current_position, agent_heading, length, 0.0)
                     # agent_position은 [Easting, Northing] 순서이므로 [Northing, Easting]으로 변환
-                    start_point = np.array([agent_position[1], agent_position[0]], dtype=np.float32)  # [Northing, Easting]
+                    start_point = np.array([current_position[1], current_position[0]], dtype=np.float32)  # [Northing, Easting]
                     
                     # turn_flag에 따라 순서 결정
                     if turn_flag == 0:  # 시계방향: +angle → 정면 → -angle → 시작위치
@@ -522,40 +569,41 @@ class CircleBuoyMission(BaseMissionStrategy):
                         self.target_points = [left_point, front_point, right_point, start_point]
                 else:
                     # angle이 0이면 정면만
-                    front_point = self._calculate_point_at_angle(agent_position, agent_heading, length, 0.0)
+                    front_point = self._calculate_point_at_angle(current_position, agent_heading, length, 0.0)
                     # agent_position은 [Easting, Northing] 순서이므로 [Northing, Easting]으로 변환
-                    start_point = np.array([agent_position[1], agent_position[0]], dtype=np.float32)  # [Northing, Easting]
+                    start_point = np.array([current_position[1], current_position[0]], dtype=np.float32)  # [Northing, Easting]
                     self.target_points = [front_point, start_point]
             
             if logger:
                 direction_str = "시계방향" if turn_flag == 0 else "반시계방향"
                 logger.info(
-                    # f"🎯 CIRCLE_BUOY 미션 시작: 위치=({agent_position[0]:.2f}, {agent_position[1]:.2f}), "
-                    # f"헤딩={agent_heading:.1f}°, length={length:.1f}m, angle={angle:.1f}°, "
-                    # f"방향={direction_str}, radius={radius:.1f}m"
+                    f"🎯 CIRCLE_BUOY 미션 시작: 위치=({current_position[0]:.2f}, {current_position[1]:.2f}), "
+                    f"헤딩={agent_heading:.1f}°, length={length:.1f}m, angle={angle:.1f}°, "
+                    f"방향={direction_str}, radius={radius:.1f}m"
                 )
                 for i, wp in enumerate(self.target_points):
                     logger.info(
-                        # f"📍 웨이포인트 {i}: ({wp[0]:.2f}, {wp[1]:.2f})"
+                        f"📍 웨이포인트 {i}: ({wp[0]:.2f}, {wp[1]:.2f})"
                     )
 
         # 목표 포인트가 없으면 재생성
         if len(self.target_points) == 0:
             if angle != 0.0:
-                # right_point = self._calculate_point_at_angle(agent_position, agent_heading, side_distance, angle)
-                # left_point = self._calculate_point_at_angle(agent_position, agent_heading, side_distance, -angle)
-                # front_point = self._calculate_point_at_angle(agent_position, agent_heading, length, 0.0)
+                right_point = self._calculate_point_at_angle(current_position, agent_heading, side_distance, angle)
+                left_point = self._calculate_point_at_angle(current_position, agent_heading, side_distance, -angle)
+                front_point = self._calculate_point_at_angle(current_position, agent_heading, length, 0.0)
                 # agent_position은 [Easting, Northing] 순서이므로 [Northing, Easting]으로 변환
-                start_point = np.array([agent_position[1], agent_position[0]], dtype=np.float32)  # [Northing, Easting]
+          
+                start_point = np.array([current_position[1], current_position[0]], dtype=np.float32)  # [Northing, Easting]
                 
                 if turn_flag == 0:
                     self.target_points = [right_point, front_point, left_point, start_point]
                 else:
                     self.target_points = [left_point, front_point, right_point, start_point]
             else:
-                front_point = self._calculate_point_at_angle(agent_position, agent_heading, length, 0.0)
+                front_point = self._calculate_point_at_angle(current_position, agent_heading, length, 0.0)
                 # agent_position은 [Easting, Northing] 순서이므로 [Northing, Easting]으로 변환
-                start_point = np.array([agent_position[1], agent_position[0]], dtype=np.float32)  # [Northing, Easting]
+                start_point = np.array([current_position[1], current_position[0]], dtype=np.float32)  # [Northing, Easting]
                 self.target_points = [front_point, start_point]
 
         # 현재 목표 웨이포인트
@@ -569,10 +617,10 @@ class CircleBuoyMission(BaseMissionStrategy):
         target_point = self.target_points[self.current_waypoint_index]
         
         # 목표 포인트까지의 거리 계산
-        # target_point: [Northing, Easting], agent_position: [Easting, Northing]
+        # target_point: [Northing, Easting], current_position: [Easting, Northing]
         # 계산을 위해 target_point를 [Easting, Northing] 순서로 변환
         target_point_east_north = np.array([target_point[1], target_point[0]])  # [Easting, Northing]
-        delta = target_point_east_north - agent_position
+        delta = target_point_east_north - current_position
         distance = np.linalg.norm(delta)
 
         # 웨이포인트 도달 판정 (radius 이내)
@@ -607,7 +655,7 @@ class CircleBuoyMission(BaseMissionStrategy):
             target_point = self.target_points[self.current_waypoint_index]
             # target_point: [Northing, Easting] → [Easting, Northing] 변환
             target_point_east_north = np.array([target_point[1], target_point[0]])
-            delta = target_point_east_north - agent_position
+            delta = target_point_east_north - current_position
             distance = np.linalg.norm(delta)
 
         # atan2 방식으로 목표 헤딩 계산
