@@ -15,50 +15,56 @@ class MiDaSHybridDepthEstimator:
     def __init__(self):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         print(f"MiDaS Hybrid 모델을 {self.device}에서 실행합니다.")
-        
+
         # MiDaS Hybrid 모델 로드
         self.model = torch.hub.load("intel-isl/MiDaS", "DPT_Hybrid", pretrained=True)
         self.model.to(self.device)
         self.model.eval()
-        
-        # Hybrid 모델용 전처리 변환
+
+        # Jetson 최적화: torch 추론 최적화
+        if torch.cuda.is_available():
+            torch.backends.cudnn.benchmark = True  # 자동 최적화
+            torch.backends.cuda.matmul.allow_tf32 = True  # TF32 사용
+
+        # Jetson 최적화: 해상도 축소 (384 -> 256)로 처리 속도 약 2배 향상
         self.transform_hybrid = transforms.Compose([
-            transforms.Resize((384, 384)),
+            transforms.Resize((256, 256)),
             transforms.ToTensor(),
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
         ])
-        
+
         print("MiDaS Hybrid 모델 로드 완료!")
-    
+
     def estimate_depth(self, image):
-        """이미지에서 깊이 맵 추정"""
+        """이미지에서 깊이 맵 추정 (Jetson 최적화)"""
         try:
-            # OpenCV 이미지를 PIL 이미지로 변환
+            # Jetson 최적화: 직접 RGB 변환 후 PIL로
             image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
             pil_image = PILImage.fromarray(image_rgb)
-            
+
             # 이미지 전처리
             input_tensor = self.transform_hybrid(pil_image).to(self.device)
-            input_batch = input_tensor.unsqueeze(0)  # 배치 차원 추가
-            
-            # 깊이 추정
-            with torch.no_grad():
+            input_batch = input_tensor.unsqueeze(0)
+
+            # Jetson 최적화: torch.inference_mode() 사용 (no_grad보다 빠름)
+            with torch.inference_mode():
                 prediction = self.model(input_batch)
+                # Jetson 최적화: bilinear 모드 사용 (bicubic보다 빠름)
                 prediction = torch.nn.functional.interpolate(
                     prediction.unsqueeze(1),
                     size=image.shape[:2],
-                    mode="bicubic",
+                    mode="bilinear",
                     align_corners=False,
                 ).squeeze()
-            
+
             # 깊이 맵을 numpy 배열로 변환
             depth_map = prediction.cpu().numpy()
-            
+
             # 깊이 맵 정규화 (0-1 범위)
             depth_map = (depth_map - depth_map.min()) / (depth_map.max() - depth_map.min())
-            
+
             return depth_map
-            
+
         except Exception as e:
             print(f"깊이 추정 오류: {e}")
             return None

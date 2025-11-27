@@ -1,0 +1,25 @@
+# Windows Alternate Data Streams (Zone.Identifier)
+*:Zone.Identifier
+*.추적 관련 논문/
+
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+*rosbag
