@@ -168,10 +168,10 @@ class WaypointManager:
                 if (mission_type == MissionType.PASS_BETWEEN_BUOYS and
                         params and 'waypoint_sequence' in params):
                     sequence = params.get('waypoint_sequence') or []
-                    # 기존 x, y를 첫 번째 웨이포인트로 포함
-                    full_sequence = [(x, y)] + [
+                    # waypoint_sequence의 좌표들을 먼저 경유한 다음, 마지막에 (x, y)에 도착
+                    full_sequence = [
                         coord for coord in sequence if coord and len(coord) >= 2
-                    ]
+                    ] + [(x, y)]
                     # 원본 params 변형 방지
                     base_params = params.copy()
                     base_params.pop('waypoint_sequence', None)

@@ -263,7 +263,7 @@ class PX4OffboardBridge(Node):
             self.publish_offboard_control_mode(timestamp, position=True, velocity=False)
             # desired_psi가 있으면 사용 (DOCK_MODE), 없으면 기본 yaw 사용
             target_yaw = desired_psi if desired_psi is not None else yaw
-            self.publish_position_setpoint(timestamp, x_err, y_err, 1.7)
+            self.publish_position_setpoint(timestamp, x_err, y_err, 1.75)
         else:
             # 속도 제어 모드
             self.publish_offboard_control_mode(timestamp, position=False, velocity=True)
@@ -315,7 +315,7 @@ class PX4OffboardBridge(Node):
 
         # 위치는 사용하지 않음 (NaN)RELIABILITY
         # velocity는 전진 속도, yaw 방향을 고려하여 NED로 변환
-        vx = velocity 
+        vx = velocity*1.5
         vy = 0.0
         vz = 0.0                     # Down 방향 속도 (수상정은 0)
 

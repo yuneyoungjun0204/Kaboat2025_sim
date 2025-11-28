@@ -31,14 +31,14 @@ class VRXMissionController(Node):
         self._log_header("VRX 통합 미션 제어 시스템 초기화")
 
         # 🚀 Jetson 최적화 비활성화 (시작 시간 단축)
-        #setup_jetson()
+        # setup_jetson()
 
         # 기본 설정
         self.bridge = CvBridge()
 
         # 🚀 Factory를 사용한 컴포넌트 초기화 (탐지 시스템은 즉시 로딩)
         factory = VRXSystemFactory(self, self.bridge, self.get_logger())
-        components = factory.create_all_components(lazy_load=True)  # 탐지가 안 되므로 즉시 로딩
+        components = factory.create_all_components(lazy_load=False)  # 탐지가 안 되므로 즉시 로딩
         # 컴포넌트 할당
         self._assign_components(components)
 

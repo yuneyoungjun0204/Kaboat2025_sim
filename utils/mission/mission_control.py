@@ -267,8 +267,15 @@ class ObstacleAvoidExecutor:
 
     def _get_onnx_control(self) -> Tuple[float, float]:
         """ONNX 제어 래퍼 (v2 API - previous/next waypoint 제거)"""
-        # 지연 로딩된 경우 기본값 반환
+        # ONNX 컨트롤러가 없는 경우 기본값 반환 (경고 로그 포함)
         if self.onnx_controller is None:
+            # 첫 호출 시에만 경고 로그 출력 (스팸 방지)
+            if not hasattr(self, '_onnx_warning_logged'):
+                self.logger.warn(
+                    "⚠️ ONNX 컨트롤러가 None입니다. 기본값(linear=0.0, angular=0.0)을 반환합니다. "
+                    "ONNX 모델이 제대로 로딩되었는지 확인하세요."
+                )
+                self._onnx_warning_logged = True
             return 0.0, 0.0
         
         current, previous, next_wp = self.mission_executor.get_waypoint_positions()

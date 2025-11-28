@@ -112,8 +112,8 @@ class Constants:
         MIN_VELOCITY = -1.0
         MAX_YAW_RATE = 1.0          # 최대 yaw rate (rad/s)
         CONTROL_RATE_HZ = 50.0      # 제어 주기 (Hz)
-        Linear_scale = 1.4
-        yaw_scale = 1.4
+        Linear_scale = 1.5
+        yaw_scale = 2.0
         linear_add=0.35
 
         # 좌표계 원점 (LLA to NED 변환용)
@@ -122,8 +122,8 @@ class Constants:
         ALT_ORIGIN = 0.0
 
         # 속도 스케일링
-        VELOCITY_SCALE = 1.0        # desired_speed → m/s 변환 계수
-        YAW_RATE_SCALE = 1.0        # desired_moment → rad/s 변환 계수
+        VELOCITY_SCALE = 1.5    # desired_speed → m/s 변환 계수
+        YAW_RATE_SCALE = 2.25        # desired_moment → rad/s 변환 계수
 
         # Offboard 제어 설정
         OFFBOARD_SETPOINT_COUNT = 10  # Offboard 모드 전환 전 setpoint 개수
@@ -237,7 +237,7 @@ class Constants:
 
 # 36.39603706°, lon=127.40173229
         # STOP 미션 예시: (x, y, 'STOP', DEFAULT_WAYPOINT_RADIUS, {'stop_duration': 5.0, 'desired_psi': 0.0})
-        # (100, 50, 'STOP', DEFAULT_WAYPOINT_RADIUS, {'stop_duration': 3.0}),  # 3초 정지
+        # 3초 정지
 
         # MODE=1 (GPS 좌표) 예시: (WAYPOINT_MODE를 1로 변경 후 사용)
         # (-33.8575, 151.2160, 'DOCK_MODE', DEFAULT_WAYPOINT_RADIUS,  {'target_shape': 'red_square', 'los_delta': 15.0}),
@@ -247,31 +247,44 @@ class Constants:
         #     'previous_waypoint_lat': 36.39603892,
         #     'previous_waypoint_lon': 127.40173437
         # }),
-        
+#         [INFO] [1764306683.396254446: 📍 GPS: lat=36.39605230°, lon=127.40178348°, alt=47.51m | NED: x=6.31m, y=18.45m, z=-3.92m | Speed: 0.10 m/s | Valid: 4726/4726
+# [INFO] [1764306802.021932745] []: 📍 GPS: lat=36.39622093°, lon=127.40165132°, alt=47.53m | NED: x=25.08m, y=6.61m, z=-3.94m | Speed: 0.27 m/s | Valid: 5126/5126
+# [INFO] [1764306838.251130534] []: 📍 GPS: lat=36.39622056°, lon=127.40150718°, alt=47.31m | NED: x=25.04m, y=-6.31m, z=-3.72m | Speed: 0.15 m/s | Valid: 8746/8746
 
 
-        (36.39603745, 127.40173195, 'PASS_BETWEEN_BUOYS', DEFAULT_WAYPOINT_RADIUS, {
-            'waypoint_sequence': [
-                (36.39602843, 127.40164481),  # 첫 번째 경유점
-                # (36.39604000, 127.40165000),  # 두 번째 경유점 (필요시 추가)
-                # (36.39605000, 127.40166000),  # 세 번째 경유점 (필요시 추가)
-            ]
+
+# #  lat=36.39602730°, lon=127.40169178°36.39602799°, lon=127.4015943536.39602360°, lon=127.40163943
+
+#         (36.39603745, 127.40173195, 'PASS_BETWEEN_BUOYS', DEFAULT_WAYPOINT_RADIUS, {
+#             'waypoint_sequence': [
+#                 (36.39601550, 127.40156880), 
+#                 (36.39602779, 127.40159435),  # 첫 번째 경유점
+#                 (36.39603745, 127.40173195),  # 두 번째 경유점 (필요시 추가)
+#  # 세 번째 경유점 (필요시 추가)
+#             ]
+#         }),
+        (36.39603745, 127.40173195, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {'los_delta': 3.0}),
+        (100, 50, 'STOP', DEFAULT_WAYPOINT_RADIUS, {'stop_duration': 3.0}),
+        # 36.39605077°, lon=127.4017717236.39601550°, lon=127.40156880           39605230             40178348
+        (36.39605077, 127.4017717236, 'DOCK_MODE', 1,{
+            'dock_control_mode': 'POSITION_CONTROL',  # 'LOS' 또는 'POSITION_CONTROL'
+            'dock_index': 1,  # 도킹 스테이션 번호 (1-6)
+            'dock_points': [  # 도킹 포인트 리스트 [[[dock_point], [aux_point]], ...]
+                # 위경도 형식: [[lat, lon], [lat, lon]] 또는 상대 좌표: [[Easting, Northing], [Easting, Northing]]
+                # 위경도는 -90~90 (위도), -180~180 (경도) 범위로 자동 감지
+                [[36.39605230, 127.40178348], [36.39605077, 127.40177172]],  # 스테이션 1: [도킹 포인트(위경도), 보조 포인트(위경도)]
+                [[36.3960382, 127.40173437], [36.3960382, 127.40173437]],  # 스테이션 2
+                [[36.3960382, 127.40173437], [36.3960382, 127.40173437]],  # 스테이션 3
+            ],
         }),
-        # 36.39605077°, lon=127.40177172
-        # (36.39605077, 127.40177172, 'DOCK_MODE', 1,{
-        #     'dock_control_mode': 'POSITION_CONTROL',  # 'LOS' 또는 'POSITION_CONTROL'
-        #     'dock_index': 1,  # 도킹 스테이션 번호 (1-6)
-        #     'dock_points': [  # 도킹 포인트 리스트 [[[dock_point], [aux_point]], ...]
-        #         # 위경도 형식: [[lat, lon], [lat, lon]] 또는 상대 좌표: [[Easting, Northing], [Easting, Northing]]
-        #         # 위경도는 -90~90 (위도), -180~180 (경도) 범위로 자동 감지
-        #         [[36.39605077, 127.40177172], [36.39605077, 127.40177172]],  # 스테이션 1: [도킹 포인트(위경도), 보조 포인트(위경도)]
-        #         [[36.3960382, 127.40173437], [36.3960382, 127.40173437]],  # 스테이션 2
-        #         [[36.3960382, 127.40173437], [36.3960382, 127.40173437]],  # 스테이션 3
-        #     ],
-        # }),
+        
+        # 36.39617428°, lon=127.40173445°
         # (36.39603745, 127.40173195,'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {'los_delta': 3.0}),
-        # (36.39625154, 127.40154380, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {'los_delta': 3.0}),
-        # (36.39603745, 127.40173195, 'CIRCLE_BUOY', DEFAULT_WAYPOINT_RADIUS, {'length': 8.0, 'angle': 45.0, 'turn_flag': 1, 'radius': 2.6, 'los_delta': 1.0}),
+        (36.39617428, 127.40173445, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {'los_delta': 3.0}),
+        (36.39617428, 127.40173445, 'CIRCLE_BUOY', DEFAULT_WAYPOINT_RADIUS, {'length': 8.0, 'angle': 45.0, 'turn_flag': 1, 'radius': 2.6, 'los_delta': 1.0}),
+        (36.39622093, 127.40165132, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {'los_delta': 3.0}),
+        (100, 50, 'STOP', DEFAULT_WAYPOINT_RADIUS, {'stop_duration': 3.0}),
+        (36.39622056, 127.40150718, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {'los_delta': 3.0}),
         # (36.39624999, 127.40153864, 'CIRCLE_BUOY', DEFAULT_WAYPOINT_RADIUS, {'length': 14.0, 'angle': 45.0, 'turn_flag': 1, 'radius': 2.0, 'los_delta': 10.0}),
         # (36.39602297, 127.40158252, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {'los_delta': 3.0}),
 
@@ -416,10 +429,10 @@ class Constants:
     PASS_BETWEEN_PID_KP = 0.0024
     PASS_BETWEEN_PID_KI = 0.0001
     PASS_BETWEEN_PID_KD = 0.001
-    PASS_BETWEEN_STEERING_GAIN = 0.0001  # 비례 제어 게인
-    PASS_BETWEEN_FORWARD_SPEED = 0.4  # 전진 속도
-    PASS_BETWEEN_MAX_STEERING = 0.3  # 최대 조향 값
-    PASS_BETWEEN_FALLBACK_SPEED = 0.2  # 부표 미탐지 시 속도
+    PASS_BETWEEN_STEERING_GAIN = 0.0007  # 비례 제어 게인
+    PASS_BETWEEN_FORWARD_SPEED = 0.08  # 전진 속도
+    PASS_BETWEEN_MAX_STEERING = 0.05  # 최대 조향 값
+    PASS_BETWEEN_FALLBACK_SPEED = 0.45  # 부표 미탐지 시 속도
     PASS_BETWEEN_MAX_DEPTH_DIFF = 5.0  # 부표 간 최대 깊이 차이 (미터)
 
     # CircleBuoy 미션 PID 게인
@@ -496,7 +509,7 @@ class Constants:
     DOCK_BASE_SURGE = 0.1  # 기본 전진 속도 (0-1)
     DOCK_DEPTH_THRESHOLD = 0.65  # Depth 임계값 (가까움, 0-1 스케일)
     DOCK_APPROACH_TIME = 1.0  # 직진 접근 시간 (초)
-    DOCK_REVERSE_TIME = 20.0  # 후진 시간 (초)
+    DOCK_REVERSE_TIME = 12.0  # 후진 시간 (초)
     DOCK_APPROACH_SPEED = 0.2  # 최종 접근 속도
     DOCK_REVERSE_SPEED = -0.6  # 후진 속도
     DOCK_CENTER_TOLERANCE = 600.0  # 이미지 중앙 허용 오차 (픽셀, ± 범위)
@@ -670,7 +683,7 @@ class Constants:
     class VisualizationParams:
         """시각화 시스템 파라미터"""
         # 탐지 임계값 (NanoOWL: 낮을수록 더 많은 탐지, 일반적으로 0.01~0.1 사용)
-        DETECTION_THRESHOLD = 0.2  # 0.0004에서 0.01로 상향 조정 (탐지 개선)
+        DETECTION_THRESHOLD = 0.1  # 0.0004에서 0.01로 상향 조정 (탐지 개선)
         MIN_BOX_AREA = 2
         MAX_BOX_AREA = 800000
         MIN_DEPTH_THRESHOLD = 0.12  # 최소 깊이 (미터)
