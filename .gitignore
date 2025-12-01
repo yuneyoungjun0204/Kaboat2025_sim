@@ -1,0 +1,31 @@
+# Windows Alternate Data Streams (Zone.Identifier)
+*:Zone.Identifier
+*.추적 관련 논문/
+
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+*rosbag2_1970_01_01-09_46_38
+*rosbag2_2025_11_30-16_00_50
+*rosbag2_2025_11_30-16_20_21
+*rosbag2_2025_11_30-16_47_41
+*rosbag2_2025_11_30-15_35_43
+*log/
+*rosbag2_2025_12_02-00_15_55

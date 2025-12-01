@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//home/yuneyoungjun/vrx_ws/src/vrx/Scripts_git/**)",
+      "Read(//mnt/c/Users/ANSL/Pictures/Screenshots/**)",
+      "Bash(git rm:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "mcp__sequential-thinking__sequentialthinking",
+      "Bash(python3 -m py_compile:*)",
+      "Bash(python3:*)",
+      "Bash(find:*)",
+      "Read(//c/Users/ANSL/Downloads/**)",
+      "Bash(git restore:*)",
+      "Bash(chmod:*)",
+      "Bash(pip install:*)",
+      "mcp__context7__resolve-library-id",
+      "mcp__context7__get-library-docs",
+      "Bash(for file in /home/yuneyoungjun/vrx_ws/src/vrx/kaboat_backup/utils/*.py)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
