@@ -20,7 +20,7 @@ Version: 3.0 (Refactored 2025-01-18)
 
 2. 웨이포인트 설정:
    - PREDEFINED_WAYPOINTS 리스트 수정
-   - WAYPOINT_MODE: 0=로컬좌표(미터), 1=GPS좌표(위경도)
+   - WAYPOINT_MODE: 0=로컬좌표(미터), 1=GPS좌표(위경도), 2=상대좌표(미션시작위치 기준 x미터 오른쪽, y미터 앞쪽)
 
 3. 미션별 PID 튜닝:
    - 각 미션 섹션에서 PID_KP, PID_KI, PID_KD 수정
@@ -122,8 +122,8 @@ class Constants:
         ALT_ORIGIN = 0.0
 
         # 속도 스케일링
-        VELOCITY_SCALE = 1.5    # desired_speed → m/s 변환 계수
-        YAW_RATE_SCALE = 2.25        # desired_moment → rad/s 변환 계수
+        VELOCITY_SCALE = 1.05    # desired_speed → m/s 변환 계수
+        YAW_RATE_SCALE = 2.45        # desired_moment → rad/s 변환 계수
 
         # Offboard 제어 설정
         OFFBOARD_SETPOINT_COUNT = 10  # Offboard 모드 전환 전 setpoint 개수
@@ -154,7 +154,7 @@ class Constants:
     MAX_LIDAR_DISTANCE = 100.0
     LIDAR_ANGLE_RANGE = (-100, 100)  # degrees
     LIDAR_SCALE_FACTOR = 5.0  # LiDAR 거리값 스케일 조정 (1.0 = 변환 없음)
-    LIDAR_OBSTACLE_COUNT_THRESHOLD = 2  # ONNX 모드 전환을 위한 최소 장애물 감지 개수
+    LIDAR_OBSTACLE_COUNT_THRESHOLD = 5  # ONNX 모드 전환을 위한 최소 장애물 감지 개수
 
     # LiDAR 필터링 설정
     LIDAR_FILTER_ENABLED = True  # 필터링 활성화 여부
@@ -177,15 +177,31 @@ class Constants:
     # 웨이포인트 좌표계 모드
     # 0: 로컬 좌표계 (UTM 상대 좌표, 미터 단위)
     # 1: GPS 좌표계 (위도/경도)
-    WAYPOINT_MODE = 1
+    # 2: 상대 좌표계 (미션 시작 위치 기준, x미터 오른쪽(East), y미터 앞쪽(North))
+    WAYPOINT_MODE = 0
 
-    # GPS 기준점 (MODE=1일 때 사용)
-    # - MODE=0: 로컬 좌표만 사용하므로 0,0으로 고정 (모든 상대 좌표 기준점)
+    # GPS 기준점
+    # - MODE=0: config의 기준 위경도 사용 (아래 _GPS_REFERENCE_LAT_DEFAULT/LON_DEFAULT 값 사용)
     # - MODE=1: 실제 GPS 기준점 사용 (필요 시 아래 값을 수정)
-    _GPS_REFERENCE_LAT_DEFAULT = 36.39601179  # Sydney Regatta Centre 기준
-    _GPS_REFERENCE_LON_DEFAULT = 127.40155743
+    # - MODE=2: 미션 시작 시 첫 GPS 값을 기준점으로 사용
+    # _GPS_REFERENCE_LAT_DEFAULT = 35.1861893  # Sydney Regatta Centre 기준
+    # _GPS_REFERENCE_LON_DEFAULT = 128.5654654
+    # 4654
+
+    _GPS_REFERENCE_LAT_DEFAULT = 35.1861893  # Sydney Regatta Centre 기준
+    _GPS_REFERENCE_LON_DEFAULT = 128.5654654
+    # _GPS_REFERENCE_LAT_DEFAULT = 35.1861756  # Sydney Regatta Centre 기준
+    # _GPS_REFERENCE_LON_DEFAULT = 128.5648583
+    # lat: 35.186305718542954
+    # lon: 128.56476197637136
+
 
     if WAYPOINT_MODE == 0:
+        # MODE=0: config의 기준 위경도를 사용 (처음 들어오는 GPS가 아닌 고정 기준점 사용)
+        GPS_REFERENCE_LAT = _GPS_REFERENCE_LAT_DEFAULT
+        GPS_REFERENCE_LON = _GPS_REFERENCE_LON_DEFAULT
+    elif WAYPOINT_MODE == 2:
+        # MODE=2는 미션 시작 시 첫 GPS 값을 기준점으로 사용하므로 초기값은 0.0
         GPS_REFERENCE_LAT = 0.0
         GPS_REFERENCE_LON = 0.0
     else:
@@ -263,28 +279,80 @@ class Constants:
 #  # 세 번째 경유점 (필요시 추가)
 #             ]
 #         }),
-        (36.39603745, 127.40173195, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {'los_delta': 3.0}),
-        (100, 50, 'STOP', DEFAULT_WAYPOINT_RADIUS, {'stop_duration': 3.0}),
+
+
+        #세모
+        ##35.1869232, 128.5661826
+        ##원    
+        ##35.1869035, 128.5662118
+        ## 네모
+        ##35.1868756, 128.5662353
+        ##빨 부표
+        ##35.1867797  128.5658624
+        ## 초 부표
+        ##35.1868795  128.5659035
+        ## 하 부표
+        ##35.1868225  128.5657191
+
+#  lat=35.18625748°, lon=128.56545519°, alt=4.96m | NED: x=9.12m, y=54.30m, z=12.31m | Speed: 1.74 m/s | Valid: 20691/20691
+# lat=35.18639109°, lon=128.56575414°, alt=4.72m | NED: x=23.99m, y=81.50m, z=12.55m | Speed: 1.51 m/s | Valid: 369228/369228
+
+
+
+
+# lat: 35.18638479881175
+# lon: 128.56561173296865
+
+# lat: 35.18639544938614
+# lon: 128.56562286843453
+        # (100, 0, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {'los_delta': 3.0}),
+        # (35.18622345616908, 128.5655255759556, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {'los_delta': 3.0}),
+        # (35.18635944069503, 128.5657446396512, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {'los_delta': 3.0}),
+        # (35.18674612569614, 128.5659718384708, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {'los_delta': 3.0}),
+        # (100, 50, 'STOP', DEFAULT_WAYPOINT_RADIUS, {'stop_duration': 5.0}),
         # 36.39605077°, lon=127.4017717236.39601550°, lon=127.40156880           39605230             40178348
-        (36.39605077, 127.4017717236, 'DOCK_MODE', 1,{
+        # (35.1869035, 128.5662118, 'DOCK_MODE', 1,{
+        #     'dock_control_mode': 'POSITION_CONTROL',  # 'LOS' 또는 'POSITION_CONTROL'
+        #     'dock_index': 1,  # 도킹 스테이션 번호 (1-6)
+        #     'dock_points': [  # 도킹 포인트 리스트 [[[dock_point], [aux_point]], ...]
+        #         # 위경도 형식: [[lat, lon], [lat, lon]] 또는 상대 좌표: [[Easting, Northing], [Easting, Northing]]
+        #         # 위경도는 -90~90 (위도), -180~180 (경도) 범위로 자동 감지
+        #         [[35.1869035, 128.5662118], [35.1869035, 128.5662118]],  # 스테이션 1: [도킹 포인트(위경도), 보조 포인트(위경도)]
+        #         [[36.3960382, 127.40173437], [36.3960382, 127.40173437]],  # 스     테이션 2
+        #         [[36.3960382, 127.40173437], [36.3960382, 127.40173437]],  # 스테이션 3
+        #     ],
+        # }),
+        #
+        # 36.39617428°, lon=127.40173445°
+        # (36.39603745, 127.40173195,'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {'los_delta': 3.0}),
+        # (25, 75, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {'los_delta': 3.0}),
+        (-2, -3, 'OBSTACLE_AVOID', 9, {'los_delta': 3.0}),
+        #(55, 15, 'STOP', DEFAULT_WAYPOINT_RADIUS, {'stop_duration': 5.0}),
+        (25,25, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {'los_delta': 3.0}),
+        (55, 15, 'STOP', DEFAULT_WAYPOINT_RADIUS, {'stop_duration': 5.0}),
+        (55, 55, 'OBSTACLE_AVOID', 4, {'los_delta': 3.0}),
+        (55, 15, 'STOP', DEFAULT_WAYPOINT_RADIUS, {'stop_duration': 5.0}),
+        (50, 0, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {'los_delta': 3.0}),
+        # (128, 32, 'CIRCLE_BUOY', DEFAULT_WAYPOINT_RADIUS, {'length': 10.0, 'angle': 45.0, 'turn_flag': 1, 'radius': 3.0, 'los_delta': 3.0}),
+        # (33, -46, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {'los_delta': 3.0}),
+        # (36.39617428, 127.40173445, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {'los_delta': 3.0}),
+        # (36.39617428, 127.40173445, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {'los_delta': 3.0}),
+        # (36.39622093, 127.40165132, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {'los_delta': 3.0}),
+        # (-38, -5, 'STOP', DEFAULT_WAYPOINT_RADIUS, {'stop_duration': 3.0}),
+        # (36.39622056, 127.40150718, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {'los_delta': 3.0}),
+        (26, -5, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {'los_delta': 3.0}),
+        (-20, 0, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {'los_delta': 3.0}),
+        (-35, 7, 'DOCK_MODE', 1,{
             'dock_control_mode': 'POSITION_CONTROL',  # 'LOS' 또는 'POSITION_CONTROL'
             'dock_index': 1,  # 도킹 스테이션 번호 (1-6)
             'dock_points': [  # 도킹 포인트 리스트 [[[dock_point], [aux_point]], ...]
                 # 위경도 형식: [[lat, lon], [lat, lon]] 또는 상대 좌표: [[Easting, Northing], [Easting, Northing]]
                 # 위경도는 -90~90 (위도), -180~180 (경도) 범위로 자동 감지
-                [[36.39605230, 127.40178348], [36.39605077, 127.40177172]],  # 스테이션 1: [도킹 포인트(위경도), 보조 포인트(위경도)]
-                [[36.3960382, 127.40173437], [36.3960382, 127.40173437]],  # 스테이션 2
+                [[35.1869035, 128.5662118], [35.1869035, 128.5662118]],  # 스테이션 1: [도킹 포인트(위경도), 보조 포인트(위경도)]
+                [[36.3960382, 127.40173437], [36.3960382, 127.40173437]],  # 스     테이션 2ref
                 [[36.3960382, 127.40173437], [36.3960382, 127.40173437]],  # 스테이션 3
             ],
         }),
-        
-        # 36.39617428°, lon=127.40173445°
-        # (36.39603745, 127.40173195,'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {'los_delta': 3.0}),
-        (36.39617428, 127.40173445, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {'los_delta': 3.0}),
-        (36.39617428, 127.40173445, 'CIRCLE_BUOY', DEFAULT_WAYPOINT_RADIUS, {'length': 8.0, 'angle': 45.0, 'turn_flag': 1, 'radius': 2.6, 'los_delta': 1.0}),
-        (36.39622093, 127.40165132, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {'los_delta': 3.0}),
-        (100, 50, 'STOP', DEFAULT_WAYPOINT_RADIUS, {'stop_duration': 3.0}),
-        (36.39622056, 127.40150718, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {'los_delta': 3.0}),
         # (36.39624999, 127.40153864, 'CIRCLE_BUOY', DEFAULT_WAYPOINT_RADIUS, {'length': 14.0, 'angle': 45.0, 'turn_flag': 1, 'radius': 2.0, 'los_delta': 10.0}),
         # (36.39602297, 127.40158252, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {'los_delta': 3.0}),
 
@@ -627,14 +695,14 @@ class Constants:
 
         # Livox LiDAR IMU 토픽 (각속도 데이터)
         LIVOX_IMU = '/livox/imu'  # Livox LiDAR 내장 IMU
+                                                                         
 
 
 
 
 
 
-
-
+                                               
 
 
     # ============================================================================
@@ -649,8 +717,8 @@ class Constants:
 
         # 축 범위 설정
         AXIS_MARGIN = 200.0
-        AXIS_MARGIN_X = 40.0
-        AXIS_MARGIN_Y = 40.0
+        AXIS_MARGIN_X = 100.0
+        AXIS_MARGIN_Y = 100.0
 
         # 배 크기 및 안전 여유
         BOAT_WIDTH = 5.0

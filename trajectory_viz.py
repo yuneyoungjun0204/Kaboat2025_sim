@@ -21,7 +21,7 @@ from matplotlib.patches import Polygon, Circle, FancyArrow
 
 from utils import Constants, SensorDataManager
 from utils.sensors.sensor_callbacks import LidarFilter
-from utils.mission.waypoint_manager import gps_to_local
+from utils.mission.waypoint_manager import gps_to_local, local_to_gps
 from utils.sensors.sensor_preprocessing import normalize_angle_180
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
 
@@ -545,16 +545,33 @@ class UnifiedPlotManager:
         )
         self.dynamic_elements.append(text)
 
-    def update_waypoints(self, waypoints: List[List[float]], current: Optional[List[float]] = None):
+    def update_waypoints(self, waypoints: List[List[float]], current: Optional[List[float]] = None, 
+                         waypoints_gps: Optional[List[Tuple[Optional[float], Optional[float]]]] = None):
         """웨이포인트 업데이트
 
         Args:
             waypoints: [[North, East], ...]
             current: 현재 타겟 웨이포인트 [North, East]
+            waypoints_gps: [(lat, lon), ...] - 각 웨이포인트의 위경도 (선택적)
         """
         if len(waypoints) > 0:
             wp_array = np.array(waypoints)
             self.waypoint_markers.set_data(wp_array[:, 0], wp_array[:, 1])
+            
+            # 위경도 정보 표시
+            if waypoints_gps and len(waypoints_gps) == len(waypoints):
+                for i, (wp, gps) in enumerate(zip(waypoints, waypoints_gps)):
+                    lat, lon = gps
+                    if lat is not None and lon is not None:
+                        # 웨이포인트 위에 위경도 텍스트 표시 (8소수점 자리까지)
+                        text = self.ax_main.text(
+                            wp[0], wp[1] + 3.0,  # 웨이포인트 위쪽에 표시
+                            f'WP{i}\nlat={lat:.8f}°\nlon={lon:.8f}°',
+                            fontsize=8, fontweight='bold', color='darkgreen',
+                            ha='center', va='bottom', zorder=11,
+                            bbox=dict(boxstyle='round,pad=0.3', facecolor='lightgreen', alpha=0.7, edgecolor='green')
+                        )
+                        self.dynamic_elements.append(text)
 
         if current:
             marker = self.ax_main.plot(
@@ -742,7 +759,9 @@ class UnifiedVizNode(Node):
         self.sensor_manager = SensorDataManager(
             ref_lat=Constants.GPS_REFERENCE_LAT,
             ref_lon=Constants.GPS_REFERENCE_LON,
-            use_first_fix=(Constants.WAYPOINT_MODE == 0)
+            # MODE=0: config의 기준 위경도 사용 (use_first_fix=False)
+            # MODE=2: 첫 GPS 값 사용 (use_first_fix=True)
+            use_first_fix=(Constants.WAYPOINT_MODE == 2)
         )
         self.plot_manager = UnifiedPlotManager(self.get_logger())
         self.transformer = CoordinateTransformer()
@@ -783,8 +802,9 @@ class UnifiedVizNode(Node):
         self.initial_lat: Optional[float] = None
         self.initial_lon: Optional[float] = None
 
-        # 웨이포인트
-        self.waypoints = []
+        # 웨이포인트 (위경도 정보 포함)
+        self.waypoints = []  # [[North, East], ...]
+        self.waypoints_gps = []  # [(lat, lon), ...] - 각 웨이포인트의 위경도
         self.current_waypoint: Optional[List[float]] = None
 
         # CIRCLE_BUOY 웨이포인트 (자동 생성)
@@ -892,7 +912,28 @@ class UnifiedVizNode(Node):
                 msg = Point(x=float(north), y=float(east), z=0.0)
                 self.waypoint_pub.publish(msg)
 
-                self.get_logger().info(f'🎯 웨이포인트: N={north:.1f}m, E={east:.1f}m')
+                # 위경도 변환 (기준점이 설정된 경우에만)
+                lat_str = ""
+                lon_str = ""
+                lat = None
+                lon = None
+                if self.initial_lat is not None and self.initial_lon is not None:
+                    # local_to_gps는 (Easting, Northing) 순서로 받음
+                    # NED 좌표계: north=Northing, east=Easting
+                    lat, lon = local_to_gps(east, north, self.initial_lat, self.initial_lon)
+                    lat_str = f", lat={lat:.8f}°"
+                    lon_str = f", lon={lon:.8f}°"
+                    self.waypoints_gps.append((lat, lon))
+                else:
+                    lat_str = " (기준점 미설정)"
+                    lon_str = ""
+                    self.waypoints_gps.append((None, None))
+
+                # 더 정확한 로깅 (8소수점 자리)
+                if lat is not None and lon is not None:
+                    self.get_logger().info(f'🎯 웨이포인트: N={north:.4f}m, E={east:.4f}m, lat={lat:.8f}°, lon={lon:.8f}°')
+                else:
+                    self.get_logger().info(f'🎯 웨이포인트: N={north:.1f}m, E={east:.1f}m (기준점 미설정)')
 
     # ============================================================================
     # 콜백 함수들
@@ -957,7 +998,7 @@ class UnifiedVizNode(Node):
 
     def px4_global_position_callback(self, msg):
         """PX4 VehicleGlobalPosition 콜백 - GPS 위치"""
-        # 기준점 결정: MODE=1 (GPS 모드)면 config의 GPS_REFERENCE 사용, MODE=0이면 첫 GPS 값 사용
+        # 기준점 결정
         if Constants.WAYPOINT_MODE == 1:
             # GPS 모드: config의 기준 위경도 사용
             if self.initial_lat is None:
@@ -968,20 +1009,32 @@ class UnifiedVizNode(Node):
                 )
                 self.get_logger().info("✓ px4_global_position_callback 첫 호출 성공")
         else:
-            # 로컬 모드: 첫 GPS 값을 기준점으로 설정
+            # MODE=0: config의 기준 위경도를 원점으로 사용
             if self.initial_lat is None:
-                self.initial_lat = msg.lat
-                self.initial_lon = msg.lon
+                self.initial_lat = Constants.GPS_REFERENCE_LAT
+                self.initial_lon = Constants.GPS_REFERENCE_LON
                 self.get_logger().info(
-                    f"로컬 모드: 첫 GPS 위치를 기준점으로 설정 - lat={msg.lat:.8f}, lon={msg.lon:.8f}"
+                    f"MODE=0: config 기준 위경도를 원점으로 설정 - lat={self.initial_lat:.8f}, lon={self.initial_lon:.8f}"
                 )
-                self.get_logger().info("✓ px4_global_position_callback 첫 호출 성공")
 
         # 기준점 기준으로 로컬 좌표로 변환
+        # gps_to_local은 (Easting, Northing)을 반환하지만, NED 좌표계는 [North, East] 순서
         x_local, y_local = gps_to_local(msg.lat, msg.lon, self.initial_lat, self.initial_lon)
-        position = np.array([x_local, y_local])
+        # NED 좌표계: [North, East] = [Northing, Easting]
+        position = np.array([y_local, x_local])  # [North, East]
         self.current_position = position
         self.position_history.append(position)
+        
+        # 첫 GPS 수신 시 상대 좌표 로깅 (MODE=0일 때)
+        if Constants.WAYPOINT_MODE == 0 and not hasattr(self, '_first_gps_logged'):
+            self._first_gps_logged = True
+            self.get_logger().info(
+                f"  첫 GPS 위치: lat={msg.lat:.8f}, lon={msg.lon:.8f}"
+            )
+            self.get_logger().info(
+                f"  → 기준점 기준 상대 좌표: North={y_local:.4f}m, East={x_local:.4f}m"
+            )
+            self.get_logger().info("✓ px4_global_position_callback 첫 호출 성공")
 
         # 축 초기화
         if not self.axis_initialized:
@@ -1346,7 +1399,7 @@ class UnifiedVizNode(Node):
                 )
 
             # 6. 웨이포인트
-            self.plot_manager.update_waypoints(self.waypoints, self.current_waypoint)
+            self.plot_manager.update_waypoints(self.waypoints, self.current_waypoint, self.waypoints_gps)
 
             # 7. CIRCLE_BUOY 웨이포인트 (자동 생성)
             # 전역 좌표로 변환된 웨이포인트 사용 (처음 받을 때 고정됨)

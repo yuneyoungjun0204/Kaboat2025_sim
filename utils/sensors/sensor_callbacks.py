@@ -243,12 +243,21 @@ class SensorCallbackHandler:
             if not self.reference_point_set:
                 self.reference_point_set = True
                 # 웨이포인트 관리자에 초기 위치 설정 (웨이포인트 재계산)
-                # MODE=0 (로컬 좌표)일 때만 첫 GPS 값을 기준으로 설정
-                if self.waypoint_manager is not None and self.waypoint_manager.waypoint_mode == 0:
+                # MODE=0: config의 기준 위경도를 사용하므로 set_initial_position 호출하지 않음
+                # MODE=2: 첫 GPS 값을 기준으로 설정
+                if self.waypoint_manager is not None and self.waypoint_manager.waypoint_mode == 2:
                     self.waypoint_manager.set_initial_position(msg.latitude, msg.longitude)
                     self.logger.info(
                         f"초기 위치 설정: lat={msg.latitude:.8f}, lon={msg.longitude:.8f}"
                     )
+                elif self.waypoint_manager is not None and self.waypoint_manager.waypoint_mode == 0:
+                    # MODE=0: config의 기준 위경도를 사용하므로 웨이포인트만 재계산 (gps_reference는 변경하지 않음)
+                    if self.waypoint_manager.waypoints:
+                        # GPS 웨이포인트가 있으면 재계산
+                        self.waypoint_manager._recalculate_all_waypoints_from_initial()
+                        self.logger.info(
+                            f"MODE=0: config 기준 위경도로 웨이포인트 재계산 완료"
+                        )
 
     def imu_callback(self, msg: Imu) -> None:
         """
@@ -323,7 +332,7 @@ class SensorCallbackHandler:
         """
         from ..mission.waypoint_manager import gps_to_local
 
-        # 기준점 결정: MODE=1 (GPS 모드)면 config의 GPS_REFERENCE 사용, MODE=0이면 첫 GPS 값 사용
+        # 기준점 결정
         if self.waypoint_manager is not None and self.waypoint_manager.waypoint_mode == 1:
             # GPS 모드: config의 기준 위경도 사용
             ref_lat = Constants.GPS_REFERENCE_LAT
@@ -336,26 +345,33 @@ class SensorCallbackHandler:
                     f"GPS 모드: 기준 위경도 사용 - lat={ref_lat:.8f}, lon={ref_lon:.8f}"
                 )
         else:
-            # 로컬 모드: 첫 GPS 값을 기준점으로 설정
+            # MODE=0: config의 기준 위경도를 원점으로 사용
             if self.initial_lat is None:
-                self.initial_lat = msg.lat
-                self.initial_lon = msg.lon
+                ref_lat = Constants.GPS_REFERENCE_LAT
+                ref_lon = Constants.GPS_REFERENCE_LON
+                self.initial_lat = ref_lat
+                self.initial_lon = ref_lon
                 self.reference_point_set = True
                 self.logger.info(
-                    f"로컬 모드: 첫 GPS 위치를 기준점으로 설정 - lat={msg.lat:.8f}, lon={msg.lon:.8f}"
+                    f"MODE=0: config 기준 위경도를 원점으로 설정 - lat={ref_lat:.8f}, lon={ref_lon:.8f}"
+                )
+                self.logger.info(
+                    f"  첫 GPS 위치: lat={msg.lat:.8f}, lon={msg.lon:.8f} (기준점에서 상대 좌표로 계산됨)"
                 )
 
-                # waypoint_manager에도 초기 위치 설정 (MODE=0일 때만)
+                # waypoint_manager에도 웨이포인트 재계산 (MODE=0일 때)
                 if self.waypoint_manager is not None:
-                    self.waypoint_manager.set_initial_position(msg.lat, msg.lon)
-                    self.logger.info(f"waypoint_manager 초기 위치 설정 완료")
+                    # GPS 웨이포인트가 있으면 재계산
+                    if self.waypoint_manager.waypoints:
+                        self.waypoint_manager._recalculate_all_waypoints_from_initial()
+                        self.logger.info(f"MODE=0: config 기준 위경도로 웨이포인트 재계산 완료")
 
-                    # 재계산된 웨이포인트 정보 로깅
-                    for i, wp in enumerate(self.waypoint_manager.waypoints):
-                        self.logger.info(
-                            f"  웨이포인트 {i}: x={wp['x']:.2f}m, y={wp['y']:.2f}m, "
-                            f"미션={wp['mission_type'].name}"
-                        )
+                        # 재계산된 웨이포인트 정보 로깅
+                        for i, wp in enumerate(self.waypoint_manager.waypoints):
+                            self.logger.info(
+                                f"  웨이포인트 {i}: x={wp['x']:.2f}m, y={wp['y']:.2f}m, "
+                                f"미션={wp['mission_type'].name}"
+                            )
                 else:
                     self.logger.warn("waypoint_manager가 None입니다! 웨이포인트 재계산 불가")
 

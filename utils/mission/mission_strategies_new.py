@@ -872,7 +872,7 @@ class DockMission(BaseMissionStrategy):
         self.reverse_time = Constants.DOCK_REVERSE_TIME
         self.approach_speed = Constants.DOCK_APPROACH_SPEED
         self.reverse_speed = Constants.DOCK_REVERSE_SPEED
-        self.dock_reach_radius = 0.56  # 도킹 포인트 도달 반경 (미터)
+        self.dock_reach_radius = 0.5  # 도킹 포인트 도달 반경 (미터)
         
         # Body-force 명령 저장 (ROS 퍼블리시용)
         self.last_sway_force = self.last_yaw_moment = self.last_surge_velocity = 0.0

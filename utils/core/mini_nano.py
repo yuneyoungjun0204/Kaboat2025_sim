@@ -193,7 +193,9 @@ class VRXSystemFactory:
         sensor_manager = SensorDataManager(
             ref_lat=Constants.GPS_REFERENCE_LAT,
             ref_lon=Constants.GPS_REFERENCE_LON,
-            use_first_fix=(Constants.WAYPOINT_MODE == 0)
+            # MODE=0: config의 기준 위경도 사용 (use_first_fix=False)
+            # MODE=2: 첫 GPS 값 사용 (use_first_fix=True)
+            use_first_fix=(Constants.WAYPOINT_MODE == 2)
         )
         sensor_handler = SensorCallbackHandler(
             self.bridge, sensor_manager, self.logger

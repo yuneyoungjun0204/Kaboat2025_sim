@@ -99,7 +99,7 @@ class WaypointManager:
         # GPS 좌표를 로컬 좌표로 변환
         if use_gps:
             lat, lon = x, y
-            y_local, x_local = gps_to_local(lat, lon, self.gps_reference_lat, self.gps_reference_lon)
+            x_local, y_local = gps_to_local(lat, lon, self.gps_reference_lat, self.gps_reference_lon)
 
             # # 현재 로봇 위치를 기준으로 상대 좌표 계산 (옵션)
             # if current_position is not None and len(current_position) == 2:
@@ -325,24 +325,34 @@ class WaypointManager:
             self.initial_position_lon = lon
             self.initial_position_set = True
 
-            # GPS 웨이포인트 모드가 아니면 미션 시작 위치 기준으로 재계산
-            if self.waypoint_mode != 1:
+            # WAYPOINT_MODE=0일 때는 config의 기준 위경도를 사용하므로 gps_reference를 업데이트하지 않음
+            # (처음 들어오는 GPS가 아닌 config의 고정 기준점 사용)
+            # MODE=1일 때만 initial_position 기준으로 재계산
+            if self.waypoint_mode == 1:
                 self._recalculate_all_waypoints_from_initial()
 
     def _recalculate_all_waypoints_from_initial(self):
         """
-        모든 GPS 웨이포인트의 x, y를 미션 시작 위치 기준으로 재계산
+        모든 GPS 웨이포인트의 x, y를 기준점 기준으로 재계산
+        - MODE=0: config의 기준 위경도(gps_reference) 사용
+        - MODE=1: initial_position 사용 (미션 시작 위치 기준)
         """
-        if not self.initial_position_set:
-            return
-
         for waypoint in self.waypoints:
             if waypoint.get('is_gps', False):
-                # GPS 좌표를 미션 시작 위치 기준 로컬 좌표로 재계산
-                x_local, y_local = gps_to_local(
-                    waypoint['lat'], waypoint['lon'],
-                    self.initial_position_lat, self.initial_position_lon
-                )
+                if self.waypoint_mode == 0:
+                    # MODE=0: config의 기준 위경도 사용
+                    x_local, y_local = gps_to_local(
+                        waypoint['lat'], waypoint['lon'],
+                        self.gps_reference_lat, self.gps_reference_lon
+                    )
+                else:
+                    # MODE=1: 미션 시작 위치 기준으로 재계산
+                    if not self.initial_position_set:
+                        continue
+                    x_local, y_local = gps_to_local(
+                        waypoint['lat'], waypoint['lon'],
+                        self.initial_position_lat, self.initial_position_lon
+                    )
                 waypoint['x'] = x_local
                 waypoint['y'] = y_local
 
