@@ -50,7 +50,7 @@ class WaypointTransitionHandler:
 
         # 거리 계산
         target_pos = np.array([current_wp['y'], current_wp['x']], dtype=np.float32)
-        distance = np.linalg.norm(agent_position - target_pos)
+        distance = np.linalg.norm([agent_position[1],agent_position[0]] - target_pos)
 
         # 주기적 로그
         if self.loop_counter % 100 == 0:

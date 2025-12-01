@@ -62,7 +62,7 @@ class Constants:
         # 제어 파라미터
         MAX_VELOCITY = 2.0          # 최대 전진 속도 (m/s)
         MIN_VELOCITY = -1.0
-        MAX_YAW_RATE = 1.0          # 최대 yaw rate (rad/s)
+        MAX_YAW_RATE = 1.3          # 최대 yaw rate (rad/s)
         CONTROL_RATE_HZ = 50.0      # 제어 주기 (Hz)
         Linear_scale = 1.3
         yaw_scale = 2.0
@@ -181,42 +181,45 @@ class Constants:
     color="white"
     PREDEFINED_WAYPOINTS = [
         
-#         (-2, -3, 'OBSTACLE_AVOID', 9, {'los_delta': 300.0}),
-#         (25,25, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {'los_delta': 300.0}),
+        (-2, -3, 'OBSTACLE_AVOID', 9, {'los_delta': 300.0,'lidar_scale_factor': 5.0}),
+        (25,25, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {'los_delta': 300.0,'lidar_scale_factor': 5.0}),
 #         (55, 55, 'OBSTACLE_AVOID', 4, {'los_delta': 300.0}),
 #         (55, 15, 'STOP', DEFAULT_WAYPOINT_RADIUS, {'stop_duration': 500.0}),
 
 #         # if color=="white":
-#         # (44, 70, 'OBSTACLE_AVOID', 4, {'los_delta': 300.0}),
-#         # (38, 65, 'OBSTACLE_AVOID', 4, {'los_delta': 300.0}),
-#         # (44, 60, 'OBSTACLE_AVOID', 4, {'los_delta': 300.0}),
-#         # (48, 65, 'OBSTACLE_AVOID', 4, {'los_delta': 300.0}),
-#         # (44, 70, 'OBSTACLE_AVOID', 4, {'los_delta': 300.0}),
+#         # (44, 70, 'OBSTACLE_AVOID', 4, {'los_delta': 300.0,'lidar_scale_factor': 5.0}),
+#         # (38, 65, 'OBSTACLE_AVOID', 4, {'los_delta': 300.0,'lidar_scale_factor': 5.0}),
+#         # (44, 60, 'OBSTACLE_AVOID', 4, {'los_delta': 300.0,'lidar_scale_factor': 5.0}),
+#         # (48, 65, 'OBSTACLE_AVOID', 4, {'los_delta': 300.0,'lidar_scale_factor': 5.0}),
+#         # (44, 70, 'OBSTACLE_AVOID', 4, {'los_delta': 300.0,'lidar_scale_factor': 5.0}),
 #         # if color=="green":
-#         (42, 80, 'OBSTACLE_AVOID', 4, {'los_delta': 300.0}),
-#         (37, 85, 'OBSTACLE_AVOID', 4, {'los_delta': 300.0}),
-#         (32, 80, 'OBSTACLE_AVOID', 4, {'los_delta': 300.0}),
-#         (37, 75, 'OBSTACLE_AVOID', 4, {'los_delta': 300.0}),
-#         (42, 80, 'OBSTACLE_AVOID', 4, {'los_delta': 300.0}),
-#         (37, 85, 'OBSTACLE_AVOID', 4, {'los_delta': 300.0}),
+#         (42, 80, 'OBSTACLE_AVOID', 4, {'los_delta': 300.0,'lidar_scale_factor': 5.0}),
+#         (37, 85, 'OBSTACLE_AVOID', 4, {'los_delta': 300.0,'lidar_scale_factor': 5.0}),
+#         (32, 80, 'OBSTACLE_AVOID', 4, {'los_delta': 300.0,'lidar_scale_factor': 5.0}),
+#         (37, 75, 'OBSTACLE_AVOID', 4, {'los_delta': 300.0,'lidar_scale_factor': 5.0}),
+#         (42, 80, 'OBSTACLE_AVOID', 4, {'los_delta': 300.0,'lidar_scale_factor': 5.0}),
+#         (37, 85, 'OBSTACLE_AVOID', 4, {'los_delta': 300.0,'lidar_scale_factor': 5.0}),
 #         # # if color=="red":
-#         # (37, 67, 'OBSTACLE_AVOID', 4, {'los_delta': 300.0}),
-#         # (32, 72, 'OBSTACLE_AVOID', 4, {'los_delta': 300.0}),
-#         # (27, 67, 'OBSTACLE_AVOID', 4, {'los_delta': 300.0}),
-#         # (32, 62, 'OBSTACLE_AVOID', 4, {'los_delta': 300.0}),
-#         # (37, 67, 'OBSTACLE_AVOID', 4, {'los_delta': 300.0}),
-#         # (32, 72, 'OBSTACLE_AVOID', 4, {'los_delta': 300.0}),
+#         # (37, 67, 'OBSTACLE_AVOID', 4, {'los_delta': 300.0, 'lidar_scale_factor': 5.0}),
+#         # (32, 72, 'OBSTACLE_AVOID', 4, {'los_delta': 300.0, 'lidar_scale_factor': 5.0}),
+#         # (27, 67, 'OBSTACLE_AVOID', 4, {'los_delta': 300.0, 'lidar_scale_factor': 5.0}),
+#         # (32, 62, 'OBSTACLE_AVOID', 4, {'los_delta': 300.0, 'lidar_scale_factor': 5.0}),
+#         # (37, 67, 'OBSTACLE_AVOID', 4, {'los_delta': 300.0, 'lidar_scale_factor': 5.0}),
+#         # (32, 72, 'OBSTACLE_AVOID', 4, {'los_delta': 300.0, 'lidar_scale_factor': 5.0}),
             
 
 # ##dock_1=[-35,10]
 # ##dock_2=[-33.4,8.3]
 # ##dock_3=[-33.8,5.1]
-#         (12.2, 52, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {'los_delta': 300.0}),
-#         (-13.8, 22.2, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {'los_delta': 300.0}),
-        (11.1, -26.5, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {'los_delta': 300.0}),
-        (10, -35, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {'los_delta': 300.0}),
-        # (8.3, -33.4, 'WAYPOINT_FOLLOW', DEFAULT_WAYPOINT_RADIUS, {'los_delta': 300.0}),
-        # (5.1, -33.8, 'WAYPOINT_FOLLOW', DEFAULT_WAYPOINT_RADIUS, {'los_delta': 300.0}),
+#         (12.2, 52, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {'los_delta': 300.0, 'lidar_scale_factor': 5.0}),
+#         (-13.8, 22.2, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {'los_delta': 300.0, 'lidar_scale_factor': 5.0}),
+        ##도킹보조
+        # (0, -10, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {'los_delta': 300.0, 'lidar_scale_factor': 10.0}),
+        (11.1, -26.5, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {'los_delta': 300.0, 'lidar_scale_factor': 10.0}),
+        (10, -35, 'OBSTACLE_AVOID', DEFAULT_WAYPOINT_RADIUS, {'los_delta': 300.0, 'lidar_scale_factor': 10.0}),
+        
+        # (8.3, -33.4, 'WAYPOINT_FOLLOW', DEFAULT_WAYPOINT_RADIUS, {'los_delta': 300.0}, 'lidar_scale_factor': 5.0}),
+        # (5.1, -33.8, 'WAYPOINT_FOLLOW', DEFAULT_WAYPOINT_RADIUS, {'los_delta': 300.0}, 'lidar_scale_factor': 5.0}),
     ]
 
     # ============================================================================

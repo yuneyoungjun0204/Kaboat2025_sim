@@ -427,6 +427,12 @@ class SensorCallbackHandler:
             dtype=np.float32
         )
 
+        # 현재 웨이포인트의 lidar_scale_factor 가져오기 (없으면 기본값 사용)
+        lidar_scale_factor = Constants.LIDAR_SCALE_FACTOR
+        if self.waypoint_manager is not None:
+            current_params = self.waypoint_manager.get_current_mission_params()
+            lidar_scale_factor = current_params.get('lidar_scale_factor', Constants.LIDAR_SCALE_FACTOR)
+
         # 1. 원본 데이터 변환 및 스케일 적용
         for i in range(len(ranges)):
             angle_rad = angle_min + i * angle_increment
@@ -437,7 +443,7 @@ class SensorCallbackHandler:
                 if np.isinf(distance) or np.isnan(distance) or distance >= Constants.MAX_LIDAR_DISTANCE:
                     distance = Constants.MAX_LIDAR_DISTANCE
                 else:
-                    distance = distance * Constants.LIDAR_SCALE_FACTOR
+                    distance = distance * lidar_scale_factor
 
                 idx = int(angle_deg + 100)
                 idx = max(0, min(Constants.LIDAR_ARRAY_SIZE - 1, idx))
