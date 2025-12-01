@@ -340,7 +340,7 @@ class DirectController:
 
         # 각속도: 헤딩 차이에 비례
         ac = Constants.AvoidControl
-        angular_velocity = np.clip(heading_diff_rad / np.pi, -ac.ANGULAR_VELOCITY_CLIP, ac.ANGULAR_VELOCITY_CLIP)
+        angular_velocity = np.clip(heading_diff_rad*2 / np.pi, -ac.ANGULAR_VELOCITY_CLIP, ac.ANGULAR_VELOCITY_CLIP)
 
         # 선속도: 거리에 따라 조절
         if distance_to_los > ac.DIRECT_SPEED_FAR_DISTANCE:
@@ -351,7 +351,7 @@ class DirectController:
             linear_velocity = ac.DIRECT_SPEED_NEAR
 
         # 회전 중에는 속도 감소
-        linear_velocity = linear_velocity * (1.0 - abs(angular_velocity) * 0.3)
+        linear_velocity = linear_velocity * (1.0 - abs(angular_velocity) * 0.5)
         linear_velocity = np.clip(linear_velocity, 0.1, 1.0)
 
         return linear_velocity, angular_velocity
